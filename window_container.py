@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -410,6 +410,7 @@ SM_CYVIRTUALSCREEN = 79
 
 WM_NULL = 0x0000
 WM_DESTROY = 0x0002
+WM_CLOSE = 0x0010
 WM_SETICON = 0x0080
 WM_COMMAND = 0x0111
 WM_COPYDATA = 0x004A
@@ -2216,7 +2217,20 @@ def _parse_launch(argv):
 
 
 def main():
-    launch_name = _parse_launch(sys.argv[1:])
+    args = sys.argv[1:]
+    # штатно закрыть запущенный экземпляр (для деинсталлятора): WM_CLOSE -> _quit,
+    # который снимает владение со всех окон, и ждём, пока процесс действительно выйдет
+    if "--quit" in args:
+        h = user32.FindWindowW(None, IPC_TITLE)
+        if h:
+            user32.PostMessageW(h, WM_CLOSE, 0, 0)
+            for _ in range(40):
+                if not user32.FindWindowW(None, IPC_TITLE):
+                    break
+                time.sleep(0.25)
+        return
+
+    launch_name = _parse_launch(args)
     # единственный экземпляр: если уже запущен — отдать ему команду и выйти
     existing = user32.FindWindowW(None, IPC_TITLE)
     if existing:
