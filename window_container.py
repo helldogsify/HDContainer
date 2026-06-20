@@ -113,17 +113,24 @@ def _migrate_data():
         return
     cands = [_EXE_DIR, r"C:\Users\Public\WC",
              os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "HDContainer")]
-    best, best_mt = None, -1.0
+    best, best_key = None, (0, -1.0)   # выбираем по (число контейнеров, mtime)
     for d in cands:
         try:
             if not d or os.path.abspath(d) == os.path.abspath(_DIR):
                 continue
             p = os.path.join(d, "HDContainer_containers.json")
-            if os.path.exists(p) and os.path.getmtime(p) > best_mt:
-                best_mt, best = os.path.getmtime(p), d
+            if not os.path.exists(p):
+                continue
+            try:
+                n = len(json.load(open(p, "r", encoding="utf-8")))
+            except Exception:
+                n = 0
+            key = (n, os.path.getmtime(p))
+            if key > best_key:
+                best_key, best = key, d
         except Exception:
             pass
-    if not best:
+    if not best or best_key[0] == 0:   # нечего восстанавливать
         return
     try:
         for name in ("HDContainer_containers.json", "HDContainer_settings.json"):
