@@ -40,6 +40,7 @@ import sys
 import json
 import time
 import tempfile
+import shutil
 import subprocess
 import threading
 import traceback
@@ -50,7 +51,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -71,25 +72,77 @@ gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
 ole32 = ctypes.WinDLL("ole32", use_last_error=True)
 
 
-def _data_dir():
+def _exe_dir():
     try:
         d = os.path.dirname(os.path.abspath(sys.argv[0]))
         if os.path.isdir(d):
             return d
     except Exception:
         pass
-    return tempfile.gettempdir()
+    return os.getcwd()
+
+
+def _data_dir():
+    # СТАБИЛЬНОЕ место данных (не рядом с exe!), чтобы обновление/переустановка
+    # в другую папку не теряли контейнеры
+    base = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
+    d = os.path.join(base, "HDContainer")
+    try:
+        os.makedirs(d, exist_ok=True)
+        return d
+    except Exception:
+        return _exe_dir()
 
 
 APP_NAME = "HDContainer"
 IPC_TITLE = "HDContainer::IPC::singleton"
 
+_EXE_DIR = _exe_dir()
 _DIR = _data_dir()
+_ICON = os.path.join(_EXE_DIR, "HDContainer.ico")          # иконка лежит рядом с exe
 _LOG = os.path.join(_DIR, "HDContainer_debug.log")
 _RECOVERY = os.path.join(_DIR, "HDContainer_recovery.json")
 _STORE = os.path.join(_DIR, "HDContainer_containers.json")
-_ICON = os.path.join(_DIR, "HDContainer.ico")
 _ICONDIR = os.path.join(_DIR, "icons")   # пользовательские иконки контейнеров
+
+
+def _migrate_data():
+    # перенос данных из прежних мест (рядом с exe / Public\\WC / прошлая установка)
+    # в стабильную папку — чтобы апдейт не «терял» контейнеры
+    if os.path.exists(_STORE):
+        return
+    cands = [_EXE_DIR, r"C:\Users\Public\WC",
+             os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "HDContainer")]
+    best, best_mt = None, -1.0
+    for d in cands:
+        try:
+            if not d or os.path.abspath(d) == os.path.abspath(_DIR):
+                continue
+            p = os.path.join(d, "HDContainer_containers.json")
+            if os.path.exists(p) and os.path.getmtime(p) > best_mt:
+                best_mt, best = os.path.getmtime(p), d
+        except Exception:
+            pass
+    if not best:
+        return
+    try:
+        for name in ("HDContainer_containers.json", "HDContainer_settings.json"):
+            src = os.path.join(best, name)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(_DIR, name))
+        src_icons = os.path.join(best, "icons")
+        if os.path.isdir(src_icons):
+            os.makedirs(_ICONDIR, exist_ok=True)
+            for f in os.listdir(src_icons):
+                try:
+                    shutil.copy2(os.path.join(src_icons, f), os.path.join(_ICONDIR, f))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+_migrate_data()
 
 
 def log(msg):
@@ -234,6 +287,7 @@ STRINGS = {
     "up_to_date": {"en": "You have the latest version.", "ru": "У вас последняя версия.", "es": "Tienes la última versión.", "pt": "Você tem a versão mais recente.", "de": "Du hast die neueste Version.", "fr": "Vous avez la dernière version.", "zh": "已是最新版本。"},
     "manage": {"en": "Manage containers", "ru": "Управление контейнерами", "es": "Gestionar contenedores", "pt": "Gerenciar contêineres", "de": "Container verwalten", "fr": "Gérer les conteneurs", "zh": "管理容器"},
     "reset_look": {"en": "Reset to default look", "ru": "Сбросить оформление", "es": "Restablecer apariencia", "pt": "Redefinir aparência", "de": "Aussehen zurücksetzen", "fr": "Réinitialiser l’apparence", "zh": "恢复默认外观"},
+    "active": {"en": "Active", "ru": "Активен", "es": "Activo", "pt": "Ativo", "de": "Aktiv", "fr": "Actif", "zh": "已激活"},
 }
 
 
@@ -255,6 +309,8 @@ def detect_lang():
 def enable_dark_menus():
     """Тёмные системные контекстные меню (immersive dark mode, Win10 1903+/Win11)."""
     try:
+        if sys.getwindowsversion().build < 18362:
+            return
         ux = ctypes.WinDLL("uxtheme")
         set_mode = ux[135]            # SetPreferredAppMode / AllowDarkModeForApp
         set_mode.restype = ctypes.c_int
@@ -1246,20 +1302,15 @@ class TrayApp:
         def sep(m):
             user32.AppendMenuW(m, MF_SEPARATOR, 0, None)
 
-        mgmt = None
         if self.containers:
-            # список контейнеров с галочками: отметил = активен, снял = выключен
-            for c in self.containers:
-                label = c.name + (("   (%d)" % len(c.members)) if c.active else "")
-                add(menu, label, lambda c=c: self._toggle_active(c),
-                    MF_STRING | (MF_CHECKED if c.active else 0))
-            sep(menu)
-            # подменю управления (настройки конкретного контейнера)
-            mgmt = user32.CreatePopupMenu()
+            # одна строка на контейнер: галочка слева = вкл/выкл (на самой строке),
+            # ▸ открывает настройки именно этого контейнера
             for c in self.containers:
                 sub = user32.CreatePopupMenu()
-                add(sub, T("add_here"), lambda c=c: self._add_window_to(c))
+                add(sub, T("active"), lambda c=c: self._toggle_active(c),
+                    MF_STRING | (MF_CHECKED if c.active else 0))
                 sep(sub)
+                add(sub, T("add_here"), lambda c=c: self._add_window_to(c))
                 add(sub, T("rename"), lambda c=c: self._rename(c))
                 add(sub, T("set_icon"), lambda c=c: self._set_icon(c))
                 add(sub, T("set_color"), lambda c=c: self._set_color(c))
@@ -1268,16 +1319,16 @@ class TrayApp:
                 add(sub, T("create_shortcut"), lambda c=c: self._create_shortcut(c))
                 sep(sub)
                 add(sub, T("delete"), lambda c=c: self._delete(c))
-                user32.AppendMenuW(mgmt, MF_POPUP, ctypes.cast(sub, ctypes.c_void_p).value or 0, c.name)
+                cnt = ("   (%d)" % len(c.members)) if c.active else ""
+                user32.AppendMenuW(menu, MF_POPUP | (MF_CHECKED if c.active else 0),
+                                   ctypes.cast(sub, ctypes.c_void_p).value or 0, c.name + cnt)
+            sep(menu)
 
         add(menu, "➕  " + T("create_container"), self._create_container)
         cur_name = self.current.name if self.current else "—"
         add(menu, "➕  " + T("add_to_current", cur_name),
             self._add_window_current,
             MF_STRING | (0 if self.current else MF_GRAYED))
-        if mgmt is not None:
-            user32.AppendMenuW(menu, MF_POPUP, ctypes.cast(mgmt, ctypes.c_void_p).value or 0,
-                               "🛠  " + T("manage"))
         sep(menu)
         add(menu, "⚙  " + T("settings"), self._open_settings)
         add(menu, T("quit"), self._quit)
