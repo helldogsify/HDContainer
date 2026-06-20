@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script (per-user install, no admin required)
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 

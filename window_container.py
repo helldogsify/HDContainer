@@ -50,7 +50,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -214,13 +214,13 @@ STRINGS = {
     "language": {"en": "Language", "ru": "Язык", "es": "Idioma", "pt": "Idioma", "de": "Sprache", "fr": "Langue", "zh": "语言"},
     "guide_title": {"en": "How it works", "ru": "Как это работает", "es": "Cómo funciona", "pt": "Como funciona", "de": "So funktioniert es", "fr": "Comment ça marche", "zh": "工作原理"},
     "guide_text": {
-        "en": "• Group windows (VS Code, Chrome…) into one container: one taskbar button, native keyboard, clipboard and layout switching.\n• A container is an invisible full-screen owner — place windows anywhere, even maximized.\n• Minimize a window inside a container and it temporarily detaches (gets its own taskbar button); restoring returns it.\n• “Color label” recolors the icon panel so containers are easy to tell apart.\n• Make a desktop shortcut to reopen a container and relaunch its apps. Quit from the tray to release windows safely.",
-        "ru": "• Собирай окна (VS Code, Chrome…) в один контейнер: одна кнопка в таскбаре, родные клавиатура, буфер и смена раскладки.\n• Контейнер — невидимое полноэкранное окно-владелец: расставляй окна как угодно, хоть на весь экран.\n• Свернул окно внутри контейнера — оно временно отвязывается (своя кнопка в таскбаре); развернул — вернулось.\n• «Цветная метка» перекрашивает панель иконки, чтобы различать контейнеры.\n• Ярлык переоткрывает контейнер и его приложения. Выход — через трей, он безопасно вернёт окна.",
-        "es": "• Agrupa ventanas (VS Code, Chrome…) en un contenedor: un botón en la barra, teclado, portapapeles y cambio de idioma nativos.\n• Un contenedor es un dueño invisible a pantalla completa: coloca las ventanas donde quieras, incluso maximizadas.\n• Minimiza una ventana dentro y se separa temporalmente (su propio botón); al restaurarla vuelve.\n• «Etiqueta de color» recolorea el panel del icono para distinguir contenedores.\n• Crea un acceso directo para reabrir un contenedor y sus apps. Sal desde la bandeja para liberar ventanas.",
-        "pt": "• Agrupe janelas (VS Code, Chrome…) em um contêiner: um botão na barra, teclado, área de transferência e troca de layout nativos.\n• Um contêiner é um dono invisível em tela cheia: coloque janelas em qualquer lugar, até maximizadas.\n• Minimize uma janela dentro e ela se separa temporariamente (botão próprio); restaurar a traz de volta.\n• “Etiqueta de cor” recolore o painel do ícone para distinguir contêineres.\n• Crie um atalho para reabrir um contêiner e seus apps. Saia pela bandeja para liberar as janelas.",
-        "de": "• Fasse Fenster (VS Code, Chrome…) in einem Container zusammen: ein Taskbar-Knopf, native Tastatur, Zwischenablage und Layout-Wechsel.\n• Ein Container ist ein unsichtbarer Vollbild-Besitzer — platziere Fenster überall, auch maximiert.\n• Minimiere ein Fenster im Container, löst es sich kurz (eigener Knopf); Wiederherstellen bringt es zurück.\n• „Farbmarkierung“ färbt das Symbolfeld zur Unterscheidung der Container.\n• Erstelle eine Verknüpfung, um einen Container und seine Apps neu zu öffnen. Über das Tray beenden, um Fenster sicher freizugeben.",
-        "fr": "• Regroupez des fenêtres (VS Code, Chrome…) dans un conteneur : un bouton de barre, clavier, presse-papiers et changement de disposition natifs.\n• Un conteneur est un propriétaire plein écran invisible — placez les fenêtres n’importe où, même maximisées.\n• Réduisez une fenêtre dans le conteneur : elle se détache temporairement (son propre bouton) ; la restaurer la ramène.\n• « Étiquette de couleur » recolore le panneau de l’icône pour distinguer les conteneurs.\n• Créez un raccourci pour rouvrir un conteneur et ses apps. Quittez via la zone de notification pour libérer les fenêtres.",
-        "zh": "• 把窗口（VS Code、Chrome…）归入一个容器：一个任务栏按钮，原生键盘、剪贴板与输入法切换。\n• 容器是一个隐形的全屏所有者——窗口可任意摆放，甚至最大化。\n• 在容器内最小化某窗口，它会临时脱离（拥有自己的任务栏按钮）；还原即归位。\n• “颜色标记”为图标面板着色，便于区分容器。\n• 创建桌面快捷方式可重开容器并启动其应用。通过托盘退出可安全释放窗口。",
+        "en": "A task is usually several windows at once — editor, browser, terminal, a video. HDContainer groups them into one container that behaves like a single app, so you flip your whole workspace with one Alt+Tab instead of digging through windows.\n\n• Put the windows for a task into a container — one taskbar button, one Alt+Tab entry.\n• Switch tasks in a single keystroke; the whole set comes forward together.\n• Save a container as a desktop shortcut. Reopening it puts back windows that are still open exactly where they were; apps that were closed get relaunched, but their exact size and position can't always be restored.\n• Windows stay real — keyboard, clipboard and Alt+Shift layout switching keep working.\n• Tick a container in the menu to switch it on or off; name and color-label them to tell them apart. Quit from the tray to release all windows.",
+        "ru": "Задача — это обычно несколько окон сразу: редактор, браузер, терминал, видео. HDContainer собирает их в один контейнер, который ведёт себя как одна программа, — и ты переключаешь весь рабочий набор одним Alt+Tab, а не ищешь окна по отдельности.\n\n• Сложи окна задачи в контейнер — одна кнопка в таскбаре, один Alt+Tab.\n• Переключай задачи одним нажатием; весь набор выходит вперёд вместе.\n• Сохрани контейнер ярлыком. При открытии окна, что ещё открыты, встают точно на свои места; закрытые приложения запускаются заново, но их точный размер и позицию воссоздать удаётся не всегда.\n• Окна остаются настоящими — клавиатура, буфер и смена раскладки Alt+Shift работают.\n• Галочкой в меню включаешь/выключаешь контейнер; имя и цветная метка — чтобы различать. Выход — через трей, он вернёт все окна.",
+        "es": "Una tarea suele ser varias ventanas a la vez: editor, navegador, terminal, un vídeo. HDContainer las agrupa en un contenedor que se comporta como una sola app, así cambias todo tu espacio de trabajo con un Alt+Tab en vez de buscar ventanas una a una.\n\n• Mete las ventanas de una tarea en un contenedor — un botón en la barra, un Alt+Tab.\n• Cambia de tarea con una tecla; todo el conjunto aparece junto.\n• Guarda el contenedor como acceso directo. Al reabrirlo, las ventanas que siguen abiertas vuelven a su sitio exacto; las apps cerradas se relanzan, pero su tamaño y posición exactos no siempre se pueden restaurar.\n• Las ventanas siguen siendo reales — teclado, portapapeles y cambio de teclado Alt+Shift funcionan.\n• Marca un contenedor en el menú para activarlo o desactivarlo; ponles nombre y color para distinguirlos. Sal desde la bandeja para liberar las ventanas.",
+        "pt": "Uma tarefa costuma ser várias janelas ao mesmo tempo: editor, navegador, terminal, um vídeo. O HDContainer as agrupa em um contêiner que se comporta como um único app, então você troca todo o seu espaço de trabalho com um Alt+Tab em vez de caçar janelas uma a uma.\n\n• Coloque as janelas de uma tarefa em um contêiner — um botão na barra, um Alt+Tab.\n• Troque de tarefa com uma tecla; todo o conjunto vem junto.\n• Salve o contêiner como atalho. Ao reabri-lo, as janelas ainda abertas voltam ao lugar exato; apps fechados são reabertos, mas o tamanho e a posição exatos nem sempre podem ser restaurados.\n• As janelas continuam reais — teclado, área de transferência e troca de layout Alt+Shift funcionam.\n• Marque um contêiner no menu para ligá-lo ou desligá-lo; dê nome e cor para distingui-los. Saia pela bandeja para liberar as janelas.",
+        "de": "Eine Aufgabe besteht meist aus mehreren Fenstern zugleich — Editor, Browser, Terminal, ein Video. HDContainer fasst sie in einem Container zusammen, der sich wie eine einzige App verhält, sodass du deinen ganzen Arbeitsbereich mit einem Alt+Tab umschaltest, statt Fenster einzeln zu suchen.\n\n• Leg die Fenster einer Aufgabe in einen Container — ein Taskbar-Knopf, ein Alt+Tab.\n• Wechsle Aufgaben mit einem Tastendruck; der ganze Satz kommt zusammen nach vorn.\n• Speichere einen Container als Verknüpfung. Beim erneuten Öffnen kehren noch offene Fenster genau an ihren Platz zurück; geschlossene Apps werden neu gestartet, ihre genaue Größe und Position lassen sich aber nicht immer wiederherstellen.\n• Fenster bleiben echt — Tastatur, Zwischenablage und Alt+Shift-Layoutwechsel funktionieren.\n• Hake einen Container im Menü an, um ihn ein- oder auszuschalten; benenne und färbe sie zur Unterscheidung. Über das Tray beenden, um alle Fenster freizugeben.",
+        "fr": "Une tâche, c'est souvent plusieurs fenêtres à la fois : éditeur, navigateur, terminal, une vidéo. HDContainer les regroupe dans un conteneur qui se comporte comme une seule appli, donc tu bascules tout ton espace de travail d'un seul Alt+Tab au lieu de chercher les fenêtres une à une.\n\n• Mets les fenêtres d'une tâche dans un conteneur — un bouton de barre, un Alt+Tab.\n• Change de tâche d'une touche ; tout l'ensemble revient groupé.\n• Enregistre un conteneur en raccourci. À sa réouverture, les fenêtres encore ouvertes reviennent exactement à leur place ; les applis fermées sont relancées, mais leur taille et position exactes ne sont pas toujours restaurables.\n• Les fenêtres restent réelles — clavier, presse-papiers et changement de disposition Alt+Shift fonctionnent.\n• Coche un conteneur dans le menu pour l'activer ou le désactiver ; nomme-les et colore-les pour les distinguer. Quitte via la zone de notification pour libérer les fenêtres.",
+        "zh": "一个任务通常同时开着好几个窗口——编辑器、浏览器、终端、一个视频。HDContainer 把它们归为一个容器，像单个应用一样，于是你用一次 Alt+Tab 就切换整个工作区，而不必逐个去找窗口。\n\n• 把一个任务的窗口放进一个容器——一个任务栏按钮，一个 Alt+Tab。\n• 一键切换任务；整组窗口一起回到面前。\n• 把容器保存为桌面快捷方式。再次打开时，仍开着的窗口会精确回到原位；已关闭的应用会被重新启动，但其确切的大小和位置不一定能还原。\n• 窗口仍是真实窗口——键盘、剪贴板和 Alt+Shift 输入法切换都正常。\n• 在菜单里勾选容器即可开启或关闭；给它们命名和颜色以便区分。通过托盘退出可释放所有窗口。",
     },
     "credits": {"en": "Vibe-coded by hdk with Claude Code.\nFree for everyone.", "ru": "Завайбкодил hdk с помощью Claude Code.\nБесплатно для всех.", "es": "Hecho con flow por hdk con Claude Code.\nGratis para todos.", "pt": "Feito no flow por hdk com Claude Code.\nGrátis para todos.", "de": "Vibe-coded von hdk mit Claude Code.\nKostenlos für alle.", "fr": "Vibe-codé par hdk avec Claude Code.\nGratuit pour tous.", "zh": "由 hdk 借助 Claude Code 随性编写。\n对所有人免费。"},
     "donate_label": {"en": "Tip the author — %s:", "ru": "Поблагодарить автора — %s:", "es": "Apoyar al autor — %s:", "pt": "Agradecer ao autor — %s:", "de": "Den Autor unterstützen — %s:", "fr": "Soutenir l’auteur — %s :", "zh": "打赏作者 — %s："},
@@ -232,6 +232,8 @@ STRINGS = {
     "update_fail": {"en": "Update failed (see log).", "ru": "Не удалось обновить (см. лог).", "es": "Error al actualizar (ver registro).", "pt": "Falha na atualização (ver log).", "de": "Update fehlgeschlagen (siehe Log).", "fr": "Échec de la mise à jour (voir le journal).", "zh": "更新失败（见日志）。"},
     "check_update": {"en": "Check for updates", "ru": "Проверить обновления", "es": "Buscar actualizaciones", "pt": "Verificar atualizações", "de": "Nach Updates suchen", "fr": "Rechercher des mises à jour", "zh": "检查更新"},
     "up_to_date": {"en": "You have the latest version.", "ru": "У вас последняя версия.", "es": "Tienes la última versión.", "pt": "Você tem a versão mais recente.", "de": "Du hast die neueste Version.", "fr": "Vous avez la dernière version.", "zh": "已是最新版本。"},
+    "manage": {"en": "Manage containers", "ru": "Управление контейнерами", "es": "Gestionar contenedores", "pt": "Gerenciar contêineres", "de": "Container verwalten", "fr": "Gérer les conteneurs", "zh": "管理容器"},
+    "reset_look": {"en": "Reset to default look", "ru": "Сбросить оформление", "es": "Restablecer apariencia", "pt": "Redefinir aparência", "de": "Aussehen zurücksetzen", "fr": "Réinitialiser l’apparence", "zh": "恢复默认外观"},
 }
 
 
@@ -248,6 +250,19 @@ def detect_lang():
                 0x07: "de", 0x0C: "fr", 0x04: "zh"}.get(lid, "en")
     except Exception:
         return "en"
+
+
+def enable_dark_menus():
+    """Тёмные системные контекстные меню (immersive dark mode, Win10 1903+/Win11)."""
+    try:
+        ux = ctypes.WinDLL("uxtheme")
+        set_mode = ux[135]            # SetPreferredAppMode / AllowDarkModeForApp
+        set_mode.restype = ctypes.c_int
+        set_mode.argtypes = [ctypes.c_int]
+        set_mode(2)                   # ForceDark
+        ux[136]()                     # FlushMenuThemes
+    except Exception as ex:
+        log("dark menus failed: %r" % ex)
 
 
 def version_tuple(v):
@@ -1109,6 +1124,7 @@ class TrayApp:
         self.hicon = load_icon()
         self.tray_hicon = load_tray_icon()
         self._host_class_atom = 0
+        enable_dark_menus()           # тёмное контекстное меню в стиле приложения
 
         # скрытый tk-root: единственный насос сообщений + источник диалогов.
         # Заголовок = IPC-маяк: по нему другой экземпляр нас находит (FindWindow).
@@ -1230,36 +1246,38 @@ class TrayApp:
         def sep(m):
             user32.AppendMenuW(m, MF_SEPARATOR, 0, None)
 
+        mgmt = None
         if self.containers:
+            # список контейнеров с галочками: отметил = активен, снял = выключен
+            for c in self.containers:
+                label = c.name + (("   (%d)" % len(c.members)) if c.active else "")
+                add(menu, label, lambda c=c: self._toggle_active(c),
+                    MF_STRING | (MF_CHECKED if c.active else 0))
+            sep(menu)
+            # подменю управления (настройки конкретного контейнера)
+            mgmt = user32.CreatePopupMenu()
             for c in self.containers:
                 sub = user32.CreatePopupMenu()
-                if c.active:
-                    add(sub, T("deactivate"), lambda c=c: self._deactivate(c))
-                    add(sub, T("add_here"), lambda c=c: self._add_window_to(c))
-                else:
-                    add(sub, T("activate"), lambda c=c: self._activate(c))
-                add(sub, T("make_current"), lambda c=c: self._set_current(c))
+                add(sub, T("add_here"), lambda c=c: self._add_window_to(c))
                 sep(sub)
                 add(sub, T("rename"), lambda c=c: self._rename(c))
                 add(sub, T("set_icon"), lambda c=c: self._set_icon(c))
                 add(sub, T("set_color"), lambda c=c: self._set_color(c))
-                if c.color:
-                    add(sub, T("clear_color"), lambda c=c: self._clear_color(c))
+                if c.icon or c.color:
+                    add(sub, T("reset_look"), lambda c=c: self._reset_look(c))
                 add(sub, T("create_shortcut"), lambda c=c: self._create_shortcut(c))
                 sep(sub)
                 add(sub, T("delete"), lambda c=c: self._delete(c))
-                mark = "● " if c.active else "○ "
-                cur = "  ✓ " + T("current") if c is self.current else ""
-                cnt = "  (%d)" % len(c.members) if c.active else ""
-                user32.AppendMenuW(menu, MF_POPUP, ctypes.cast(sub, ctypes.c_void_p).value or 0,
-                                   mark + c.name + cnt + cur)
-            sep(menu)
+                user32.AppendMenuW(mgmt, MF_POPUP, ctypes.cast(sub, ctypes.c_void_p).value or 0, c.name)
 
         add(menu, "➕  " + T("create_container"), self._create_container)
         cur_name = self.current.name if self.current else "—"
         add(menu, "➕  " + T("add_to_current", cur_name),
             self._add_window_current,
             MF_STRING | (0 if self.current else MF_GRAYED))
+        if mgmt is not None:
+            user32.AppendMenuW(menu, MF_POPUP, ctypes.cast(mgmt, ctypes.c_void_p).value or 0,
+                               "🛠  " + T("manage"))
         sep(menu)
         add(menu, "⚙  " + T("settings"), self._open_settings)
         add(menu, T("quit"), self._quit)
@@ -1429,6 +1447,20 @@ class TrayApp:
     # ===================================================================
     def _set_current(self, c):
         self.current = c
+        self._update_tray()
+
+    def _toggle_active(self, c):
+        if c.active:
+            self._deactivate(c)
+        else:
+            self._activate(c)
+
+    def _reset_look(self, c):
+        c.icon = None
+        c.color = None
+        c.hicon = 0
+        self._apply_host_icon(c)
+        self._save()
         self._update_tray()
 
     def _toggle_autostart(self):
