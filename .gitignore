@@ -1,0 +1,17 @@
+# build output
+dist/
+build/
+*.spec
+
+# runtime data / logs
+HDContainer_*.json
+HDContainer_*.log
+HDContainer_crash.log
+wc_*.json
+wc_*.log
+icons/
+*.ppm
+
+# python
+__pycache__/
+*.pyc
