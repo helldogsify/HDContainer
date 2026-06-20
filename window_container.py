@@ -46,12 +46,14 @@ import threading
 import traceback
 import faulthandler
 import winreg
+import ssl
+import webbrowser
 import urllib.request
 import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -290,6 +292,7 @@ STRINGS = {
     "update_title": {"en": "Update", "ru": "Обновление", "es": "Actualización", "pt": "Atualização", "de": "Update", "fr": "Mise à jour", "zh": "更新"},
     "update_available": {"en": "Version %s is available. Update now?", "ru": "Доступна версия %s. Обновить сейчас?", "es": "La versión %s está disponible. ¿Actualizar ahora?", "pt": "A versão %s está disponível. Atualizar agora?", "de": "Version %s ist verfügbar. Jetzt aktualisieren?", "fr": "La version %s est disponible. Mettre à jour maintenant ?", "zh": "有新版本 %s。现在更新吗？"},
     "update_fail": {"en": "Update failed (see log).", "ru": "Не удалось обновить (см. лог).", "es": "Error al actualizar (ver registro).", "pt": "Falha na atualização (ver log).", "de": "Update fehlgeschlagen (siehe Log).", "fr": "Échec de la mise à jour (voir le journal).", "zh": "更新失败（见日志）。"},
+    "update_fail_manual": {"en": "Couldn't update automatically — opening the download page so you can install the latest version manually.", "ru": "Не получилось обновить автоматически — открываю страницу загрузки, поставь последнюю версию вручную.", "es": "No se pudo actualizar automáticamente — abriendo la página de descarga para instalar la última versión manualmente.", "pt": "Não foi possível atualizar automaticamente — abrindo a página de download para instalar a versão mais recente manualmente.", "de": "Automatisches Update fehlgeschlagen — die Download-Seite wird geöffnet, bitte installiere die neueste Version manuell.", "fr": "Mise à jour automatique impossible — ouverture de la page de téléchargement pour installer la dernière version manuellement.", "zh": "无法自动更新——正在打开下载页面，请手动安装最新版本。"},
     "check_update": {"en": "Check for updates", "ru": "Проверить обновления", "es": "Buscar actualizaciones", "pt": "Verificar atualizações", "de": "Nach Updates suchen", "fr": "Rechercher des mises à jour", "zh": "检查更新"},
     "up_to_date": {"en": "You have the latest version.", "ru": "У вас последняя версия.", "es": "Tienes la última versión.", "pt": "Você tem a versão mais recente.", "de": "Du hast die neueste Version.", "fr": "Vous avez la dernière version.", "zh": "已是最新版本。"},
     "manage": {"en": "Manage containers", "ru": "Управление контейнерами", "es": "Gestionar contenedores", "pt": "Gerenciar contêineres", "de": "Container verwalten", "fr": "Gérer les conteneurs", "zh": "管理容器"},
@@ -1537,15 +1540,28 @@ class TrayApp:
     def _do_update(self, url):
         try:
             dst = os.path.join(tempfile.gettempdir(), "HDContainer-Setup.exe")
-            urllib.request.urlretrieve(url, dst)
-            # тихая установка поверх (Inno, тот же AppId) -> закроет приложение,
-            # обновит файлы и перезапустит; мы выходим, чтобы снять блокировку exe
-            subprocess.Popen([dst, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
-                             close_fds=True)
+            ctx = ssl.create_default_context()
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "HDContainer-Updater/%s" % VERSION})
+            with urllib.request.urlopen(req, timeout=60, context=ctx) as r:
+                with open(dst, "wb") as f:
+                    shutil.copyfileobj(r, f)
+            with open(dst, "rb") as f:
+                head = f.read(2)
+            if os.path.getsize(dst) < 1000000 or head != b"MZ":
+                raise IOError("bad download (size=%d)" % os.path.getsize(dst))
+            # тихая установка поверх (Inno, тот же AppId) -> обновит файлы и
+            # перезапустит; мы выходим, чтобы снять блокировку exe
+            subprocess.Popen([dst, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
             self.root.after(400, self._quit)
         except Exception as ex:
             log("do_update failed: %r" % ex)
-            self._info(T("update_title"), T("update_fail"))
+            # запасной путь — открыть страницу релизов, поставит вручную в один клик
+            try:
+                webbrowser.open(GITHUB_URL + "/releases/latest")
+            except Exception:
+                pass
+            self._info(T("update_title"), T("update_fail_manual"))
 
     def _activate(self, c):
         if c.active:
