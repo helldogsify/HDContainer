@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1236,9 +1236,8 @@ class TrayApp:
         if launch_name:
             self.root.after(400, lambda: self._activate_by_name(launch_name))
 
-        # автообновление: фоновая проверка GitHub-релизов на старте
-        if self.settings.get("autoupdate", True):
-            self.root.after(2500, lambda: self._check_update_bg(False))
+        # автообновление: первая проверка через 2.5с, затем периодически
+        self.root.after(2500, self._update_tick)
 
     # ===================================================================
     #  Оконные процедуры
@@ -1576,6 +1575,12 @@ class TrayApp:
         set_autostart(not autostart_enabled())
 
     # ------- автообновление -------
+    def _update_tick(self):
+        # периодическая проверка релизов (раз в 3 часа), пока включено в настройках
+        if self.settings.get("autoupdate", True):
+            self._check_update_bg(False)
+        self.root.after(3 * 60 * 60 * 1000, self._update_tick)
+
     def _check_update_bg(self, verbose):
         def worker():
             tag, url = fetch_latest_release()
