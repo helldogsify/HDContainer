@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -2070,62 +2070,65 @@ class TrayApp:
                  font=FONT_SM).pack(anchor="w")
         sw_row = tk.Frame(col_col, bg=COL_SURFACE)
         sw_row.pack(anchor="w", pady=(4, 0))
-        SZ = 32           # с запасом по краям под «свечение»
-        D = 9             # отступ кружка цвета от края (центрируем кружок)
-        GLOW = ((6, 0.40), (4, 0.62), (2, 0.82))   # (отступ кольца, доля к фону)
-        swatches = {}     # key(None|hex) -> (canvas, [ring_ids])
+        SZ = 34            # чётное -> целочисленный центр, линии «+» резкие
+        CX = SZ // 2       # центр (17)
+        RD = 8             # радиус кружка цвета
+        # СВЕЧЕНИЕ = стопка тонких заполненных дисков, плавно тающих от цвета
+        # (внутри) к фону (снаружи) — мягкий ореол/блум, а не «мишень» из колец.
+        # 7 шагов по 1px дают гладкий градиент. (r от центра, доля подмешивания фона)
+        HALO = [(RD + k, 0.30 + 0.64 * (k - 1) / 6.0) for k in range(7, 0, -1)]
+        swatches = {}      # key -> (canvas, [disc_ids], base_color)
 
-        def _glow_set(cv, rings, base, show):
-            # выбранный цвет «светится» по краям: пара колец, тающих к фону
-            for rid, (_ins, f) in zip(rings, GLOW):
-                cv.itemconfigure(rid, outline=mix(base, COL_SURFACE, f),
+        def _oval(cv, r, **kw):
+            return cv.create_oval(CX - r, CX - r, CX + r, CX + r, **kw)
+
+        def _glow(cv, discs, base, show):
+            for did, (_r, f) in zip(discs, HALO):
+                cv.itemconfigure(did, fill=(mix(base, COL_SURFACE, f) if show else ""),
                                  state=("normal" if show else "hidden"))
-
-        # кастомный чип (последний): пусто -> «+», задан -> залит выбранным цветом
-        custom = tk.Canvas(sw_row, width=SZ, height=SZ, bg=COL_SURFACE,
-                           highlightthickness=0, bd=0, cursor="hand2")
-        crings = [custom.create_oval(i, i, SZ - i, SZ - i, outline="", width=2,
-                                     state="hidden") for (i, _f) in GLOW]
-        cfill = custom.create_oval(D, D, SZ - D, SZ - D, fill="", outline=COL_TEXT_DIM)
-        cpl1 = custom.create_line(SZ / 2 - 4, SZ / 2, SZ / 2 + 4, SZ / 2,
-                                  fill=COL_TEXT_DIM, width=2)
-        cpl2 = custom.create_line(SZ / 2, SZ / 2 - 4, SZ / 2, SZ / 2 + 4,
-                                  fill=COL_TEXT_DIM, width=2)
-
-        def _set_custom_chip(col, selected):
-            if col:
-                custom.itemconfigure(cfill, fill=col, outline="")
-                custom.itemconfigure(cpl1, state="hidden")
-                custom.itemconfigure(cpl2, state="hidden")
-                _glow_set(custom, crings, col, selected)
-            else:
-                custom.itemconfigure(cfill, fill="", outline=COL_TEXT_DIM)
-                custom.itemconfigure(cpl1, state="normal")
-                custom.itemconfigure(cpl2, state="normal")
-                _glow_set(custom, crings, COL_TEXT_DIM, False)
 
         def pick_color(col):
             color_state["v"] = col
             is_custom = col is not None and col not in self.PALETTE
-            for key, (cv, rings) in swatches.items():
-                base = key if key else COL_TEXT_DIM
-                _glow_set(cv, rings, base, key == col)
+            for key, (cv, discs, base) in swatches.items():
+                _glow(cv, discs, base, key == col)
             _set_custom_chip(col if is_custom else None, is_custom)
 
         def _swatch(key):
             cv = tk.Canvas(sw_row, width=SZ, height=SZ, bg=COL_SURFACE,
                            highlightthickness=0, bd=0, cursor="hand2")
-            rings = [cv.create_oval(i, i, SZ - i, SZ - i, outline="", width=2,
-                                    state="hidden") for (i, _f) in GLOW]
-            if key is None:
-                cv.create_oval(D, D, SZ - D, SZ - D, outline=COL_TEXT_DIM, width=1)
-                cv.create_line(D + 2, SZ - D - 2, SZ - D - 2, D + 2,
+            discs = [_oval(cv, r, fill="", outline="", state="hidden")
+                     for (r, _f) in HALO]                  # ореол снизу (скрыт)
+            if key is None:                                 # «без цвета»: контур + слэш
+                _oval(cv, RD, fill=COL_SURFACE, outline=COL_TEXT_DIM, width=1)
+                cv.create_line(CX - 5, CX + 5, CX + 5, CX - 5,
                                fill=COL_TEXT_DIM, width=2)
             else:
-                cv.create_oval(D, D, SZ - D, SZ - D, fill=key, outline="")
+                _oval(cv, RD, fill=key, outline="")
             cv.bind("<Button-1>", lambda e, k=key: pick_color(k))
             cv.pack(side="left", padx=(0, 6))
-            swatches[key] = (cv, rings)
+            swatches[key] = (cv, discs, (key or COL_TEXT_DIM))
+
+        # кастомный чип (последний): пусто -> «+» по центру, задан -> залит цветом
+        custom = tk.Canvas(sw_row, width=SZ, height=SZ, bg=COL_SURFACE,
+                           highlightthickness=0, bd=0, cursor="hand2")
+        cdiscs = [_oval(custom, r, fill="", outline="", state="hidden")
+                  for (r, _f) in HALO]
+        cdot = _oval(custom, RD, fill=COL_SURFACE, outline=COL_TEXT_DIM, width=1)
+        cpl1 = custom.create_line(CX - 4, CX, CX + 4, CX, fill=COL_TEXT_DIM, width=2)
+        cpl2 = custom.create_line(CX, CX - 4, CX, CX + 4, fill=COL_TEXT_DIM, width=2)
+
+        def _set_custom_chip(col, selected):
+            if col:
+                custom.itemconfigure(cdot, fill=col, outline="")
+                custom.itemconfigure(cpl1, state="hidden")
+                custom.itemconfigure(cpl2, state="hidden")
+                _glow(custom, cdiscs, col, selected)
+            else:
+                custom.itemconfigure(cdot, fill=COL_SURFACE, outline=COL_TEXT_DIM)
+                custom.itemconfigure(cpl1, state="normal")
+                custom.itemconfigure(cpl2, state="normal")
+                _glow(custom, cdiscs, COL_TEXT_DIM, False)
 
         for col in self.PALETTE:
             _swatch(col)
