@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.1.6"
+#define MyAppVersion "1.1.7"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -42,12 +42,14 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 [CustomMessages]
 en.AskRemoveData=Also delete your containers and settings?%n%nYes — remove everything. No — keep them for next time.
 ru.AskRemoveData=Удалить также ваши контейнеры и настройки?%n%nДа — удалить всё. Нет — сохранить для следующего раза.
-en.UpdateInfo=HDContainer version %1 is already installed in:  %2.  Setup will UPDATE it in place to version %3 — same folder, nothing to choose. The running copy will be closed automatically.
-ru.UpdateInfo=HDContainer версии %1 уже установлен в папке:  %2.  Установщик ОБНОВИТ его на месте до версии %3 — та же папка, ничего выбирать не нужно. Запущенная копия будет закрыта автоматически.
+en.UpdateInfo=HDContainer %1 is already installed in %2. Setup will update it to version %3 in the same folder; the running copy will be closed automatically.
+ru.UpdateInfo=HDContainer %1 уже установлен в папке %2. Установщик обновит его до версии %3 в той же папке; запущенная копия будет закрыта автоматически.
+en.StartupTask=Start HDContainer when Windows starts
+ru.StartupTask=Запускать HDContainer при старте Windows
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "startup"; Description: "Start HDContainer when Windows starts"; Flags: unchecked
+Name: "startup"; Description: "{cm:StartupTask}"; Flags: unchecked
 
 [Files]
 Source: "dist\HDContainer.exe"; DestDir: "{app}"; Flags: ignoreversion

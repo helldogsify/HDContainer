@@ -37,6 +37,7 @@ It lives in the **system tray** — no main window in your way.
 - **Make a container**, give it a name, and pick its windows from an Alt+Tab‑style preview grid.
 - **Run several containers at once** — each is its own taskbar button. Alt+Tab between them like between apps.
 - **Color‑label** a container so you can tell your "work" rig from your "research" rig at a glance.
+- **Give it an icon** — drop in any image (PNG, JPG, WebP…) like setting an avatar; it's cropped to a square (transparency kept) and becomes the container's taskbar and shortcut icon.
 - **Save it as a desktop shortcut** — one click reopens the container. Windows that are still open snap back exactly where they were; apps that were closed get relaunched (their exact size/position can't always be reproduced). Your workspace survives reboots.
 - **Tick a container in the tray menu** to switch it on or off — no digging into submenus.
 - **Minimize one window** inside a container and it steps out on its own; restore it and it snaps back into the group.
@@ -58,16 +59,16 @@ Available in English, Русский, Español, Português, Deutsch, Français a
 
 ## How it works under the hood
 
-Each active container is an invisible, click‑through, full‑screen **owner window**. Member windows are made *owned* by it via `SetWindowLongPtr(GWLP_HWNDPARENT)` — they are **not** reparented. Ownership alone gives you: members float above the (invisible) host, hide and show with it (group minimize, Win+D), and collapse into one taskbar/Alt+Tab entry — all **without merging input queues**, which is exactly why native typing and the global Alt+Shift layout switch keep working. A unique per‑window AppUserModelID keeps each container as its own taskbar button.
+Each active container is an invisible **owner window** — a real, minimizable window kept fully transparent via a layered surface (so Win+D and the taskbar button genuinely minimize the whole group). Member windows are made *owned* by it via `SetWindowLongPtr(GWLP_HWNDPARENT)` — they are **not** reparented. Ownership alone gives you: members float above the (invisible) host, hide and show with it (group minimize, Win+D), and collapse into one taskbar/Alt+Tab entry — all **without merging input queues**, which is exactly why native typing and the global Alt+Shift layout switch keep working. A unique per‑window AppUserModelID keeps each container as its own taskbar button.
 
-No third‑party dependencies: one Python file, `tkinter` + `ctypes`.
+Mostly stdlib: one Python file, `tkinter` + `ctypes`, plus [Pillow](https://python-pillow.org/) for container icons (decoding any image, square‑cropping, writing the `.ico`).
 
 ## Build from source
 
 Needs Windows, [Python 3.10+](https://www.python.org/) with [PyInstaller](https://pyinstaller.org/), and [Inno Setup 6](https://jrsoftware.org/isdl.php) for the installer.
 
 ```powershell
-pip install pyinstaller
+pip install pyinstaller pillow
 powershell -ExecutionPolicy Bypass -File build.ps1   # exe + installer
 ```
 

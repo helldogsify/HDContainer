@@ -53,7 +53,13 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.1.6"
+try:                                   # Pillow: аватар из любой картинки + чёткие иконки
+    from PIL import Image, ImageDraw, ImageTk
+    HAVE_PIL = True
+except Exception:
+    HAVE_PIL = False
+
+VERSION = "1.1.7"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1903,18 +1909,79 @@ class TrayApp:
         self._save()
         self._update_tray()
 
-    def _import_icon(self, c, path):
-        # копируем .ico в папку приложения, чтобы ярлык не зависел от исходника
+    def _import_icon(self, c, src):
+        # «аватар» контейнера: ЛЮБАЯ картинка -> квадратная .ico. Неквадратное
+        # обрезаем по центру, прозрачность сохраняем. Готовый .ico -> копируем как есть.
+        safe = "".join(ch if ch.isalnum() else "_" for ch in c.name)[:40] or "icon"
+        dst = os.path.join(_ICONDIR, safe + ".ico")
         try:
             os.makedirs(_ICONDIR, exist_ok=True)
-            dst = os.path.join(_ICONDIR, "".join(
-                ch if ch.isalnum() else "_" for ch in c.name)[:40] + ".ico")
-            with open(path, "rb") as src, open(dst, "wb") as out:
-                out.write(src.read())
-            c.icon = dst
+            if HAVE_PIL:
+                im = Image.open(src).convert("RGBA")
+                w, h = im.size
+                m = min(w, h)                         # центр-кроп до квадрата
+                im = im.crop(((w - m) // 2, (h - m) // 2,
+                              (w - m) // 2 + m, (h - m) // 2 + m))
+                im = im.resize((256, 256), Image.LANCZOS)
+                im.save(dst, format="ICO",
+                        sizes=[(16, 16), (24, 24), (32, 32), (48, 48),
+                               (64, 64), (128, 128), (256, 256)])
+                c.icon = dst
+            elif src.lower().endswith(".ico"):
+                with open(src, "rb") as s, open(dst, "wb") as o:
+                    o.write(s.read())
+                c.icon = dst
+            else:
+                c.icon = src
         except Exception as ex:
-            log("copy icon failed: %r" % ex)
-            c.icon = path
+            log("import icon failed: %r" % ex)
+            c.icon = src if src.lower().endswith(".ico") else c.icon
+
+    def _avatar_photo(self, src, size):
+        # квадратное превью картинки на фоне редактора (для окна-редактора)
+        if not (HAVE_PIL and src and os.path.exists(src)):
+            return None
+        try:
+            im = Image.open(src).convert("RGBA")
+            w, h = im.size
+            m = min(w, h)
+            im = im.crop(((w - m) // 2, (h - m) // 2,
+                          (w - m) // 2 + m, (h - m) // 2 + m)).resize(
+                (size, size), Image.LANCZOS)
+            bg = Image.new("RGBA", (size, size), hex_rgb(COL_BG) + (255,))
+            bg.alpha_composite(im)
+            return ImageTk.PhotoImage(bg)
+        except Exception as ex:
+            log("avatar preview failed: %r" % ex)
+            return None
+
+    def _swatch_photo(self, dot=None, sel=False, none=False, plus=False, size=30):
+        # чёткая (сглаженная) иконка-кружок цвета; выделение — тонкое серое кольцо
+        if not HAVE_PIL:
+            return None
+        S = 4
+        n = size * S
+        dim = hex_rgb(COL_TEXT_DIM)
+        im = Image.new("RGBA", (n, n), hex_rgb(COL_SURFACE) + (255,))
+        d = ImageDraw.Draw(im)
+        c = n / 2.0
+        r = n * 0.30
+        if none:
+            d.ellipse([c - r, c - r, c + r, c + r], outline=dim, width=S)
+            o = r * 0.66
+            d.line([c - o, c + o, c + o, c - o], fill=dim, width=S)
+        elif plus:
+            d.ellipse([c - r, c - r, c + r, c + r], outline=dim, width=S)
+            a = r * 0.52
+            w = int(S * 1.5)
+            d.line([c - a, c, c + a, c], fill=dim, width=w)
+            d.line([c, c - a, c, c + a], fill=dim, width=w)
+        elif dot:
+            d.ellipse([c - r, c - r, c + r, c + r], fill=hex_rgb(dot))
+        if sel:
+            rr = n * 0.42
+            d.ellipse([c - rr, c - rr, c + rr, c + rr], outline=dim, width=int(S * 0.9))
+        return ImageTk.PhotoImage(im.resize((size, size), Image.LANCZOS))
 
     def _color_popup(self, anchor, initial, on_pick):
         # компактный встроенный выбор цвета (HSV-полосы + hex) в стиле приложения
@@ -2051,7 +2118,7 @@ class TrayApp:
                        highlightcolor=COL_ACCENT)
         ent.pack(fill="x", ipady=5, pady=(3, 0))
 
-        # ---------- иконка + цвет (в одной строке) ----------
+        # ---------- иконка (аватар) + цвет ----------
         look = tk.Frame(win, bg=COL_SURFACE)
         look.pack(fill="x", padx=20, pady=(10, 4))
 
@@ -2061,96 +2128,101 @@ class TrayApp:
                  font=FONT_SM).pack(anchor="w")
         ico_row = tk.Frame(ico_col, bg=COL_SURFACE)
         ico_row.pack(anchor="w", pady=(4, 0))
-        # имя файла иконки показываем только когда она задана (без странного «—»)
-        ipath_lbl = tk.Label(ico_row, text=(os.path.basename(c.icon) if c.icon else ""),
-                             bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM)
+        AV = 46
+        prev = tk.Canvas(ico_row, width=AV, height=AV, bg=COL_BG,
+                         highlightthickness=1, highlightbackground=COL_BORDER)
+        prev_id = prev.create_image(AV // 2 + 1, AV // 2 + 1)
+        prev.pack(side="left")
+        av_ref = {"img": None}
+
+        def show_avatar(path):                 # сразу показать выбранную картинку
+            ph = self._avatar_photo(path, AV - 2)
+            av_ref["img"] = ph
+            prev.itemconfigure(prev_id, image=(ph or ""))
 
         def choose_icon():
             from tkinter import filedialog
-            path = filedialog.askopenfilename(
-                parent=win, title=T("lbl_icon"), filetypes=[("ICO", "*.ico")])
+            ftypes = [("Images", "*.png *.jpg *.jpeg *.ico *.bmp *.gif *.webp *.tiff *.tif"),
+                      ("All files", "*.*")]
+            path = filedialog.askopenfilename(parent=win, title=T("lbl_icon"),
+                                              filetypes=ftypes)
             if not path:
                 return
-            if not path.lower().endswith(".ico"):
+            if not HAVE_PIL and not path.lower().endswith(".ico"):
                 self._info(T("need_ico_title"), T("need_ico_msg"))
                 return
             draft["icon"] = path
-            ipath_lbl.configure(text=os.path.basename(path))
-        self._ghost_btn(ico_row, T("choose_ico"), choose_icon).pack(side="left")
-        ipath_lbl.pack(side="left", padx=(10, 0))
+            show_avatar(path)
+        self._ghost_btn(ico_row, T("choose_ico"), choose_icon).pack(
+            side="left", padx=(10, 0))
+        show_avatar(c.icon)
 
         col_col = tk.Frame(look, bg=COL_SURFACE)
-        col_col.pack(side="left", anchor="n", padx=(48, 0))
+        col_col.pack(side="left", anchor="n", padx=(40, 0))
         tk.Label(col_col, text=T("lbl_color"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
                  font=FONT_SM).pack(anchor="w")
         sw_row = tk.Frame(col_col, bg=COL_SURFACE)
-        sw_row.pack(anchor="w", pady=(4, 0))
-        SZ = 34            # чётное -> целочисленный центр, линии «+» резкие
-        CX = SZ // 2       # центр (17)
-        RD = 8             # радиус кружка цвета
-        # СВЕЧЕНИЕ = стопка тонких заполненных дисков, плавно тающих от цвета
-        # (внутри) к фону (снаружи) — мягкий ореол/блум, а не «мишень» из колец.
-        # 7 шагов по 1px дают гладкий градиент. (r от центра, доля подмешивания фона)
-        HALO = [(RD + k, 0.30 + 0.64 * (k - 1) / 6.0) for k in range(7, 0, -1)]
-        swatches = {}      # key -> (canvas, [disc_ids], base_color)
+        sw_row.pack(anchor="w", pady=(6, 0))
+        swatches = {}          # key -> (widget, normal_img, selected_img)
 
-        def _oval(cv, r, **kw):
-            return cv.create_oval(CX - r, CX - r, CX + r, CX + r, **kw)
+        if HAVE_PIL:
+            def _img(**kw):
+                ph = self._swatch_photo(size=30, **kw)
+                imgs.append(ph)            # держим ссылку (чистится в close)
+                return ph
 
-        def _glow(cv, discs, base, show):
-            for did, (_r, f) in zip(discs, HALO):
-                cv.itemconfigure(did, fill=(mix(base, COL_SURFACE, f) if show else ""),
-                                 state=("normal" if show else "hidden"))
+            def pick_color(col):
+                color_state["v"] = col
+                is_custom = col is not None and col not in self.PALETTE
+                for key, (lbl, nrm, sel) in swatches.items():
+                    lbl.configure(image=(sel if key == col else nrm))
+                if col:
+                    custom_lbl.configure(image=(_img(dot=col, sel=is_custom)
+                                                if is_custom else cplus))
+                else:
+                    custom_lbl.configure(image=cplus)
 
-        def pick_color(col):
-            color_state["v"] = col
-            is_custom = col is not None and col not in self.PALETTE
-            for key, (cv, discs, base) in swatches.items():
-                _glow(cv, discs, base, key == col)
-            _set_custom_chip(col if is_custom else None, is_custom)
+            for key in self.PALETTE:
+                if key is None:
+                    nrm, sel = _img(none=True), _img(none=True, sel=True)
+                else:
+                    nrm, sel = _img(dot=key), _img(dot=key, sel=True)
+                lbl = tk.Label(sw_row, image=nrm, bg=COL_SURFACE, cursor="hand2")
+                lbl.bind("<Button-1>", lambda e, k=key: pick_color(k))
+                lbl.pack(side="left", padx=(0, 3))
+                swatches[key] = (lbl, nrm, sel)
 
-        def _swatch(key):
-            cv = tk.Canvas(sw_row, width=SZ, height=SZ, bg=COL_SURFACE,
-                           highlightthickness=0, bd=0, cursor="hand2")
-            discs = [_oval(cv, r, fill="", outline="", state="hidden")
-                     for (r, _f) in HALO]                  # ореол снизу (скрыт)
-            if key is None:                                 # «без цвета»: контур + слэш
-                _oval(cv, RD, fill=COL_SURFACE, outline=COL_TEXT_DIM, width=1)
-                cv.create_line(CX - 5, CX + 5, CX + 5, CX - 5,
-                               fill=COL_TEXT_DIM, width=2)
-            else:
-                _oval(cv, RD, fill=key, outline="")
-            cv.bind("<Button-1>", lambda e, k=key: pick_color(k))
-            cv.pack(side="left", padx=(0, 6))
-            swatches[key] = (cv, discs, (key or COL_TEXT_DIM))
-
-        # кастомный чип (последний): пусто -> «+» по центру, задан -> залит цветом
-        custom = tk.Canvas(sw_row, width=SZ, height=SZ, bg=COL_SURFACE,
-                           highlightthickness=0, bd=0, cursor="hand2")
-        cdiscs = [_oval(custom, r, fill="", outline="", state="hidden")
-                  for (r, _f) in HALO]
-        cdot = _oval(custom, RD, fill=COL_SURFACE, outline=COL_TEXT_DIM, width=1)
-        cpl1 = custom.create_line(CX - 4, CX, CX + 4, CX, fill=COL_TEXT_DIM, width=2)
-        cpl2 = custom.create_line(CX, CX - 4, CX, CX + 4, fill=COL_TEXT_DIM, width=2)
-
-        def _set_custom_chip(col, selected):
-            if col:
-                custom.itemconfigure(cdot, fill=col, outline="")
-                custom.itemconfigure(cpl1, state="hidden")
-                custom.itemconfigure(cpl2, state="hidden")
-                _glow(custom, cdiscs, col, selected)
-            else:
-                custom.itemconfigure(cdot, fill=COL_SURFACE, outline=COL_TEXT_DIM)
-                custom.itemconfigure(cpl1, state="normal")
-                custom.itemconfigure(cpl2, state="normal")
-                _glow(custom, cdiscs, COL_TEXT_DIM, False)
-
-        for col in self.PALETTE:
-            _swatch(col)
-        custom.bind("<Button-1>", lambda e: self._color_popup(
-            custom, color_state["v"] or "#4c8bf5", pick_color))
-        custom.pack(side="left", padx=(2, 0))
-        pick_color(c.color)
+            cplus = _img(plus=True)
+            custom_lbl = tk.Label(sw_row, image=cplus, bg=COL_SURFACE, cursor="hand2")
+            custom_lbl.bind("<Button-1>", lambda e: self._color_popup(
+                custom_lbl, color_state["v"] or "#4c8bf5", pick_color))
+            custom_lbl.pack(side="left", padx=(2, 0))
+            pick_color(c.color)
+        else:
+            def pick_color(col):
+                color_state["v"] = col
+                for key, (cv, ring) in swatches.items():
+                    cv.itemconfigure(ring, outline=(COL_TEXT_DIM if key == col else ""))
+            for key in list(self.PALETTE) + ["__custom__"]:
+                cv = tk.Canvas(sw_row, width=30, height=30, bg=COL_SURFACE,
+                               highlightthickness=0, bd=0, cursor="hand2")
+                ring = cv.create_oval(3, 3, 27, 27, outline="", width=1)
+                if key == "__custom__":
+                    cv.create_oval(9, 9, 21, 21, outline=COL_TEXT_DIM, width=1)
+                    cv.create_text(15, 15, text="+", fill=COL_TEXT_DIM)
+                    cv.bind("<Button-1>", lambda e: self._color_popup(
+                        cv, color_state["v"] or "#4c8bf5", pick_color))
+                elif key is None:
+                    cv.create_oval(9, 9, 21, 21, outline=COL_TEXT_DIM, width=1)
+                    cv.create_line(11, 19, 19, 11, fill=COL_TEXT_DIM, width=2)
+                    cv.bind("<Button-1>", lambda e, k=key: pick_color(k))
+                else:
+                    cv.create_oval(8, 8, 22, 22, fill=key, outline="")
+                    cv.bind("<Button-1>", lambda e, k=key: pick_color(k))
+                cv.pack(side="left", padx=(0, 4))
+                if key != "__custom__":
+                    swatches[key] = (cv, ring)
+            pick_color(c.color)
 
         # ---------- окна ----------
         tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=20, pady=(8, 0))
@@ -2264,7 +2336,7 @@ class TrayApp:
 
         def do_reset():
             draft["icon"] = None
-            ipath_lbl.configure(text="—")
+            show_avatar(None)
             pick_color(None)
 
         def do_delete():
