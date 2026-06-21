@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.0.7"
+VERSION = "1.1.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -243,10 +243,10 @@ STRINGS = {
     "clear_color": {"en": "Clear color", "ru": "Убрать цвет", "es": "Quitar color", "pt": "Remover cor", "de": "Farbe entfernen", "fr": "Retirer la couleur", "zh": "清除颜色"},
     "create_shortcut": {"en": "Create desktop shortcut", "ru": "Создать ярлык на рабочем столе", "es": "Crear acceso directo", "pt": "Criar atalho na área de trabalho", "de": "Desktop-Verknüpfung erstellen", "fr": "Créer un raccourci bureau", "zh": "创建桌面快捷方式"},
     "delete": {"en": "Delete", "ru": "Удалить", "es": "Eliminar", "pt": "Excluir", "de": "Löschen", "fr": "Supprimer", "zh": "删除"},
-    "create_container": {"en": "Create container…", "ru": "Создать контейнер…", "es": "Crear contenedor…", "pt": "Criar contêiner…", "de": "Container erstellen…", "fr": "Créer un conteneur…", "zh": "创建容器…"},
+    "create_container": {"en": "Create container", "ru": "Создать контейнер", "es": "Crear contenedor", "pt": "Criar contêiner", "de": "Container erstellen", "fr": "Créer un conteneur", "zh": "创建容器"},
     "add_to_current": {"en": "Add windows to current (%s)", "ru": "Добавить окна в текущий (%s)", "es": "Añadir ventanas al actual (%s)", "pt": "Adicionar janelas ao atual (%s)", "de": "Fenster zum aktuellen hinzufügen (%s)", "fr": "Ajouter au conteneur actuel (%s)", "zh": "添加窗口到当前 (%s)"},
     "current": {"en": "current", "ru": "текущий", "es": "actual", "pt": "atual", "de": "aktuell", "fr": "actuel", "zh": "当前"},
-    "settings": {"en": "Settings…", "ru": "Настройки…", "es": "Ajustes…", "pt": "Configurações…", "de": "Einstellungen…", "fr": "Paramètres…", "zh": "设置…"},
+    "settings": {"en": "Settings", "ru": "Настройки", "es": "Ajustes", "pt": "Configurações", "de": "Einstellungen", "fr": "Paramètres", "zh": "设置"},
     "quit": {"en": "Quit", "ru": "Выход", "es": "Salir", "pt": "Sair", "de": "Beenden", "fr": "Quitter", "zh": "退出"},
     "new_container": {"en": "New container", "ru": "Новый контейнер", "es": "Nuevo contenedor", "pt": "Novo contêiner", "de": "Neuer Container", "fr": "Nouveau conteneur", "zh": "新建容器"},
     "name_label": {"en": "Container name:", "ru": "Название контейнера:", "es": "Nombre del contenedor:", "pt": "Nome do contêiner:", "de": "Container-Name:", "fr": "Nom du conteneur :", "zh": "容器名称："},
@@ -305,6 +305,15 @@ STRINGS = {
     "lay_cols": {"en": "Columns", "ru": "Колонки", "es": "Columnas", "pt": "Colunas", "de": "Spalten", "fr": "Colonnes", "zh": "并排列"},
     "lay_grid": {"en": "Grid", "ru": "Сетка", "es": "Cuadrícula", "pt": "Grade", "de": "Raster", "fr": "Grille", "zh": "网格"},
     "lay_master": {"en": "Master + stack", "ru": "Главное + стек", "es": "Principal + pila", "pt": "Principal + pilha", "de": "Haupt + Stapel", "fr": "Principal + pile", "zh": "主 + 堆叠"},
+    "edit_container": {"en": "Edit container", "ru": "Изменить контейнер", "es": "Editar contenedor", "pt": "Editar contêiner", "de": "Container bearbeiten", "fr": "Modifier le conteneur", "zh": "编辑容器"},
+    "save": {"en": "Save", "ru": "Сохранить", "es": "Guardar", "pt": "Salvar", "de": "Speichern", "fr": "Enregistrer", "zh": "保存"},
+    "lbl_name": {"en": "Name", "ru": "Имя", "es": "Nombre", "pt": "Nome", "de": "Name", "fr": "Nom", "zh": "名称"},
+    "lbl_icon": {"en": "Icon", "ru": "Иконка", "es": "Icono", "pt": "Ícone", "de": "Symbol", "fr": "Icône", "zh": "图标"},
+    "lbl_color": {"en": "Color", "ru": "Цвет", "es": "Color", "pt": "Cor", "de": "Farbe", "fr": "Couleur", "zh": "颜色"},
+    "lbl_windows": {"en": "Windows", "ru": "Окна", "es": "Ventanas", "pt": "Janelas", "de": "Fenster", "fr": "Fenêtres", "zh": "窗口"},
+    "choose_ico": {"en": "Choose .ico", "ru": "Выбрать .ico", "es": "Elegir .ico", "pt": "Escolher .ico", "de": ".ico wählen", "fr": "Choisir .ico", "zh": "选择 .ico"},
+    "none_color": {"en": "None", "ru": "Без цвета", "es": "Ninguno", "pt": "Nenhuma", "de": "Keine", "fr": "Aucune", "zh": "无"},
+    "shortcut_btn": {"en": "Desktop shortcut", "ru": "Ярлык на стол", "es": "Acceso directo", "pt": "Atalho", "de": "Verknüpfung", "fr": "Raccourci", "zh": "桌面快捷方式"},
 }
 
 
@@ -384,6 +393,8 @@ GA_ROOT = 2
 WS_POPUP        = 0x80000000
 WS_CLIPCHILDREN = 0x02000000
 WS_CHILD        = 0x40000000
+WS_MINIMIZEBOX  = 0x00020000
+WS_SYSMENU      = 0x00080000
 
 WS_EX_APPWINDOW  = 0x00040000
 WS_EX_TOOLWINDOW = 0x00000080
@@ -685,6 +696,7 @@ try:
     _decl(dwmapi.DwmGetWindowAttribute, ctypes.c_long,
           [HWND, DWORD, ctypes.c_void_p, DWORD])
     DWMWA_CLOAKED = 14
+    DWMWA_EXTENDED_FRAME_BOUNDS = 9
 except Exception:
     dwmapi = None
 
@@ -751,6 +763,28 @@ def get_rect(h):
     r = wintypes.RECT()
     user32.GetWindowRect(h, ctypes.byref(r))
     return r
+
+
+def frame_insets(h):
+    """Невидимые поля окна (тень/борта DWM): GetWindowRect больше реально видимой
+    рамки. Возвращаем (left,top,right,bottom) — насколько визуальная рамка ужата
+    внутрь оконного прямоугольника. Нужно, чтобы класть окна впритык, как Win+→."""
+    if not dwmapi:
+        return (0, 0, 0, 0)
+    fb = wintypes.RECT()
+    res = dwmapi.DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS,
+                                       ctypes.byref(fb), ctypes.sizeof(fb))
+    if res != 0:
+        return (0, 0, 0, 0)
+    wr = get_rect(h)
+    li = fb.left - wr.left
+    ti = fb.top - wr.top
+    ri = wr.right - fb.right
+    bi = wr.bottom - fb.bottom
+    # подстраховка от мусора
+    if min(li, ti, ri, bi) < 0 or max(li, ti, ri, bi) > 40:
+        return (0, 0, 0, 0)
+    return (li, ti, ri, bi)
 
 
 def virtual_screen():
@@ -1207,7 +1241,7 @@ class Container:
             # иначе остаётся «призрачная» кнопка таскбара без видимого окна
             if user32.IsWindowVisible(h) and not user32.IsIconic(h):
                 user32.ShowWindow(h, SW_HIDE)
-                user32.ShowWindow(h, SW_SHOW)      # обновить таскбар, позиция та же
+                user32.ShowWindow(h, SW_SHOWNA)    # обновить таскбар, без кражи фокуса
         except Exception as ex:
             log("restore failed hwnd=%s: %r" % (h, ex))
 
@@ -1346,65 +1380,160 @@ class TrayApp:
     # ===================================================================
     #  Меню
     # ===================================================================
+    def _make_check(self, parent, checked, command, accent=None, bg=None):
+        """Аккуратный чекбокс в стиле приложения (рисуем на canvas)."""
+        accent = accent or COL_ACCENT
+        bg = bg or COL_SURFACE
+        cv = tk.Canvas(parent, width=20, height=20, bg=bg,
+                       highlightthickness=0, bd=0, cursor="hand2")
+        st = {"v": bool(checked)}
+
+        def draw():
+            cv.delete("all")
+            if st["v"]:
+                cv.create_rectangle(3, 3, 17, 17, fill=accent, outline=accent)
+                cv.create_line(6, 10, 9, 13, fill="white", width=2)
+                cv.create_line(9, 13, 14, 6, fill="white", width=2)
+            else:
+                cv.create_rectangle(3, 3, 17, 17, fill="", outline=COL_TEXT_DIM, width=1)
+
+        def click(_e):
+            st["v"] = not st["v"]
+            draw()
+            if command:
+                command(st["v"])
+        draw()
+        cv.bind("<Button-1>", click)
+        return cv, st, draw
+
     def _show_menu(self):
-        self._menu_actions = {}
-        self._next_id = 100
-        menu = user32.CreatePopupMenu()
-
-        def add(m, text, action, flags=MF_STRING):
-            i = self._next_id
-            self._next_id += 1
-            user32.AppendMenuW(m, flags, i, text)
-            self._menu_actions[i] = action
-            return i
-
-        def sep(m):
-            user32.AppendMenuW(m, MF_SEPARATOR, 0, None)
-
-        if self.containers:
-            # одна строка на контейнер: галочка слева = вкл/выкл (на самой строке),
-            # ▸ открывает настройки именно этого контейнера
-            for c in self.containers:
-                sub = user32.CreatePopupMenu()
-                add(sub, T("active"), lambda c=c: self._toggle_active(c),
-                    MF_STRING | (MF_CHECKED if c.active else 0))
-                sep(sub)
-                add(sub, T("edit_windows"), lambda c=c: self._edit_windows(c))
-                add(sub, T("rename"), lambda c=c: self._rename(c))
-                add(sub, T("set_icon"), lambda c=c: self._set_icon(c))
-                add(sub, T("set_color"), lambda c=c: self._set_color(c))
-                if c.icon or c.color:
-                    add(sub, T("reset_look"), lambda c=c: self._reset_look(c))
-                add(sub, T("create_shortcut"), lambda c=c: self._create_shortcut(c))
-                sep(sub)
-                add(sub, T("delete"), lambda c=c: self._delete(c))
-                cnt = ("   (%d)" % len(c.members)) if c.active else ""
-                user32.AppendMenuW(menu, MF_POPUP | (MF_CHECKED if c.active else 0),
-                                   ctypes.cast(sub, ctypes.c_void_p).value or 0, c.name + cnt)
-            sep(menu)
-
-        add(menu, "➕  " + T("create_container"), self._create_container)
-        cur_name = self.current.name if self.current else "—"
-        add(menu, "➕  " + T("add_to_current", cur_name),
-            self._add_window_current,
-            MF_STRING | (0 if self.current else MF_GRAYED))
-        sep(menu)
-        add(menu, "⚙  " + T("settings"), self._open_settings)
-        add(menu, T("quit"), self._quit)
-
         pt = POINT()
         user32.GetCursorPos(ctypes.byref(pt))
+        self._popup_at(pt.x, pt.y)
+
+    def _popup_at(self, px, py):
+        # кастомное минималистичное меню в стиле приложения: нативное меню не умеет
+        # в одной строке и чекбокс (вкл/выкл), и клик по имени (открыть редактор)
+        old = getattr(self, "_popup", None)
+        if old:
+            try:
+                old.destroy()
+            except Exception:
+                pass
+        win = tk.Toplevel(self.root)
+        self._popup = win
+        self._popup_pos = (px, py)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.configure(bg=COL_BORDER)            # тонкая рамка по периметру
+        frame = tk.Frame(win, bg=COL_SURFACE)
+        frame.pack(padx=1, pady=1, fill="both", expand=True)
+
+        def close():
+            try:
+                win.destroy()
+            except Exception:
+                pass
+            if getattr(self, "_popup", None) is win:
+                self._popup = None
+
+        def act(fn):
+            close()
+            self.root.after(1, fn)
+
+        W = 268
+        for c in self.containers:
+            self._popup_container_row(frame, c, W, close)
+        if self.containers:
+            tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
+        self._popup_action_row(frame, "＋", T("create_container"), W,
+                               lambda: act(self._create_container))
+        self._popup_action_row(frame, "⚙", T("settings"), W,
+                               lambda: act(self._open_settings))
+        self._popup_action_row(frame, "⏻", T("quit"), W,
+                               lambda: act(self._quit))
+
+        win.update_idletasks()
+        w = frame.winfo_reqwidth() + 2
+        h = frame.winfo_reqheight() + 2
+        sx, sy, sw, sh = virtual_screen()
+        x = max(sx, min(px, sx + sw - w - 4))
+        y = py - h if py > sy + sh - h - 48 else py        # выше курсора у нижней грани
+        y = max(sy, min(y, sy + sh - h - 4))
+        win.geometry("%dx%d+%d+%d" % (w, h, x, y))
         user32.SetForegroundWindow(self.msg_hwnd)
-        cmd = user32.TrackPopupMenu(
-            menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_NONOTIFY,
-            pt.x, pt.y, 0, self.msg_hwnd, None)
-        user32.PostMessageW(self.msg_hwnd, WM_NULL, 0, 0)
-        user32.DestroyMenu(menu)
-        if cmd:
-            action = self._menu_actions.get(cmd)
-            if action:
-                # выполнить вне обработчика сообщения (диалоги/модальность)
-                self.root.after(1, action)
+        win.lift()
+        win.focus_force()
+        # связываем закрытие по потере фокуса с задержкой: у overrideredirect-окна
+        # фокус «устаканивается» не сразу, иначе меню схлопнулось бы мгновенно
+        win.after(250, lambda: win.winfo_exists() and win.bind("<FocusOut>",
+                                                               lambda e: close()))
+        win.bind("<Escape>", lambda e: close())
+
+    def _popup_container_row(self, parent, c, width, close):
+        row = tk.Frame(parent, bg=COL_SURFACE, height=40, width=width)
+        row.pack(fill="x")
+        row.pack_propagate(False)
+        accent = c.color or COL_ACCENT
+
+        def on_toggle(want, c=c):
+            self.root.after(1, lambda: self._popup_toggle(c, want))
+        chk, st, draw = self._make_check(row, c.active, on_toggle, accent=accent)
+        chk.pack(side="left", padx=(14, 10))
+        cnt = ("  (%d)" % len(c.members)) if c.active else ""
+        name = tk.Label(row, text=c.name + cnt, bg=COL_SURFACE,
+                        fg=(COL_TEXT if c.active else COL_TEXT_DIM),
+                        font=FONT, cursor="hand2", anchor="w")
+        name.pack(side="left", fill="x", expand=True, padx=(0, 14))
+
+        def open_editor(_e=None, c=c):
+            close()
+            self.root.after(1, lambda: self._edit_container(c))
+        name.bind("<Button-1>", open_editor)
+
+        def enter(_e):
+            row.configure(bg=COL_HOVER)
+            name.configure(bg=COL_HOVER)
+            chk.configure(bg=COL_HOVER)
+        def leave(_e):
+            row.configure(bg=COL_SURFACE)
+            name.configure(bg=COL_SURFACE)
+            chk.configure(bg=COL_SURFACE)
+        for wdg in (row, name):
+            wdg.bind("<Enter>", enter)
+            wdg.bind("<Leave>", leave)
+
+    def _popup_action_row(self, parent, glyph, text, width, command):
+        row = tk.Frame(parent, bg=COL_SURFACE, height=40, width=width)
+        row.pack(fill="x")
+        row.pack_propagate(False)
+        g = tk.Label(row, text=glyph, bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                     font=("Segoe UI Symbol", 12), width=2, cursor="hand2")
+        g.pack(side="left", padx=(14, 8))
+        t = tk.Label(row, text=text, bg=COL_SURFACE, fg=COL_TEXT, font=FONT,
+                     anchor="w", cursor="hand2")
+        t.pack(side="left", fill="x", expand=True, padx=(0, 14))
+        widgets = (row, g, t)
+
+        def enter(_e):
+            for w in widgets:
+                w.configure(bg=COL_HOVER)
+        def leave(_e):
+            for w in widgets:
+                w.configure(bg=COL_SURFACE)
+        for w in widgets:
+            w.bind("<Enter>", enter)
+            w.bind("<Leave>", leave)
+            w.bind("<Button-1>", lambda e: command())
+
+    def _popup_toggle(self, c, want_active):
+        if want_active and not c.active:
+            self._activate(c)
+        elif not want_active and c.active:
+            self._deactivate(c)
+        # перерисовать меню на том же месте (обновить счётчик/состояние)
+        if getattr(self, "_popup_pos", None):
+            self._popup_at(*self._popup_pos)
 
     # ===================================================================
     #  Невидимый полноэкранный хост
@@ -1449,18 +1578,26 @@ class TrayApp:
 
     def _create_host(self, title, hicon=0, app_id=""):
         self._ensure_class()
-        # обычное (НЕ layered) крошечное окно, сделанное невидимым пустым регионом:
-        # layered/прозрачные оверлеи Win11 не сворачивает по Win+D, а это —
-        # «настоящее» приложение, которое Show Desktop сворачивает как все.
-        ex = WS_EX_APPWINDOW
+        # КЛЮЧЕВОЕ для Win+D: Show Desktop (фаза 1) сворачивает только окна со стилем
+        # WS_MINIMIZEBOX. Без него хост лишь «накрывается» рабочим столом, IsIconic
+        # остаётся False, и наш каскад скрытия членов не срабатывает (док. Raymond
+        # Chen, актуально и для Win11). Поэтому хост — НАСТОЯЩЕЕ сворачиваемое окно,
+        # а невидимость даём слоем с alpha=0 (WS_EX_LAYERED), а не пустым регионом.
+        ex = WS_EX_APPWINDOW | WS_EX_LAYERED
+        style = WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU
         hwnd = user32.CreateWindowExW(
-            ex, HOST_CLASS, title, WS_POPUP,
+            ex, HOST_CLASS, title, style,
             0, 0, 1, 1, None, None, self.hinst, None)
         if not hwnd:
             log("CreateWindowExW host FAILED err=%s" % ctypes.get_last_error())
             return 0
-        rgn = gdi32.CreateRectRgn(0, 0, 0, 0)   # пустой регион -> окно невидимо
-        user32.SetWindowRgn(hwnd, rgn, False)
+        # alpha=0 -> полностью прозрачно, но это «настоящее» окно с кнопкой в
+        # таскбаре и кандидат на сворачивание по Win+D / клику по кнопке
+        user32.SetLayeredWindowAttributes(hwnd, 0, 0, LWA_ALPHA)
+        # сбросить кэш стилей, чтобы WS_MINIMIZEBOX точно учёлся
+        user32.SetWindowPos(hwnd, None, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER
+                            | SWP_NOACTIVATE | SWP_FRAMECHANGED)
         if app_id:
             set_app_id(hwnd, app_id)       # отдельная кнопка в таскбаре до показа
         ic = hicon or self.hicon
@@ -1576,20 +1713,34 @@ class TrayApp:
         self._update_tray()
 
     def _arrange(self, c, rects):
-        # rects — нормализованные (x,y,w,h) в долях 0..1 из выбранного пресета
+        # rects — нормализованные (x,y,w,h) в долях 0..1 из выбранного пресета.
+        # Кладём окна ВПРИТЫК (как Win+← / Win+→): без зазора и с поправкой на
+        # невидимые борта DWM, иначе между окнами и у краёв остаются щели.
         members = [h for h in c.members if user32.IsWindow(h) and not user32.IsIconic(h)]
         if not members or not rects:
             return
         x, y, w, h = work_area()
-        g = 6
+        placed = []
         for hwnd, (nx, ny, nw, nh) in zip(members, rects):
-            rx = x + int(round(nx * w)) + g
-            ry = y + int(round(ny * h)) + g
-            rw = max(140, int(round(nw * w)) - 2 * g)
-            rh = max(100, int(round(nh * h)) - 2 * g)
+            # целевая ВИДИМАЯ рамка
+            vx = x + int(round(nx * w))
+            vy = y + int(round(ny * h))
+            vw = max(160, int(round((nx + nw) * w)) - int(round(nx * w)))
+            vh = max(120, int(round((ny + nh) * h)) - int(round(ny * h)))
             user32.ShowWindow(hwnd, SW_RESTORE)
-            user32.SetWindowPos(hwnd, HWND_TOP, rx, ry, rw, rh,
+            li, ti, ri, bi = frame_insets(hwnd)   # расширяем на невидимые поля
+            user32.SetWindowPos(hwnd, HWND_TOP, vx - li, vy - ti,
+                                vw + li + ri, vh + ti + bi,
                                 SWP_NOACTIVATE | SWP_NOOWNERZORDER)
+            placed.append(hwnd)
+        # поднять разложенную группу над только что отвязанными/прочими окнами,
+        # иначе визуально «ничего не поменялось» (старое окно перекрывает раскладку)
+        for hwnd in placed:
+            user32.SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                                | SWP_NOOWNERZORDER)
+        if placed:
+            user32.SetForegroundWindow(placed[0])
 
     def _toggle_autostart(self):
         set_autostart(not autostart_enabled())
@@ -1678,66 +1829,7 @@ class TrayApp:
         self._save()
         self._update_tray()
 
-    def _edit_windows(self, c):
-        # одно окно для добавления И удаления: текущие члены предотмечены, снял
-        # галочку -> убрали из контейнера; плюс кнопки раскладки
-        if not c.active:
-            self._activate(c)
-        if not c.active:
-            return
-        members = [h for h in c.members if user32.IsWindow(h)]
-        extra = [(h, get_window_text(h)) for h in members]
-        res = self._pick_windows(preselect=set(members), extra=extra)
-        if res["list"] is None:
-            return                          # отмена — ничего не меняем
-        chosen = set(res["list"])
-        for h in list(c.members):           # убрать снятые
-            if h not in chosen:
-                c.detach(h)
-        for h in chosen:                    # добавить новые
-            if h not in c.members and user32.IsWindow(h):
-                c.attach(h, c.host_hwnd)
-        self._set_current(c)
-        self._save()
-        if res["layout"]:
-            self._arrange(c, res["layout"])
-
-    def _add_window_current(self):
-        if self.current:
-            self._edit_windows(self.current)
-
-    def _create_container(self):
-        name = self._ask_string(T("new_container"), T("name_label"),
-                                T("container_n", len(self.containers) + 1))
-        if not name:
-            return
-        c = Container(name)
-        self.containers.append(c)
-        self._activate(c)
-        self._save()
-        self._edit_windows(c)               # сразу выбрать окна (+ раскладку)
-
-    def _rename(self, c):
-        name = self._ask_string(T("rename_title"), T("new_name"), c.name)
-        if not name:
-            return
-        c.name = name
-        c.title = name
-        if c.active and c.host_hwnd:
-            user32.SetWindowTextW(c.host_hwnd, name)
-        self._save()
-        self._update_tray()
-
-    def _set_icon(self, c):
-        from tkinter import filedialog
-        path = filedialog.askopenfilename(
-            parent=self.root, title=T("icon_title", c.name),
-            filetypes=[("ICO", "*.ico"), ("All files", "*.*")])
-        if not path:
-            return
-        if not path.lower().endswith(".ico"):
-            self._info(T("need_ico_title"), T("need_ico_msg"))
-            return
+    def _import_icon(self, c, path):
         # копируем .ico в папку приложения, чтобы ярлык не зависел от исходника
         try:
             os.makedirs(_ICONDIR, exist_ok=True)
@@ -1749,27 +1841,277 @@ class TrayApp:
         except Exception as ex:
             log("copy icon failed: %r" % ex)
             c.icon = path
-        c.hicon = 0                       # сбросить кэш -> перезагрузится сразу
-        self._apply_host_icon(c)
-        self._save()
 
-    def _set_color(self, c):
-        from tkinter import colorchooser
-        rgb, hx = colorchooser.askcolor(
-            color=c.color or "#4c8bf5", parent=self.root,
-            title=T("color_title", c.name))
-        if not hx:
-            return
-        c.color = hx
-        c.hicon = 0
-        self._apply_host_icon(c)
-        self._save()
+    def _create_container(self):
+        c = Container(T("container_n", len(self.containers) + 1))
+        self._edit_container(c)            # is_new определяется по отсутствию в списке
 
-    def _clear_color(self, c):
-        c.color = None
-        c.hicon = 0
-        self._apply_host_icon(c)
-        self._save()
+    # единое окно: имя, иконка, цвет, окна (добавить/убрать), раскладка, сброс
+    PALETTE = [None, "#4c8bf5", "#34c759", "#ff9f0a", "#ff453a",
+               "#bf5af2", "#ffd60a", "#64d2ff", "#ff375f"]
+
+    def _edit_container(self, c):
+        is_new = c not in self.containers
+        win = self._dialog(T("edit_container"), 960, 740)
+        draft = {"icon": c.icon, "layout": None}
+        color_state = {"v": c.color}
+        cur_members = [h for h in c.members if user32.IsWindow(h)] if c.active else []
+        selected = set(cur_members)
+        tmpdir = tempfile.mkdtemp(prefix="hdc_thumb_")
+        tmpfiles, imgs = [], []
+
+        # ---------- имя ----------
+        head = tk.Frame(win, bg=COL_SURFACE)
+        head.pack(fill="x", padx=20, pady=(18, 6))
+        tk.Label(head, text=T("lbl_name"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                 font=FONT_SM).pack(anchor="w")
+        name_var = tk.StringVar(value=c.name)
+        ent = tk.Entry(head, textvariable=name_var, font=FONT_H, bg=COL_BG,
+                       fg=COL_TEXT, insertbackground=COL_TEXT, relief="flat",
+                       highlightthickness=1, highlightbackground=COL_BORDER,
+                       highlightcolor=COL_ACCENT)
+        ent.pack(fill="x", ipady=7, pady=(4, 0))
+
+        # ---------- иконка + цвет (в одной строке) ----------
+        look = tk.Frame(win, bg=COL_SURFACE)
+        look.pack(fill="x", padx=20, pady=(14, 4))
+
+        ico_col = tk.Frame(look, bg=COL_SURFACE)
+        ico_col.pack(side="left", anchor="n")
+        tk.Label(ico_col, text=T("lbl_icon"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                 font=FONT_SM).pack(anchor="w")
+        ico_row = tk.Frame(ico_col, bg=COL_SURFACE)
+        ico_row.pack(anchor="w", pady=(4, 0))
+        ipath_lbl = tk.Label(ico_row, text=(os.path.basename(c.icon) if c.icon else "—"),
+                             bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM)
+
+        def choose_icon():
+            from tkinter import filedialog
+            path = filedialog.askopenfilename(
+                parent=win, title=T("lbl_icon"), filetypes=[("ICO", "*.ico")])
+            if not path:
+                return
+            if not path.lower().endswith(".ico"):
+                self._info(T("need_ico_title"), T("need_ico_msg"))
+                return
+            draft["icon"] = path
+            ipath_lbl.configure(text=os.path.basename(path))
+        self._ghost_btn(ico_row, T("choose_ico"), choose_icon).pack(side="left")
+        ipath_lbl.pack(side="left", padx=(10, 0))
+
+        col_col = tk.Frame(look, bg=COL_SURFACE)
+        col_col.pack(side="left", anchor="n", padx=(34, 0))
+        tk.Label(col_col, text=T("lbl_color"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                 font=FONT_SM).pack(anchor="w")
+        sw_row = tk.Frame(col_col, bg=COL_SURFACE)
+        sw_row.pack(anchor="w", pady=(4, 0))
+        swatches = {}
+
+        def pick_color(col):
+            color_state["v"] = col
+            for cc, sw in swatches.items():
+                sel = (cc == col)
+                sw.configure(highlightbackground=(COL_TEXT if sel else COL_BORDER),
+                             highlightthickness=(2 if sel else 1))
+        for col in self.PALETTE:
+            sw = tk.Canvas(sw_row, width=24, height=24, bg=COL_SURFACE,
+                           highlightthickness=1, highlightbackground=COL_BORDER,
+                           cursor="hand2")
+            if col is None:
+                sw.create_oval(4, 4, 20, 20, fill="", outline=COL_TEXT_DIM)
+                sw.create_line(7, 17, 17, 7, fill=COL_TEXT_DIM, width=2)
+            else:
+                sw.create_oval(3, 3, 21, 21, fill=col, outline="")
+            sw.bind("<Button-1>", lambda e, col=col: pick_color(col))
+            sw.pack(side="left", padx=(0, 7))
+            swatches[col] = sw
+        pick_color(c.color)
+
+        # ---------- окна ----------
+        tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=20, pady=(12, 0))
+        tk.Label(win, text=T("lbl_windows"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                 font=FONT_SM).pack(anchor="w", padx=20, pady=(10, 2))
+
+        # ---------- низ: кнопки, разделитель, второстепенные действия ----------
+        foot = tk.Frame(win, bg=COL_SURFACE)
+        foot.pack(side="bottom", fill="x", padx=20, pady=(8, 14))
+        tk.Frame(win, bg=COL_BORDER, height=1).pack(side="bottom", fill="x")
+        links = tk.Frame(win, bg=COL_SURFACE)
+        links.pack(side="bottom", fill="x", padx=20, pady=(6, 8))
+
+        body = tk.Frame(win, bg=COL_SURFACE)
+        canvas = tk.Canvas(body, bg=COL_SURFACE, highlightthickness=0)
+        vsb = self._dark_scrollbar(body, canvas)
+        vsb.pack(side="right", fill="y", padx=(2, 0))
+        canvas.pack(side="left", fill="both", expand=True)
+        grid = tk.Frame(canvas, bg=COL_SURFACE)
+        canvas.create_window((0, 0), window=grid, anchor="nw")
+        grid.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind_all("<MouseWheel>",
+                        lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+
+        wa = work_area()
+        aspect = wa[2] / max(wa[3], 1)
+        presets_row = tk.Frame(foot, bg=COL_SURFACE)
+        presets_row.pack(side="left")
+
+        def rebuild_presets():
+            for ch in presets_row.winfo_children():
+                ch.destroy()
+            pw = 56
+            ph = max(34, int(pw / aspect))
+            iw, ih = pw - 6, ph - 6
+            for layout in layouts_for(len(selected))[:6]:
+                issel = (draft["layout"] == layout)
+                cv = tk.Canvas(presets_row, width=pw, height=ph, bg=COL_BG,
+                               highlightthickness=1, cursor="hand2", bd=0,
+                               highlightbackground=(COL_ACCENT if issel else COL_BORDER))
+                for (nx, ny, nw, nh) in layout:
+                    cv.create_rectangle(
+                        3 + nx * iw + 1, 3 + ny * ih + 1,
+                        3 + (nx + nw) * iw - 1, 3 + (ny + nh) * ih - 1,
+                        fill=(COL_ACCENT if issel else COL_SURFACE2),
+                        outline=(COL_ACCENT_HI if issel else COL_TEXT_DIM), width=1)
+
+                def choose(_e=None, L=layout):
+                    draft["layout"] = None if draft["layout"] == L else L
+                    rebuild_presets()
+                cv.bind("<Button-1>", choose)
+                cv.pack(side="left", padx=(0, 6))
+
+        TW, TH, COLS = 264, 150, 3
+
+        def make_tile(idx, hwnd, title):
+            tile = tk.Frame(grid, bg=COL_BG, highlightthickness=2, cursor="hand2",
+                            highlightbackground=(COL_ACCENT if hwnd in selected else COL_BORDER))
+            thumb = None
+            ppm = capture_thumb(hwnd, TW, TH)
+            if ppm:
+                try:
+                    p = os.path.join(tmpdir, "t%d.ppm" % idx)
+                    with open(p, "wb") as f:
+                        f.write(ppm)
+                    tmpfiles.append(p)
+                    img = tk.PhotoImage(file=p)
+                    imgs.append(img)
+                    thumb = tk.Label(tile, image=img, bg=COL_BG)
+                except Exception:
+                    thumb = None
+            if thumb is None:
+                thumb = tk.Label(tile, text=T("no_preview"), bg=COL_BG,
+                                 fg=COL_TEXT_DIM, width=34, height=8, font=FONT_SM)
+            thumb.pack(padx=6, pady=(6, 2))
+            cap = tk.Label(tile, text=(title[:46] or "—"), bg=COL_BG, fg=COL_TEXT,
+                           font=FONT_SM, wraplength=TW, justify="left")
+            cap.pack(padx=6, pady=(0, 6), anchor="w")
+
+            def toggle(_=None, hwnd=hwnd, tile=tile):
+                if hwnd in selected:
+                    selected.discard(hwnd)
+                    tile.configure(highlightbackground=COL_BORDER)
+                else:
+                    selected.add(hwnd)
+                    tile.configure(highlightbackground=COL_ACCENT)
+                rebuild_presets()
+            for wdg in (tile, thumb, cap):
+                wdg.bind("<Button-1>", toggle)
+            tile.grid(row=idx // COLS, column=idx % COLS, padx=8, pady=8, sticky="n")
+
+        def close():
+            try:
+                canvas.unbind_all("<MouseWheel>")
+            except Exception:
+                pass
+            try:
+                win.destroy()
+            except Exception:
+                pass
+            imgs.clear()
+            for p in tmpfiles:
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+            try:
+                os.rmdir(tmpdir)
+            except Exception:
+                pass
+
+        def do_reset():
+            draft["icon"] = None
+            ipath_lbl.configure(text="—")
+            pick_color(None)
+
+        def do_delete():
+            close()
+            self.root.after(1, lambda: self._delete(c))
+
+        def do_save():
+            nm = name_var.get().strip() or c.name
+            c.name, c.title = nm, nm
+            if draft["icon"] != c.icon:
+                if draft["icon"]:
+                    self._import_icon(c, draft["icon"])
+                else:
+                    c.icon = None
+            c.color = color_state["v"]
+            c.hicon = 0
+            if c not in self.containers:
+                self.containers.append(c)
+            want = set(h for h in selected if user32.IsWindow(h))
+            if want and not c.active:
+                self._activate(c)
+            if c.active:
+                if c.host_hwnd:
+                    user32.SetWindowTextW(c.host_hwnd, nm)
+                for h in list(c.members):
+                    if h not in want:
+                        c.detach(h)
+                for h in want:
+                    if h not in c.members and user32.IsWindow(h):
+                        c.attach(h, c.host_hwnd)
+                self._set_current(c)
+            self._apply_host_icon(c)
+            self._save()
+            self._update_tray()
+            layout = draft["layout"]
+            close()
+            if layout and c.active:
+                self.root.after(60, lambda: self._arrange(c, layout))
+
+        # второстепенные действия (тихие ссылки)
+        def link(parent, text, cmd, danger=False):
+            l = tk.Label(parent, text=text, bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                         font=FONT_SM, cursor="hand2")
+            l.bind("<Button-1>", lambda e: cmd())
+            l.bind("<Enter>", lambda e: l.configure(fg=("#ff453a" if danger else COL_TEXT)))
+            l.bind("<Leave>", lambda e: l.configure(fg=COL_TEXT_DIM))
+            return l
+
+        def dot(parent):
+            tk.Label(parent, text="·", bg=COL_SURFACE, fg=COL_TEXT_DIM).pack(
+                side="left", padx=8)
+        link(links, T("reset_look"), do_reset).pack(side="left")
+        dot(links)
+        link(links, T("shortcut_btn"), lambda: self._create_shortcut(c)).pack(side="left")
+        if not is_new:
+            dot(links)
+            link(links, T("delete"), do_delete, danger=True).pack(side="left")
+
+        self._accent_btn(foot, "  " + T("save") + "  ", do_save).pack(side="right")
+        self._ghost_btn(foot, T("cancel"), close).pack(side="right", padx=(0, 10))
+
+        targets = [(h, get_window_text(h)) for h in cur_members] + self._pick_targets()
+        if not targets:
+            tk.Label(grid, text=T("no_windows"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                     font=FONT).grid(padx=20, pady=20)
+        for i, (hwnd, title) in enumerate(targets):
+            make_tile(i, hwnd, title)
+
+        body.pack(fill="both", expand=True, padx=14, pady=(0, 4))
+        rebuild_presets()
+        win.protocol("WM_DELETE_WINDOW", close)
+        win.bind("<Escape>", lambda e: close())
 
     def _create_shortcut(self, c):
         exe = os.path.abspath(sys.argv[0])
@@ -2038,6 +2380,47 @@ class TrayApp:
         b.bind("<Leave>", lambda e: b.configure(bg=COL_SURFACE2))
         return b
 
+    def _dark_scrollbar(self, parent, canvas):
+        """Тонкий тёмный скроллбар в стиле приложения вместо нативного белого."""
+        sb = tk.Canvas(parent, width=12, bg=COL_SURFACE, highlightthickness=0, bd=0)
+        thumb = sb.create_rectangle(0, 0, 0, 0, fill=COL_SURFACE2, outline="")
+        drag = {"y": None, "f": 0.0}
+
+        def set_view(first, last):       # вызывается canvas как yscrollcommand
+            first, last = float(first), float(last)
+            ht = max(sb.winfo_height(), 1)
+            if first <= 0.0 and last >= 1.0:
+                sb.itemconfigure(thumb, state="hidden")
+                return
+            sb.itemconfigure(thumb, state="normal")
+            sb.coords(thumb, 3, first * ht + 1, 10, last * ht - 1)
+
+        def on_press(e):
+            ht = max(sb.winfo_height(), 1)
+            co = sb.coords(thumb)
+            if not co or e.y < co[1] or e.y > co[3]:      # клик по дорожке — прыжок
+                first, last = canvas.yview()
+                span = last - first
+                f = max(0.0, min(1.0 - span, e.y / ht - span / 2))
+                canvas.yview_moveto(f)
+            drag["y"] = e.y
+            drag["f"] = canvas.yview()[0]
+
+        def on_drag(e):
+            if drag["y"] is None:
+                return
+            ht = max(sb.winfo_height(), 1)
+            canvas.yview_moveto(max(0.0, drag["f"] + (e.y - drag["y"]) / ht))
+
+        sb.bind("<Button-1>", on_press)
+        sb.bind("<B1-Motion>", on_drag)
+        sb.bind("<ButtonRelease-1>", lambda e: drag.update(y=None))
+        sb.bind("<Enter>", lambda e: sb.itemconfigure(thumb, fill=COL_HOVER))
+        sb.bind("<Leave>", lambda e: sb.itemconfigure(thumb, fill=COL_SURFACE2))
+        sb.bind("<Configure>", lambda e: set_view(*canvas.yview()))
+        canvas.configure(yscrollcommand=set_view)
+        return sb
+
     def _ask_string(self, title, prompt, initial=""):
         res = {"v": None}
         win = self._dialog(title, 420, 170)
@@ -2086,89 +2469,114 @@ class TrayApp:
         self.root.wait_window(win)
         return res["v"]
 
-    def _toggle_row(self, parent, text, get, setter):
+    def _set_setting(self, key, v):
+        self.settings[key] = v
+        save_settings(self.settings)
+
+    def _setting_check(self, parent, text, val, setter, pad):
         row = tk.Frame(parent, bg=COL_SURFACE)
-        row.pack(fill="x", padx=18, pady=5)
-        st = {"v": bool(get())}
-        box = tk.Label(row, text="☑" if st["v"] else "☐", bg=COL_SURFACE,
-                       fg=COL_ACCENT if st["v"] else COL_TEXT_DIM,
-                       font=("Segoe UI Symbol", 14), cursor="hand2")
-        box.pack(side="left")
-        lbl = tk.Label(row, text="  " + text, bg=COL_SURFACE, fg=COL_TEXT,
+        row.pack(fill="x", padx=pad, pady=8)
+        chk, st, draw = self._make_check(row, val, setter)
+        chk.pack(side="left")
+        lbl = tk.Label(row, text="   " + text, bg=COL_SURFACE, fg=COL_TEXT,
                        font=FONT, cursor="hand2")
         lbl.pack(side="left")
 
-        def toggle(_=None):
+        def toggle(_e=None):
             st["v"] = not st["v"]
-            box.configure(text="☑" if st["v"] else "☐",
-                          fg=COL_ACCENT if st["v"] else COL_TEXT_DIM)
+            draw()
             setter(st["v"])
-        box.bind("<Button-1>", toggle)
         lbl.bind("<Button-1>", toggle)
 
-    def _open_settings(self):
-        win = self._dialog(T("settings_title"), 560, 690)
-        pad = 18
-        tk.Label(win, text=T("settings_title"), bg=COL_SURFACE, fg=COL_TEXT,
-                 font=FONT_H).pack(anchor="w", padx=pad, pady=(16, 8))
-
-        # язык
-        lrow = tk.Frame(win, bg=COL_SURFACE)
-        lrow.pack(fill="x", padx=pad, pady=(2, 6))
-        tk.Label(lrow, text=T("language"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+    def _setting_lang(self, parent, pad):
+        row = tk.Frame(parent, bg=COL_SURFACE)
+        row.pack(fill="x", padx=pad, pady=8)
+        tk.Label(row, text=T("language"), bg=COL_SURFACE, fg=COL_TEXT,
                  font=FONT).pack(side="left")
-        var = tk.StringVar(value=LANG_NAMES.get(LANG, "English"))
+        val = tk.Label(row, text=LANG_NAMES.get(LANG, "English") + "   ⌄",
+                       bg=COL_SURFACE, fg=COL_ACCENT, font=FONT, cursor="hand2")
+        val.pack(side="right")
+        val.bind("<Button-1>", lambda e: self._lang_dropdown(val))
 
-        def on_lang(sel):
+    def _lang_dropdown(self, anchor):
+        win = tk.Toplevel(self.root)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.configure(bg=COL_BORDER)
+        fr = tk.Frame(win, bg=COL_SURFACE)
+        fr.pack(padx=1, pady=1)
+
+        def choose(code):
             global LANG
-            LANG = next((k for k, v in LANG_NAMES.items() if v == sel), "en")
-            self.settings["lang"] = LANG
+            LANG = code
+            self.settings["lang"] = code
             save_settings(self.settings)
+            try:
+                win.destroy()
+            except Exception:
+                pass
             self._update_tray()
-            win.destroy()
-            self._open_settings()      # перерисовать на новом языке
-        om = tk.OptionMenu(lrow, var, *LANG_NAMES.values(), command=on_lang)
-        om.configure(bg=COL_SURFACE2, fg=COL_TEXT, activebackground=COL_HOVER,
-                     activeforeground=COL_TEXT, relief="flat", highlightthickness=0,
-                     font=FONT, cursor="hand2", borderwidth=0)
-        om["menu"].configure(bg=COL_SURFACE, fg=COL_TEXT, activebackground=COL_ACCENT,
-                             activeforeground="white", relief="flat")
-        om.pack(side="right")
+            self._reopen_settings()
+        for code, nm in LANG_NAMES.items():
+            r = tk.Label(fr, text=nm, bg=COL_SURFACE,
+                         fg=(COL_ACCENT if code == LANG else COL_TEXT),
+                         font=FONT, anchor="w", padx=16, pady=7, cursor="hand2",
+                         width=14)
+            r.pack(fill="x")
+            r.bind("<Enter>", lambda e, r=r: r.configure(bg=COL_HOVER))
+            r.bind("<Leave>", lambda e, r=r: r.configure(bg=COL_SURFACE))
+            r.bind("<Button-1>", lambda e, code=code: choose(code))
+        anchor.update_idletasks()
+        x = max(0, anchor.winfo_rootx() - 60)
+        y = anchor.winfo_rooty() + anchor.winfo_height() + 4
+        win.geometry("+%d+%d" % (x, y))
+        win.focus_force()
+        win.after(250, lambda: win.winfo_exists() and win.bind(
+            "<FocusOut>", lambda e: win.destroy()))
 
-        # переключатели
-        self._toggle_row(win, T("run_with_windows"), autostart_enabled,
-                         lambda v: set_autostart(v))
+    def _reopen_settings(self):
+        if getattr(self, "_settings_win", None):
+            try:
+                self._settings_win.destroy()
+            except Exception:
+                pass
+            self._settings_win = None
+        self._open_settings()
 
-        def set_autoupd(v):
-            self.settings["autoupdate"] = v
-            save_settings(self.settings)
-        self._toggle_row(win, T("auto_update"),
-                         lambda: self.settings.get("autoupdate", True), set_autoupd)
-        self._ghost_btn(win, T("check_update"),
-                        lambda: self._check_update_bg(True)).pack(anchor="w", padx=pad, pady=(2, 4))
+    def _open_settings(self):
+        if getattr(self, "_settings_win", None):
+            try:
+                self._settings_win.destroy()
+            except Exception:
+                pass
+        win = self._dialog(T("settings_title"), 470, 500)
+        self._settings_win = win
+        pad = 24
+        tk.Label(win, text=T("settings_title"), bg=COL_SURFACE, fg=COL_TEXT,
+                 font=FONT_H).pack(anchor="w", padx=pad, pady=(18, 12))
+        self._setting_check(win, T("run_with_windows"), autostart_enabled(),
+                            lambda v: set_autostart(v), pad)
+        self._setting_check(win, T("auto_update"),
+                            self.settings.get("autoupdate", True),
+                            lambda v: self._set_setting("autoupdate", v), pad)
+        self._setting_lang(win, pad)
+        upd = tk.Label(win, text=T("check_update"), bg=COL_SURFACE, fg=COL_ACCENT,
+                       font=FONT_SM, cursor="hand2")
+        upd.pack(anchor="w", padx=pad, pady=(10, 4))
+        upd.bind("<Button-1>", lambda e: self._check_update_bg(True))
 
-        tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=pad, pady=10)
+        tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=pad, pady=14)
 
-        # мини-гайд
-        tk.Label(win, text=T("guide_title"), bg=COL_SURFACE, fg=COL_TEXT,
-                 font=FONT_TITLE).pack(anchor="w", padx=pad)
-        tk.Label(win, text=T("guide_text"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
-                 font=FONT_SM, justify="left", wraplength=520).pack(
-            anchor="w", padx=pad, pady=(4, 8))
-
-        tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=pad, pady=8)
-
-        # авторство + версия
-        tk.Label(win, text=T("credits"), bg=COL_SURFACE, fg=COL_TEXT,
-                 font=FONT, justify="left").pack(anchor="w", padx=pad)
+        tk.Label(win, text=T("credits"), bg=COL_SURFACE, fg=COL_TEXT, font=FONT,
+                 justify="left").pack(anchor="w", padx=pad)
         tk.Label(win, text=T("version_label", VERSION) + "   ·   " + GITHUB_URL,
-                 bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM).pack(anchor="w", padx=pad, pady=(2, 8))
+                 bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM).pack(
+            anchor="w", padx=pad, pady=(2, 12))
 
-        # донат
         tk.Label(win, text=T("donate_label", DONATE_NET), bg=COL_SURFACE,
                  fg=COL_TEXT_DIM, font=FONT_SM).pack(anchor="w", padx=pad)
         drow = tk.Frame(win, bg=COL_SURFACE)
-        drow.pack(fill="x", padx=pad, pady=(2, 12))
+        drow.pack(fill="x", padx=pad, pady=(4, 14))
         ent = tk.Entry(drow, font=FONT_SM, bg=COL_BG, fg=COL_TEXT, relief="flat",
                        readonlybackground=COL_BG, highlightthickness=1,
                        highlightbackground=COL_BORDER)
@@ -2194,138 +2602,6 @@ class TrayApp:
         win.bind("<Escape>", lambda e: win.destroy())
         win.bind("<Return>", lambda e: win.destroy())
         self.root.wait_window(win)
-
-    def _pick_windows(self, preselect=None, extra=None, with_layouts=True):
-        """Сетка превью окон. Возвращает {'list': [hwnd]|None, 'layout': str|None}.
-        preselect — заранее отмеченные (текущие члены); extra — доп. окна для показа."""
-        preselect = set(preselect or [])
-        targets = list(extra or []) + self._pick_targets()
-        selected = set(preselect)
-        imgs = []
-        tmpdir = tempfile.mkdtemp(prefix="hdc_thumb_")
-        tmpfiles = []
-        result = {"list": None, "layout": None}
-
-        win = self._dialog(T("pick_title"), 940, 700)
-        tk.Label(win, text=T("edit_hint"),
-                 bg=COL_SURFACE, fg=COL_TEXT, font=FONT_TITLE).pack(
-            anchor="w", padx=16, pady=(12, 8))
-
-        body = tk.Frame(win, bg=COL_SURFACE)
-        body.pack(fill="both", expand=True, padx=12)
-        canvas = tk.Canvas(body, bg=COL_SURFACE, highlightthickness=0)
-        vsb = tk.Scrollbar(body, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        grid = tk.Frame(canvas, bg=COL_SURFACE)
-        canvas.create_window((0, 0), window=grid, anchor="nw")
-        grid.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind_all("<MouseWheel>",
-                        lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
-
-        TW, TH, COLS = 270, 156, 3
-
-        def finish(layout=None):
-            result["list"] = list(selected)
-            result["layout"] = layout
-            win.destroy()
-
-        # визуальные пресеты раскладки: прямоугольник экрана с окнами внутри,
-        # без подписей; набор зависит от числа выбранных окон
-        wa = work_area()
-        aspect = wa[2] / max(wa[3], 1)
-        presets_row = tk.Frame(win, bg=COL_SURFACE)
-
-        def rebuild_presets():
-            for ch in presets_row.winfo_children():
-                ch.destroy()
-            if not with_layouts:
-                return
-            for layout in layouts_for(len(selected))[:6]:
-                cw = 104
-                chh = max(46, int(cw / aspect))
-                cv = tk.Canvas(presets_row, width=cw, height=chh, bg=COL_BG,
-                               highlightthickness=1, highlightbackground=COL_BORDER,
-                               cursor="hand2")
-                pad = 3.0
-                iw, ih = cw - 2 * pad, chh - 2 * pad
-                for (nx, ny, nw, nh) in layout:
-                    cv.create_rectangle(pad + nx * iw + 1.5, pad + ny * ih + 1.5,
-                                        pad + (nx + nw) * iw - 1.5, pad + (ny + nh) * ih - 1.5,
-                                        fill=COL_ACCENT, outline="")
-                cv.bind("<Button-1>", lambda e, L=layout: finish(L))
-                cv.pack(side="left", padx=4)
-
-        def make_tile(idx, hwnd, title):
-            tile = tk.Frame(grid, bg=COL_BG, highlightthickness=2,
-                            highlightbackground=(COL_ACCENT if hwnd in selected else COL_BORDER),
-                            cursor="hand2")
-            thumb = None
-            ppm = capture_thumb(hwnd, TW, TH)
-            if ppm:
-                try:
-                    p = os.path.join(tmpdir, "t%d.ppm" % idx)
-                    with open(p, "wb") as f:
-                        f.write(ppm)
-                    tmpfiles.append(p)
-                    img = tk.PhotoImage(file=p)
-                    imgs.append(img)
-                    thumb = tk.Label(tile, image=img, bg=COL_BG)
-                except Exception:
-                    thumb = None
-            if thumb is None:
-                thumb = tk.Label(tile, text=T("no_preview"), bg=COL_BG,
-                                 fg=COL_TEXT_DIM, width=34, height=8, font=FONT_SM)
-            thumb.pack(padx=6, pady=(6, 2))
-            cap = tk.Label(tile, text=(title[:46] or "—"), bg=COL_BG,
-                           fg=COL_TEXT, font=FONT_SM, wraplength=TW, justify="left")
-            cap.pack(padx=6, pady=(0, 6), anchor="w")
-
-            def toggle(_=None, hwnd=hwnd, tile=tile):
-                if hwnd in selected:
-                    selected.discard(hwnd)
-                    tile.configure(highlightbackground=COL_BORDER)
-                else:
-                    selected.add(hwnd)
-                    tile.configure(highlightbackground=COL_ACCENT)
-                rebuild_presets()
-            for wdg in (tile, thumb, cap):
-                wdg.bind("<Button-1>", toggle)
-            tile.grid(row=idx // COLS, column=idx % COLS, padx=8, pady=8, sticky="n")
-
-        if not targets:
-            tk.Label(grid, text=T("no_windows"), bg=COL_SURFACE,
-                     fg=COL_TEXT_DIM, font=FONT).grid(padx=20, pady=20)
-        for i, (hwnd, title) in enumerate(targets):
-            make_tile(i, hwnd, title)
-
-        presets_row.pack(fill="x", padx=16, pady=(2, 4))
-        rebuild_presets()
-
-        foot = tk.Frame(win, bg=COL_SURFACE)
-        foot.pack(fill="x", padx=16, pady=(0, 12))
-        self._accent_btn(foot, "  " + T("apply") + "  ", lambda: finish(None)).pack(side="right")
-        self._ghost_btn(foot, T("cancel"), win.destroy).pack(side="right", padx=(0, 8))
-        win.bind("<Escape>", lambda e: win.destroy())
-        win.bind("<Return>", lambda e: finish(None))
-
-        self.root.wait_window(win)
-        try:
-            canvas.unbind_all("<MouseWheel>")
-        except Exception:
-            pass
-        imgs.clear()
-        for p in tmpfiles:
-            try:
-                os.remove(p)
-            except Exception:
-                pass
-        try:
-            os.rmdir(tmpdir)
-        except Exception:
-            pass
-        return result
 
     # ===================================================================
     def run(self):
