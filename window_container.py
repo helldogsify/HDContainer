@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -298,6 +298,13 @@ STRINGS = {
     "manage": {"en": "Manage containers", "ru": "Управление контейнерами", "es": "Gestionar contenedores", "pt": "Gerenciar contêineres", "de": "Container verwalten", "fr": "Gérer les conteneurs", "zh": "管理容器"},
     "reset_look": {"en": "Reset to default look", "ru": "Сбросить оформление", "es": "Restablecer apariencia", "pt": "Redefinir aparência", "de": "Aussehen zurücksetzen", "fr": "Réinitialiser l’apparence", "zh": "恢复默认外观"},
     "active": {"en": "Active", "ru": "Активен", "es": "Activo", "pt": "Ativo", "de": "Aktiv", "fr": "Actif", "zh": "已激活"},
+    "edit_windows": {"en": "Edit windows…", "ru": "Редактировать окна…", "es": "Editar ventanas…", "pt": "Editar janelas…", "de": "Fenster bearbeiten…", "fr": "Modifier les fenêtres…", "zh": "编辑窗口…"},
+    "edit_hint": {"en": "Tick the windows that belong to this container, then Apply", "ru": "Отметь окна, которые входят в контейнер, и нажми «Применить»", "es": "Marca las ventanas de este contenedor y pulsa Aplicar", "pt": "Marque as janelas deste contêiner e clique em Aplicar", "de": "Markiere die Fenster dieses Containers und klicke auf Übernehmen", "fr": "Coche les fenêtres de ce conteneur puis Appliquer", "zh": "勾选属于该容器的窗口，然后点击应用"},
+    "apply": {"en": "Apply", "ru": "Применить", "es": "Aplicar", "pt": "Aplicar", "de": "Übernehmen", "fr": "Appliquer", "zh": "应用"},
+    "arrange": {"en": "Arrange:", "ru": "Разложить:", "es": "Organizar:", "pt": "Organizar:", "de": "Anordnen:", "fr": "Disposer :", "zh": "排列："},
+    "lay_cols": {"en": "Columns", "ru": "Колонки", "es": "Columnas", "pt": "Colunas", "de": "Spalten", "fr": "Colonnes", "zh": "并排列"},
+    "lay_grid": {"en": "Grid", "ru": "Сетка", "es": "Cuadrícula", "pt": "Grade", "de": "Raster", "fr": "Grille", "zh": "网格"},
+    "lay_master": {"en": "Master + stack", "ru": "Главное + стек", "es": "Principal + pila", "pt": "Principal + pilha", "de": "Haupt + Stapel", "fr": "Principal + pile", "zh": "主 + 堆叠"},
 }
 
 
@@ -1032,7 +1039,7 @@ def send_copydata(hwnd, text):
 # ---------------------------------------------------------------------------
 class Managed:
     __slots__ = ("hwnd", "title", "o_owner", "o_style", "o_exstyle", "o_rect",
-                 "sig", "min_detached")
+                 "sig", "min_detached", "group_hidden")
 
     def __init__(self, hwnd, title):
         self.hwnd = hwnd
@@ -1043,6 +1050,7 @@ class Managed:
         self.o_rect = (0, 0, 0, 0)
         self.sig = None
         self.min_detached = False
+        self.group_hidden = False
 
 
 # ---------------------------------------------------------------------------
@@ -1321,7 +1329,7 @@ class TrayApp:
                 add(sub, T("active"), lambda c=c: self._toggle_active(c),
                     MF_STRING | (MF_CHECKED if c.active else 0))
                 sep(sub)
-                add(sub, T("add_here"), lambda c=c: self._add_window_to(c))
+                add(sub, T("edit_windows"), lambda c=c: self._edit_windows(c))
                 add(sub, T("rename"), lambda c=c: self._rename(c))
                 add(sub, T("set_icon"), lambda c=c: self._set_icon(c))
                 add(sub, T("set_color"), lambda c=c: self._set_color(c))
@@ -1401,16 +1409,18 @@ class TrayApp:
 
     def _create_host(self, title, hicon=0, app_id=""):
         self._ensure_class()
-        x, y, w, h = virtual_screen()
-        ex = WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_APPWINDOW
+        # крошечное (1x1) обычное окно вместо полноэкранного прозрачного оверлея:
+        # такое окно система сворачивает по Win+D как нормальное приложение, и оно
+        # ничего не перекрывает (клики по экрану идут сами собой). Невидимость —
+        # через layered alpha=1 (практически прозрачно, но окно «настоящее»).
+        ex = WS_EX_LAYERED | WS_EX_APPWINDOW
         hwnd = user32.CreateWindowExW(
-            ex, HOST_CLASS, title, WS_POPUP | WS_CLIPCHILDREN,
-            x, y, w, max(h - 1, 200), None, None, self.hinst, None)
+            ex, HOST_CLASS, title, WS_POPUP,
+            0, 0, 1, 1, None, None, self.hinst, None)
         if not hwnd:
             log("CreateWindowExW host FAILED err=%s" % ctypes.get_last_error())
             return 0
-        # alpha 0 -> невидимо; WS_EX_TRANSPARENT -> клики проходят насквозь
-        user32.SetLayeredWindowAttributes(hwnd, 0, 0, LWA_ALPHA)
+        user32.SetLayeredWindowAttributes(hwnd, 0, 1, LWA_ALPHA)
         if app_id:
             set_app_id(hwnd, app_id)       # отдельная кнопка в таскбаре до показа
         ic = hicon or self.hicon
@@ -1525,6 +1535,43 @@ class TrayApp:
         self._save()
         self._update_tray()
 
+    def _arrange(self, c, layout):
+        members = [h for h in c.members if user32.IsWindow(h) and not user32.IsIconic(h)]
+        n = len(members)
+        if n == 0:
+            return
+        x, y, w, h = work_area()
+        g = 8
+        rects = []
+        if layout == "cols":
+            cw = (w - g * (n + 1)) // n
+            rects = [(x + g + i * (cw + g), y + g, cw, h - 2 * g) for i in range(n)]
+        elif layout == "grid":
+            cols = int(n ** 0.5)
+            if cols * cols < n:
+                cols += 1
+            rows = (n + cols - 1) // cols
+            cw = (w - g * (cols + 1)) // cols
+            ch = (h - g * (rows + 1)) // rows
+            for i in range(n):
+                r, col = divmod(i, cols)
+                rects.append((x + g + col * (cw + g), y + g + r * (ch + g), cw, ch))
+        else:   # master + stack
+            if n == 1:
+                rects = [(x + g, y + g, w - 2 * g, h - 2 * g)]
+            else:
+                mw = int((w - 3 * g) * 0.6)
+                sw = w - 3 * g - mw
+                rects.append((x + g, y + g, mw, h - 2 * g))
+                k = n - 1
+                sh = (h - g * (k + 1)) // k
+                for i in range(k):
+                    rects.append((x + 2 * g + mw, y + g + i * (sh + g), sw, sh))
+        for hwnd, rc in zip(members, rects):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+            user32.SetWindowPos(hwnd, HWND_TOP, int(rc[0]), int(rc[1]), int(rc[2]), int(rc[3]),
+                                SWP_NOACTIVATE | SWP_NOOWNERZORDER)
+
     def _toggle_autostart(self):
         set_autostart(not autostart_enabled())
 
@@ -1602,22 +1649,33 @@ class TrayApp:
         self._save()
         self._update_tray()
 
-    def _add_window_to(self, c):
+    def _edit_windows(self, c):
+        # одно окно для добавления И удаления: текущие члены предотмечены, снял
+        # галочку -> убрали из контейнера; плюс кнопки раскладки
         if not c.active:
             self._activate(c)
         if not c.active:
             return
-        added = False
-        for hwnd in self._pick_windows():
-            if c.attach(hwnd, c.host_hwnd):
-                added = True
-        if added:
-            self._set_current(c)
-            self._save()
+        members = [h for h in c.members if user32.IsWindow(h)]
+        extra = [(h, get_window_text(h)) for h in members]
+        res = self._pick_windows(preselect=set(members), extra=extra)
+        if res["list"] is None:
+            return                          # отмена — ничего не меняем
+        chosen = set(res["list"])
+        for h in list(c.members):           # убрать снятые
+            if h not in chosen:
+                c.detach(h)
+        for h in chosen:                    # добавить новые
+            if h not in c.members and user32.IsWindow(h):
+                c.attach(h, c.host_hwnd)
+        self._set_current(c)
+        self._save()
+        if res["layout"]:
+            self._arrange(c, res["layout"])
 
     def _add_window_current(self):
         if self.current:
-            self._add_window_to(self.current)
+            self._edit_windows(self.current)
 
     def _create_container(self):
         name = self._ask_string(T("new_container"), T("name_label"),
@@ -1628,13 +1686,7 @@ class TrayApp:
         self.containers.append(c)
         self._activate(c)
         self._save()
-        # сразу предложить добавить окна
-        added = False
-        for hwnd in self._pick_windows():
-            if c.attach(hwnd, c.host_hwnd):
-                added = True
-        if added:
-            self._save()
+        self._edit_windows(c)               # сразу выбрать окна (+ раскладку)
 
     def _rename(self, c):
         name = self._ask_string(T("rename_title"), T("new_name"), c.name)
@@ -1771,15 +1823,25 @@ class TrayApp:
                 if not c.active or not c.host_hwnd:
                     continue
                 if user32.IsIconic(c.host_hwnd):
-                    continue                      # вся группа свёрнута — не трогаем
+                    # группа свёрнута (таскбар-кнопка / Win+D): прячем все окна явно —
+                    # на Win11 авто-скрытие owned-окон срабатывает не всегда
+                    for h in list(c.members):
+                        m = c.members.get(h)
+                        if m and not m.min_detached and user32.IsWindow(h) \
+                                and user32.IsWindowVisible(h):
+                            user32.ShowWindow(h, SW_HIDE)
+                            m.group_hidden = True
+                    continue
                 for h in list(c.members):
                     m = c.members.get(h)
                     if not m or not user32.IsWindow(h):
                         continue
+                    if m.group_hidden:           # группа развёрнута — вернуть окна
+                        user32.ShowWindow(h, SW_SHOWNA)
+                        m.group_hidden = False
                     iconic = bool(user32.IsIconic(h))
-                    # свёрнутое окно временно ОТВЯЗЫВАЕМ от контейнера -> у него
-                    # появляется своя кнопка в таскбаре и его можно развернуть;
-                    # при разворачивании возвращаем обратно в контейнер (нативно)
+                    # свёрнутое в одиночку окно временно ОТВЯЗЫВАЕМ -> своя кнопка
+                    # в таскбаре, его можно развернуть; развернул — вернулось в контейнер
                     if iconic and not m.min_detached:
                         set_owner(h, m.o_owner or 0)
                         m.min_detached = True
@@ -2104,17 +2166,19 @@ class TrayApp:
         win.bind("<Return>", lambda e: win.destroy())
         self.root.wait_window(win)
 
-    def _pick_windows(self):
-        """Сетка превью окон (как удержанный Alt+Tab). Множественный выбор -> list[hwnd]."""
-        targets = self._pick_targets()
-        selected = set()
+    def _pick_windows(self, preselect=None, extra=None, with_layouts=True):
+        """Сетка превью окон. Возвращает {'list': [hwnd]|None, 'layout': str|None}.
+        preselect — заранее отмеченные (текущие члены); extra — доп. окна для показа."""
+        preselect = set(preselect or [])
+        targets = list(extra or []) + self._pick_targets()
+        selected = set(preselect)
         imgs = []
         tmpdir = tempfile.mkdtemp(prefix="hdc_thumb_")
         tmpfiles = []
-        result = {"list": []}
+        result = {"list": None, "layout": None}
 
-        win = self._dialog(T("pick_title"), 940, 660)
-        tk.Label(win, text=T("pick_hint"),
+        win = self._dialog(T("pick_title"), 940, 700)
+        tk.Label(win, text=T("edit_hint"),
                  bg=COL_SURFACE, fg=COL_TEXT, font=FONT_TITLE).pack(
             anchor="w", padx=16, pady=(12, 8))
 
@@ -2135,7 +2199,8 @@ class TrayApp:
 
         def make_tile(idx, hwnd, title):
             tile = tk.Frame(grid, bg=COL_BG, highlightthickness=2,
-                            highlightbackground=COL_BORDER, cursor="hand2")
+                            highlightbackground=(COL_ACCENT if hwnd in selected else COL_BORDER),
+                            cursor="hand2")
             thumb = None
             log("thumb capture hwnd=%s cls=%r" % (hwnd, get_class_name(hwnd)))
             ppm = capture_thumb(hwnd, TW, TH)
@@ -2175,16 +2240,23 @@ class TrayApp:
         for i, (hwnd, title) in enumerate(targets):
             make_tile(i, hwnd, title)
 
-        def ok():
+        def finish(layout=None):
             result["list"] = list(selected)
+            result["layout"] = layout
             win.destroy()
 
         foot = tk.Frame(win, bg=COL_SURFACE)
         foot.pack(fill="x", padx=16, pady=12)
-        self._accent_btn(foot, "  " + T("add") + "  ", ok).pack(side="right")
+        if with_layouts:
+            tk.Label(foot, text=T("arrange"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                     font=FONT_SM).pack(side="left")
+            self._ghost_btn(foot, T("lay_cols"), lambda: finish("cols")).pack(side="left", padx=4)
+            self._ghost_btn(foot, T("lay_grid"), lambda: finish("grid")).pack(side="left", padx=4)
+            self._ghost_btn(foot, T("lay_master"), lambda: finish("master")).pack(side="left", padx=4)
+        self._accent_btn(foot, "  " + T("apply") + "  ", lambda: finish(None)).pack(side="right")
         self._ghost_btn(foot, T("cancel"), win.destroy).pack(side="right", padx=(0, 8))
         win.bind("<Escape>", lambda e: win.destroy())
-        win.bind("<Return>", lambda e: ok())
+        win.bind("<Return>", lambda e: finish(None))
 
         self.root.wait_window(win)
         try:
@@ -2201,7 +2273,7 @@ class TrayApp:
             os.rmdir(tmpdir)
         except Exception:
             pass
-        return result["list"]
+        return result
 
     # ===================================================================
     def run(self):
