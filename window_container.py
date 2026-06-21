@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.1.8"
+VERSION = "1.1.9"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -2000,6 +2000,50 @@ class TrayApp:
         d.line([c - a, c + a, c + a, c - a], fill=(235, 235, 235, 255), width=w)
         return ImageTk.PhotoImage(im.resize((size, size), Image.LANCZOS))
 
+    def _make_recolored_ico(self, color, dst):
+        # дефолтное лого, перекрашенное в цвет метки -> .ico (тот же приём, что и
+        # для иконки в таскбаре: красим синюю панель, сохраняя тени/градиент)
+        if not (HAVE_PIL and os.path.exists(_ICON)):
+            return None
+        rgb = hex_rgb(color)
+        if not rgb:
+            return None
+        try:
+            tr, tg, tb = rgb
+            ref = 132.0
+            im = Image.open(_ICON).convert("RGBA").resize((256, 256), Image.LANCZOS)
+            px = im.load()
+            for y in range(im.height):
+                for x in range(im.width):
+                    r, g, b, a = px[x, y]
+                    if b > r * 1.25 and b > g * 1.05 and b > 80:
+                        f = (0.299 * r + 0.587 * g + 0.114 * b) / ref
+                        px[x, y] = (min(255, int(tr * f)), min(255, int(tg * f)),
+                                    min(255, int(tb * f)), a)
+            im.save(dst, format="ICO",
+                    sizes=[(16, 16), (24, 24), (32, 32), (48, 48),
+                           (64, 64), (128, 128), (256, 256)])
+            return dst
+        except Exception as ex:
+            log("recolor ico failed: %r" % ex)
+            return None
+
+    def _container_icon_file(self, c):
+        # .ico, совпадающая с иконкой контейнера: свой аватар -> как есть;
+        # только цвет -> перекрашенное дефолтное лого; иначе -> общее лого
+        if c.icon and os.path.exists(c.icon):
+            return c.icon
+        if c.color:
+            try:
+                os.makedirs(_ICONDIR, exist_ok=True)
+                safe = "".join(ch if ch.isalnum() else "_" for ch in c.name)[:40] or "label"
+                dst = os.path.join(_ICONDIR, safe + "_label.ico")
+                if self._make_recolored_ico(c.color, dst):
+                    return dst
+            except Exception:
+                pass
+        return _ICON
+
     def _color_popup(self, anchor, initial, on_pick):
         # компактный встроенный выбор цвета (HSV-полосы + hex) в стиле приложения
         import colorsys
@@ -2454,8 +2498,11 @@ class TrayApp:
 
     def _create_shortcut(self, c):
         exe = os.path.abspath(sys.argv[0])
-        icon = c.icon if (c.icon and os.path.exists(c.icon)) else \
-            (_ICON if os.path.exists(_ICON) else exe)
+        # ярлык получает ТУ ЖЕ иконку, что и контейнер: свой аватар, либо
+        # перекрашенное в цвет метки дефолтное лого, либо общее лого
+        icon = self._container_icon_file(c)
+        if not (icon and os.path.exists(icon)):
+            icon = exe
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
         if not os.path.isdir(desktop):
             desktop = os.path.join(os.environ.get("USERPROFILE", _DIR), "Desktop")
