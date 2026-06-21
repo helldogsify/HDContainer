@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.1.7"
+VERSION = "1.1.8"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -317,7 +317,7 @@ STRINGS = {
     "lbl_icon": {"en": "Icon", "ru": "Иконка", "es": "Icono", "pt": "Ícone", "de": "Symbol", "fr": "Icône", "zh": "图标"},
     "lbl_color": {"en": "Color", "ru": "Цвет", "es": "Color", "pt": "Cor", "de": "Farbe", "fr": "Couleur", "zh": "颜色"},
     "lbl_windows": {"en": "Windows", "ru": "Окна", "es": "Ventanas", "pt": "Janelas", "de": "Fenster", "fr": "Fenêtres", "zh": "窗口"},
-    "choose_ico": {"en": "Choose .ico", "ru": "Выбрать .ico", "es": "Elegir .ico", "pt": "Escolher .ico", "de": ".ico wählen", "fr": "Choisir .ico", "zh": "选择 .ico"},
+    "choose_ico": {"en": "Choose icon", "ru": "Выбрать иконку", "es": "Elegir icono", "pt": "Escolher ícone", "de": "Symbol wählen", "fr": "Choisir une icône", "zh": "选择图标"},
     "none_color": {"en": "None", "ru": "Без цвета", "es": "Ninguno", "pt": "Nenhuma", "de": "Keine", "fr": "Aucune", "zh": "无"},
     "shortcut_btn": {"en": "Desktop shortcut", "ru": "Ярлык на стол", "es": "Acceso directo", "pt": "Atalho", "de": "Verknüpfung", "fr": "Raccourci", "zh": "桌面快捷方式"},
     "updating": {"en": "Downloading the update…", "ru": "Загружаю обновление…", "es": "Descargando la actualización…", "pt": "Baixando a atualização…", "de": "Update wird heruntergeladen…", "fr": "Téléchargement de la mise à jour…", "zh": "正在下载更新…"},
@@ -1574,16 +1574,16 @@ class TrayApp:
         self._host_class_atom = atom or 1
 
     def _container_icon(self, c):
-        # своя .ico (или дефолт), панель перекрашивается в цвет контейнера
+        # свой аватар используем КАК ЕСТЬ (без перекраски). Цвет-метка
+        # перекрашивает только ДЕФОЛТНОЕ лого (его синюю панель).
         if not c.hicon:
-            base = load_icon_file(c.icon) if (c.icon and os.path.exists(c.icon)) else 0
-            base = base or self.hicon
-            col = hex_rgb(c.color) if c.color else None
-            if col:
-                c.hicon = recolor_icon(base, col) or (base if c.icon else 0)
-            elif c.icon and os.path.exists(c.icon):
-                c.hicon = base
-            # иначе c.hicon остаётся 0 -> используем общий дефолт
+            if c.icon and os.path.exists(c.icon):
+                c.hicon = load_icon_file(c.icon) or 0     # свой аватар — как есть
+            else:
+                col = hex_rgb(c.color) if c.color else None
+                if col:
+                    c.hicon = recolor_icon(self.hicon, col) or 0
+                # иначе c.hicon=0 -> общий дефолт
         return c.hicon or self.hicon
 
     def _apply_host_icon(self, c):
@@ -1983,6 +1983,23 @@ class TrayApp:
             d.ellipse([c - rr, c - rr, c + rr, c + rr], outline=dim, width=int(S * 0.9))
         return ImageTk.PhotoImage(im.resize((size, size), Image.LANCZOS))
 
+    def _close_badge_photo(self, size):
+        # значок «удалить» (× в тёмном кружке) поверх аватара при наведении
+        if not HAVE_PIL:
+            return None
+        S = 4
+        n = size * S
+        im = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        d.ellipse([0, 0, n - 1, n - 1], fill=(20, 20, 22, 230),
+                  outline=(230, 230, 230, 255), width=S)
+        a = n * 0.28
+        c = n / 2.0
+        w = int(S * 1.3)
+        d.line([c - a, c - a, c + a, c + a], fill=(235, 235, 235, 255), width=w)
+        d.line([c - a, c + a, c + a, c - a], fill=(235, 235, 235, 255), width=w)
+        return ImageTk.PhotoImage(im.resize((size, size), Image.LANCZOS))
+
     def _color_popup(self, anchor, initial, on_pick):
         # компактный встроенный выбор цвета (HSV-полосы + hex) в стиле приложения
         import colorsys
@@ -2128,17 +2145,24 @@ class TrayApp:
                  font=FONT_SM).pack(anchor="w")
         ico_row = tk.Frame(ico_col, bg=COL_SURFACE)
         ico_row.pack(anchor="w", pady=(4, 0))
-        AV = 46
-        prev = tk.Canvas(ico_row, width=AV, height=AV, bg=COL_BG,
+        AV, BD = 46, 18
+        prev = tk.Canvas(ico_row, width=AV, height=AV, bg=COL_BG, cursor="hand2",
                          highlightthickness=1, highlightbackground=COL_BORDER)
         prev_id = prev.create_image(AV // 2 + 1, AV // 2 + 1)
+        badge_ph = self._close_badge_photo(BD)
+        imgs.append(badge_ph)
+        badge_id = prev.create_image(AV - BD // 2 - 1, BD // 2 + 1,
+                                     image=(badge_ph or ""), state="hidden")
         prev.pack(side="left")
-        av_ref = {"img": None}
+        av_ref = {"img": None, "has": False}
 
         def show_avatar(path):                 # сразу показать выбранную картинку
             ph = self._avatar_photo(path, AV - 2)
             av_ref["img"] = ph
+            av_ref["has"] = bool(ph)
             prev.itemconfigure(prev_id, image=(ph or ""))
+            if not ph:
+                prev.itemconfigure(badge_id, state="hidden")
 
         def choose_icon():
             from tkinter import filedialog
@@ -2153,6 +2177,24 @@ class TrayApp:
                 return
             draft["icon"] = path
             show_avatar(path)
+
+        # навёл на превью -> в углу появляется крестик; клик по нему удаляет иконку
+        def _on_enter(_e):
+            if av_ref["has"] and badge_ph:
+                prev.itemconfigure(badge_id, state="normal")
+
+        def _on_leave(_e):
+            prev.itemconfigure(badge_id, state="hidden")
+
+        def _on_click(e):
+            if av_ref["has"] and badge_ph and e.x >= AV - BD and e.y <= BD:
+                draft["icon"] = None           # клик по крестику — убрать иконку
+                show_avatar(None)
+            else:
+                choose_icon()                  # клик по превью — выбрать
+        prev.bind("<Enter>", _on_enter)
+        prev.bind("<Leave>", _on_leave)
+        prev.bind("<Button-1>", _on_click)
         self._ghost_btn(ico_row, T("choose_ico"), choose_icon).pack(
             side="left", padx=(10, 0))
         show_avatar(c.icon)
