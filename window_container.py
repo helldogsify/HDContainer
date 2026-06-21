@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1473,7 +1473,7 @@ class TrayApp:
         win.bind("<Escape>", lambda e: close())
 
     def _popup_container_row(self, parent, c, width, close):
-        row = tk.Frame(parent, bg=COL_SURFACE, height=40, width=width)
+        row = tk.Frame(parent, bg=COL_SURFACE, height=32, width=width)
         row.pack(fill="x")
         row.pack_propagate(False)
         accent = c.color or COL_ACCENT
@@ -1506,7 +1506,7 @@ class TrayApp:
             wdg.bind("<Leave>", leave)
 
     def _popup_action_row(self, parent, glyph, text, width, command):
-        row = tk.Frame(parent, bg=COL_SURFACE, height=40, width=width)
+        row = tk.Frame(parent, bg=COL_SURFACE, height=32, width=width)
         row.pack(fill="x")
         row.pack_propagate(False)
         g = tk.Label(row, text=glyph, bg=COL_SURFACE, fg=COL_TEXT_DIM,
@@ -1908,6 +1908,96 @@ class TrayApp:
             log("copy icon failed: %r" % ex)
             c.icon = path
 
+    def _color_popup(self, anchor, initial, on_pick):
+        # компактный встроенный выбор цвета (HSV-полосы + hex) в стиле приложения
+        import colorsys
+        rgb = hex_rgb(initial) or (76, 139, 245)
+        h, s, v = colorsys.rgb_to_hsv(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
+        st = {"h": h, "s": s, "v": v}
+        W, BH, PAD = 200, 14, 10
+        win = tk.Toplevel(self.root)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.configure(bg=COL_BORDER)
+        fr = tk.Frame(win, bg=COL_SURFACE)
+        fr.pack(padx=1, pady=1)
+
+        def cur_hex():
+            r, g, b = colorsys.hsv_to_rgb(st["h"], st["s"], st["v"])
+            return "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
+
+        preview = tk.Canvas(fr, width=W, height=22, bg=COL_SURFACE,
+                            highlightthickness=0, bd=0)
+        pv = preview.create_rectangle(0, 0, W, 22, outline="", fill=initial)
+        preview.pack(padx=12, pady=(12, 8))
+        bars = {}
+
+        def make_bar(key):
+            cv = tk.Canvas(fr, width=W + 2 * PAD, height=BH + 8, bg=COL_SURFACE,
+                           highlightthickness=0, bd=0, cursor="hand2")
+            cv.pack(padx=12, pady=2)
+
+            def onclick(e):
+                st[key] = max(0.0, min(1.0, (e.x - PAD) / float(W)))
+                redraw()
+            cv.bind("<Button-1>", onclick)
+            cv.bind("<B1-Motion>", onclick)
+            bars[key] = cv
+
+        def redraw():
+            for key, cv in bars.items():
+                cv.delete("all")
+                for i in range(0, W, 2):
+                    t = i / float(W)
+                    if key == "h":
+                        r, g, b = colorsys.hsv_to_rgb(t, 1, 1)
+                    elif key == "s":
+                        r, g, b = colorsys.hsv_to_rgb(st["h"], t, max(st["v"], 0.15))
+                    else:
+                        r, g, b = colorsys.hsv_to_rgb(st["h"], st["s"], t)
+                    cv.create_line(PAD + i, 4, PAD + i, 4 + BH, width=2,
+                                   fill="#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255)))
+                x = PAD + st[key] * W
+                cv.create_rectangle(x - 2, 1, x + 2, 4 + BH + 2, outline="white", width=2)
+            preview.itemconfigure(pv, fill=cur_hex())
+            hx.set(cur_hex())
+
+        for k in ("h", "s", "v"):
+            make_bar(k)
+
+        row = tk.Frame(fr, bg=COL_SURFACE)
+        row.pack(fill="x", padx=12, pady=(6, 10))
+        hx = tk.StringVar()
+        e = tk.Entry(row, textvariable=hx, width=9, font=FONT_SM, bg=COL_BG,
+                     fg=COL_TEXT, insertbackground=COL_TEXT, relief="flat",
+                     highlightthickness=1, highlightbackground=COL_BORDER,
+                     highlightcolor=COL_ACCENT, justify="center")
+        e.pack(side="left", ipady=3)
+
+        def apply_hex(_=None):
+            rr = hex_rgb(hx.get().strip())
+            if rr:
+                st["h"], st["s"], st["v"] = colorsys.rgb_to_hsv(
+                    rr[0] / 255.0, rr[1] / 255.0, rr[2] / 255.0)
+                redraw()
+        e.bind("<Return>", apply_hex)
+        e.bind("<FocusOut>", apply_hex)
+
+        def ok():
+            on_pick(cur_hex())
+            win.destroy()
+        self._accent_btn(row, T("ok"), ok).pack(side="right")
+        self._ghost_btn(row, T("cancel"), win.destroy).pack(side="right", padx=(0, 8))
+
+        redraw()
+        anchor.update_idletasks()
+        x = max(0, anchor.winfo_rootx() - 40)
+        y = anchor.winfo_rooty() + anchor.winfo_height() + 6
+        win.geometry("+%d+%d" % (x, y))
+        win.lift()
+        win.focus_force()
+        win.bind("<Escape>", lambda e: win.destroy())
+
     def _create_container(self):
         c = Container(T("container_n", len(self.containers) + 1))
         self._edit_container(c)            # is_new определяется по отсутствию в списке
@@ -1918,7 +2008,7 @@ class TrayApp:
 
     def _edit_container(self, c):
         is_new = c not in self.containers
-        win = self._dialog(T("edit_container"), 960, 740)
+        win = self._dialog(T("edit_container"), 940, 700)
         draft = {"icon": c.icon, "layout": None}
         color_state = {"v": c.color}
         cur_members = [h for h in c.members if user32.IsWindow(h)] if c.active else []
@@ -1928,7 +2018,7 @@ class TrayApp:
 
         # ---------- имя ----------
         head = tk.Frame(win, bg=COL_SURFACE)
-        head.pack(fill="x", padx=20, pady=(18, 6))
+        head.pack(fill="x", padx=20, pady=(14, 2))
         tk.Label(head, text=T("lbl_name"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
                  font=FONT_SM).pack(anchor="w")
         name_var = tk.StringVar(value=c.name)
@@ -1936,11 +2026,11 @@ class TrayApp:
                        fg=COL_TEXT, insertbackground=COL_TEXT, relief="flat",
                        highlightthickness=1, highlightbackground=COL_BORDER,
                        highlightcolor=COL_ACCENT)
-        ent.pack(fill="x", ipady=7, pady=(4, 0))
+        ent.pack(fill="x", ipady=5, pady=(3, 0))
 
         # ---------- иконка + цвет (в одной строке) ----------
         look = tk.Frame(win, bg=COL_SURFACE)
-        look.pack(fill="x", padx=20, pady=(14, 4))
+        look.pack(fill="x", padx=20, pady=(10, 4))
 
         ico_col = tk.Frame(look, bg=COL_SURFACE)
         ico_col.pack(side="left", anchor="n")
@@ -1948,7 +2038,8 @@ class TrayApp:
                  font=FONT_SM).pack(anchor="w")
         ico_row = tk.Frame(ico_col, bg=COL_SURFACE)
         ico_row.pack(anchor="w", pady=(4, 0))
-        ipath_lbl = tk.Label(ico_row, text=(os.path.basename(c.icon) if c.icon else "—"),
+        # имя файла иконки показываем только когда она задана (без странного «—»)
+        ipath_lbl = tk.Label(ico_row, text=(os.path.basename(c.icon) if c.icon else ""),
                              bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM)
 
         def choose_icon():
@@ -1966,44 +2057,74 @@ class TrayApp:
         ipath_lbl.pack(side="left", padx=(10, 0))
 
         col_col = tk.Frame(look, bg=COL_SURFACE)
-        col_col.pack(side="left", anchor="n", padx=(34, 0))
+        col_col.pack(side="left", anchor="n", padx=(48, 0))
         tk.Label(col_col, text=T("lbl_color"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
                  font=FONT_SM).pack(anchor="w")
         sw_row = tk.Frame(col_col, bg=COL_SURFACE)
         sw_row.pack(anchor="w", pady=(4, 0))
-        swatches = {}
+        SZ = 26
+        swatches = {}        # key(None|hex) -> (canvas, ring_id)
+
+        # кастомный чип (последний): пусто -> «+», задан -> залит выбранным цветом.
+        # Выделение рисуем КОЛЬЦОМ-элементом постоянной геометрии — кружок не «скачет»
+        custom = tk.Canvas(sw_row, width=SZ, height=SZ, bg=COL_SURFACE,
+                           highlightthickness=0, bd=0, cursor="hand2")
+        cring = custom.create_oval(1, 1, SZ - 1, SZ - 1, outline="", width=2)
+        cfill = custom.create_oval(5, 5, SZ - 5, SZ - 5, fill="", outline=COL_TEXT_DIM)
+        cpl1 = custom.create_line(SZ / 2 - 4, SZ / 2, SZ / 2 + 4, SZ / 2,
+                                  fill=COL_TEXT_DIM, width=2)
+        cpl2 = custom.create_line(SZ / 2, SZ / 2 - 4, SZ / 2, SZ / 2 + 4,
+                                  fill=COL_TEXT_DIM, width=2)
+
+        def _set_custom_chip(col):
+            if col:
+                custom.itemconfigure(cfill, fill=col, outline="")
+                custom.itemconfigure(cpl1, state="hidden")
+                custom.itemconfigure(cpl2, state="hidden")
+            else:
+                custom.itemconfigure(cfill, fill="", outline=COL_TEXT_DIM)
+                custom.itemconfigure(cpl1, state="normal")
+                custom.itemconfigure(cpl2, state="normal")
 
         def pick_color(col):
             color_state["v"] = col
-            for cc, sw in swatches.items():
-                sel = (cc == col)
-                sw.configure(highlightbackground=(COL_TEXT if sel else COL_BORDER),
-                             highlightthickness=(2 if sel else 1))
-        for col in self.PALETTE:
-            sw = tk.Canvas(sw_row, width=24, height=24, bg=COL_SURFACE,
-                           highlightthickness=1, highlightbackground=COL_BORDER,
-                           cursor="hand2")
-            if col is None:
-                sw.create_oval(4, 4, 20, 20, fill="", outline=COL_TEXT_DIM)
-                sw.create_line(7, 17, 17, 7, fill=COL_TEXT_DIM, width=2)
+            is_custom = col is not None and col not in self.PALETTE
+            for key, (cv, ring) in swatches.items():
+                cv.itemconfigure(ring, outline=(COL_TEXT if key == col else ""))
+            _set_custom_chip(col if is_custom else None)
+            custom.itemconfigure(cring, outline=(COL_TEXT if is_custom else ""))
+
+        def _swatch(key):
+            cv = tk.Canvas(sw_row, width=SZ, height=SZ, bg=COL_SURFACE,
+                           highlightthickness=0, bd=0, cursor="hand2")
+            ring = cv.create_oval(1, 1, SZ - 1, SZ - 1, outline="", width=2)
+            if key is None:
+                cv.create_oval(5, 5, SZ - 5, SZ - 5, outline=COL_TEXT_DIM, width=1)
+                cv.create_line(8, SZ - 8, SZ - 8, 8, fill=COL_TEXT_DIM, width=2)
             else:
-                sw.create_oval(3, 3, 21, 21, fill=col, outline="")
-            sw.bind("<Button-1>", lambda e, col=col: pick_color(col))
-            sw.pack(side="left", padx=(0, 7))
-            swatches[col] = sw
+                cv.create_oval(4, 4, SZ - 4, SZ - 4, fill=key, outline="")
+            cv.bind("<Button-1>", lambda e, k=key: pick_color(k))
+            cv.pack(side="left", padx=(0, 7))
+            swatches[key] = (cv, ring)
+
+        for col in self.PALETTE:
+            _swatch(col)
+        custom.bind("<Button-1>", lambda e: self._color_popup(
+            custom, color_state["v"] or "#4c8bf5", pick_color))
+        custom.pack(side="left", padx=(2, 0))
         pick_color(c.color)
 
         # ---------- окна ----------
-        tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=20, pady=(12, 0))
+        tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=20, pady=(8, 0))
         tk.Label(win, text=T("lbl_windows"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
-                 font=FONT_SM).pack(anchor="w", padx=20, pady=(10, 2))
+                 font=FONT_SM).pack(anchor="w", padx=20, pady=(6, 2))
 
         # ---------- низ: кнопки, разделитель, второстепенные действия ----------
         foot = tk.Frame(win, bg=COL_SURFACE)
-        foot.pack(side="bottom", fill="x", padx=20, pady=(8, 14))
+        foot.pack(side="bottom", fill="x", padx=20, pady=(6, 10))
         tk.Frame(win, bg=COL_BORDER, height=1).pack(side="bottom", fill="x")
         links = tk.Frame(win, bg=COL_SURFACE)
-        links.pack(side="bottom", fill="x", padx=20, pady=(6, 8))
+        links.pack(side="bottom", fill="x", padx=20, pady=(5, 6))
 
         body = tk.Frame(win, bg=COL_SURFACE)
         canvas = tk.Canvas(body, bg=COL_SURFACE, highlightthickness=0)
@@ -2546,7 +2667,7 @@ class TrayApp:
 
     def _setting_check(self, parent, text, val, setter, pad):
         row = tk.Frame(parent, bg=COL_SURFACE)
-        row.pack(fill="x", padx=pad, pady=8)
+        row.pack(fill="x", padx=pad, pady=6)
         chk, st, draw = self._make_check(row, val, setter)
         chk.pack(side="left")
         lbl = tk.Label(row, text="   " + text, bg=COL_SURFACE, fg=COL_TEXT,
@@ -2561,7 +2682,7 @@ class TrayApp:
 
     def _setting_lang(self, parent, pad):
         row = tk.Frame(parent, bg=COL_SURFACE)
-        row.pack(fill="x", padx=pad, pady=8)
+        row.pack(fill="x", padx=pad, pady=6)
         tk.Label(row, text=T("language"), bg=COL_SURFACE, fg=COL_TEXT,
                  font=FONT).pack(side="left")
         val = tk.Label(row, text=LANG_NAMES.get(LANG, "English") + "   ⌄",
