@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -2849,6 +2849,13 @@ def main():
         if launch_name:
             send_copydata(existing, launch_name)
         return
+    # именованный мьютекс держим всё время работы: по нему установщик (AppMutex)
+    # понимает, что программа запущена, и закрывает её перед обновлением
+    try:
+        kernel32.CreateMutexW(None, False,
+                              ctypes.c_wchar_p("HDContainer_singleton_mutex"))
+    except Exception:
+        pass
     TrayApp(launch_name=launch_name).run()
 
 

@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.1.3"
+#define MyAppVersion "1.1.4"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -13,11 +13,17 @@ AppPublisherURL={#MyAppUrl}
 AppSupportURL={#MyAppUrl}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
-; спрашиваем у пользователя, куда ставить:
-DisableDirPage=no
+; на чистую установку спросим папку, при обновлении возьмём прежнюю (auto)
+DisableDirPage=auto
 DisableProgramGroupPage=yes
+; ВСЕГДА ставим для текущего пользователя -> один и тот же scope, поэтому
+; обновление гарантированно находит прежнюю установку. Раньше диалог
+; per-user/per-machine позволял уехать в другой hive -> Setup не видел старую
+; версию и ставил «как на чистый комп».
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+; имя мьютекса = его создаёт запущенное приложение; так Setup понимает, что
+; программа запущена, и закрывает её перед заменой файлов
+AppMutex=HDContainer_singleton_mutex
 OutputDir=dist
 OutputBaseFilename=HDContainer-Setup
 SetupIconFile=HDContainer.ico
@@ -61,6 +67,22 @@ Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; F
 Filename: "{app}\{#MyAppExe}"; Parameters: "--quit"; Flags: waituntilterminated runhidden; RunOnceId: "QuitApp"
 
 [Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  rc: Integer;
+begin
+  // закрыть запущенный экземпляр ПЕРЕД заменой файлов: сперва мягко (--quit сам
+  // корректно отвяжет окна группы), затем гарантированно добить по имени процесса
+  // — это сработает даже если старая версия стоит в другой папке.
+  if FileExists(ExpandConstant('{app}\{#MyAppExe}')) then
+    Exec(ExpandConstant('{app}\{#MyAppExe}'), '--quit', '', SW_HIDE,
+         ewWaitUntilTerminated, rc);
+  Exec(ExpandConstant('{cmd}'), '/C taskkill /IM {#MyAppExe} /F', '', SW_HIDE,
+       ewWaitUntilTerminated, rc);
+  Sleep(500);
+  Result := '';
+end;
+
 procedure CurUninstallStepChanged(CurStep: TUninstallStep);
 var
   DataDir: String;
