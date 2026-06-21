@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.1.5"
+#define MyAppVersion "1.1.6"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -13,6 +13,8 @@ AppPublisherURL={#MyAppUrl}
 AppSupportURL={#MyAppUrl}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
+; экран приветствия показываем -> на нём прямо сообщаем, что это ОБНОВЛЕНИЕ
+DisableWelcomePage=no
 ; на чистую установку спросим папку, при обновлении возьмём прежнюю (auto)
 DisableDirPage=auto
 DisableProgramGroupPage=yes
@@ -21,16 +23,14 @@ DisableProgramGroupPage=yes
 ; per-user/per-machine позволял уехать в другой hive -> Setup не видел старую
 ; версию и ставил «как на чистый комп».
 PrivilegesRequired=lowest
-; имя мьютекса = его создаёт запущенное приложение; так Setup понимает, что
-; программа запущена, и закрывает её перед заменой файлов
-AppMutex=HDContainer_singleton_mutex
 OutputDir=dist
 OutputBaseFilename=HDContainer-Setup
 SetupIconFile=HDContainer.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-CloseApplications=yes
+; запущенный экземпляр закрываем сами в коде (тихо, без диалога «закройте прогу»)
+CloseApplications=no
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExe}
 UninstallDisplayName={#MyAppName}
@@ -42,6 +42,8 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 [CustomMessages]
 en.AskRemoveData=Also delete your containers and settings?%n%nYes — remove everything. No — keep them for next time.
 ru.AskRemoveData=Удалить также ваши контейнеры и настройки?%n%nДа — удалить всё. Нет — сохранить для следующего раза.
+en.UpdateInfo=HDContainer version %1 is already installed in:  %2.  Setup will UPDATE it in place to version %3 — same folder, nothing to choose. The running copy will be closed automatically.
+ru.UpdateInfo=HDContainer версии %1 уже установлен в папке:  %2.  Установщик ОБНОВИТ его на месте до версии %3 — та же папка, ничего выбирать не нужно. Запущенная копия будет закрыта автоматически.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -67,13 +69,53 @@ Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; F
 Filename: "{app}\{#MyAppExe}"; Parameters: "--quit"; Flags: waituntilterminated runhidden; RunOnceId: "QuitApp"
 
 [Code]
+var
+  PrevPath: String;
+  PrevVer: String;
+  IsUpgrade: Boolean;
+
+// найти прежнюю установку по ключу деинсталляции Inno (AppId + _is1), HKCU/HKLM
+function FindPrev(): Boolean;
+var
+  K: String;
+begin
+  K := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B7E6B4C2-1A3D-4F58-9E2C-7A1D9F3C2E55}_is1';
+  PrevPath := '';
+  PrevVer := '';
+  Result := RegQueryStringValue(HKCU, K, 'InstallLocation', PrevPath);
+  if not Result then
+    Result := RegQueryStringValue(HKLM, K, 'InstallLocation', PrevPath);
+  if Result then
+  begin
+    if not RegQueryStringValue(HKCU, K, 'DisplayVersion', PrevVer) then
+      RegQueryStringValue(HKLM, K, 'DisplayVersion', PrevVer);
+    if PrevVer = '' then PrevVer := '?';
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  IsUpgrade := FindPrev();
+  Result := True;
+end;
+
+// на экране приветствия прямо пишем, что это обновление и в какой папке
+procedure InitializeWizard();
+begin
+  if IsUpgrade and (WizardForm.WelcomeLabel2 <> nil) then
+    WizardForm.WelcomeLabel2.Caption :=
+      FmtMessage(CustomMessage('UpdateInfo'), [PrevVer, PrevPath, '{#MyAppVersion}']);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   rc: Integer;
 begin
-  // закрыть запущенный экземпляр ПЕРЕД заменой файлов: сперва мягко (--quit сам
-  // корректно отвяжет окна группы), затем гарантированно добить по имени процесса
-  // — это сработает даже если старая версия стоит в другой папке.
+  // ТИХО закрыть запущенный экземпляр перед заменой файлов (без диалогов Inno):
+  // мягко (--quit корректно отвяжет окна) в обеих возможных папках, затем добить.
+  if (PrevPath <> '') and FileExists(AddBackslash(PrevPath) + '{#MyAppExe}') then
+    Exec(AddBackslash(PrevPath) + '{#MyAppExe}', '--quit', '', SW_HIDE,
+         ewWaitUntilTerminated, rc);
   if FileExists(ExpandConstant('{app}\{#MyAppExe}')) then
     Exec(ExpandConstant('{app}\{#MyAppExe}'), '--quit', '', SW_HIDE,
          ewWaitUntilTerminated, rc);

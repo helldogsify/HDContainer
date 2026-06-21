@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.1.5"
+VERSION = "1.1.6"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1923,7 +1923,7 @@ class TrayApp:
         h, s, v = colorsys.rgb_to_hsv(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
         st = {"h": h, "s": s, "v": v}
         W, BH, PAD = 200, 14, 10
-        win = tk.Toplevel(self.root)
+        win = tk.Toplevel(anchor.winfo_toplevel())   # дитя редактора -> закроется с ним
         win.overrideredirect(True)
         win.attributes("-topmost", True)
         win.configure(bg=COL_BORDER)
@@ -2005,6 +2005,21 @@ class TrayApp:
         win.lift()
         win.focus_force()
         win.bind("<Escape>", lambda e: win.destroy())
+
+        def _close_outside(_e=None):
+            # закрыть по ЛЮБОМУ клику мимо: фокус ушёл не на наш дочерний виджет
+            try:
+                f = win.focus_get()
+            except Exception:
+                f = None
+            if f is not None and str(f).startswith(str(win)):
+                return                       # клик по полю hex/полосам — не закрываем
+            try:
+                win.destroy()
+            except Exception:
+                pass
+        win.after(300, lambda: win.winfo_exists()
+                  and win.bind("<FocusOut>", _close_outside))
 
     def _create_container(self):
         c = Container(T("container_n", len(self.containers) + 1))
