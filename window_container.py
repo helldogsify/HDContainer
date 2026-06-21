@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -628,6 +628,8 @@ _decl(gdi32.CreateBitmap, wintypes.HBITMAP,
       [ctypes.c_int, ctypes.c_int, UINT, UINT, ctypes.c_void_p])
 _decl(gdi32.SelectObject, wintypes.HGDIOBJ, [wintypes.HDC, wintypes.HGDIOBJ])
 _decl(gdi32.DeleteObject, BOOL, [wintypes.HGDIOBJ])
+_decl(gdi32.CreateRectRgn, wintypes.HRGN, [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int])
+_decl(user32.SetWindowRgn, ctypes.c_int, [HWND, wintypes.HRGN, BOOL])
 _decl(gdi32.StretchBlt, BOOL,
       [wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
        wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, DWORD])
@@ -755,6 +757,45 @@ def virtual_screen():
     g = user32.GetSystemMetrics
     return g(SM_XVIRTUALSCREEN), g(SM_YVIRTUALSCREEN), \
         g(SM_CXVIRTUALSCREEN), g(SM_CYVIRTUALSCREEN)
+
+
+def work_area():
+    r = wintypes.RECT()
+    user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(r), 0)
+    return r.left, r.top, r.right - r.left, r.bottom - r.top
+
+
+def layouts_for(n):
+    """Набор раскладок для n окон: список раскладок; каждая — список (x,y,w,h) в долях 0..1."""
+    if n <= 0:
+        return []
+    if n == 1:
+        return [[(0.0, 0.0, 1.0, 1.0)]]
+    cols = [(i / n, 0.0, 1.0 / n, 1.0) for i in range(n)]
+    rows = [(0.0, i / n, 1.0, 1.0 / n) for i in range(n)]
+    out = [cols, rows]
+    if n == 2:
+        return out
+    if n == 3:
+        out.append([(0.0, 0.0, 0.5, 1.0), (0.5, 0.0, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)])
+        out.append([(0.0, 0.0, 1.0, 0.5), (0.0, 0.5, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)])
+        return out
+    if n == 4:
+        out.append([(0.0, 0.0, 0.5, 0.5), (0.5, 0.0, 0.5, 0.5),
+                    (0.0, 0.5, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)])
+        out.append([(0.0, 0.0, 0.5, 1.0)] +
+                   [(0.5, i / 3.0, 0.5, 1.0 / 3.0) for i in range(3)])
+        return out
+    # n >= 5: сетка + колонки + ряды + главное со стеком
+    c = int(n ** 0.5)
+    if c * c < n:
+        c += 1
+    rr = (n + c - 1) // c
+    grid = [((i % c) / c, (i // c) / rr, 1.0 / c, 1.0 / rr) for i in range(n)]
+    out.append(grid)
+    k = n - 1
+    out.append([(0.0, 0.0, 0.6, 1.0)] + [(0.6, i / k, 0.4, 1.0 / k) for i in range(k)])
+    return out
 
 
 def load_icon_file(path, size=256):
@@ -1408,18 +1449,18 @@ class TrayApp:
 
     def _create_host(self, title, hicon=0, app_id=""):
         self._ensure_class()
-        # крошечное (1x1) обычное окно вместо полноэкранного прозрачного оверлея:
-        # такое окно система сворачивает по Win+D как нормальное приложение, и оно
-        # ничего не перекрывает (клики по экрану идут сами собой). Невидимость —
-        # через layered alpha=1 (практически прозрачно, но окно «настоящее»).
-        ex = WS_EX_LAYERED | WS_EX_APPWINDOW
+        # обычное (НЕ layered) крошечное окно, сделанное невидимым пустым регионом:
+        # layered/прозрачные оверлеи Win11 не сворачивает по Win+D, а это —
+        # «настоящее» приложение, которое Show Desktop сворачивает как все.
+        ex = WS_EX_APPWINDOW
         hwnd = user32.CreateWindowExW(
             ex, HOST_CLASS, title, WS_POPUP,
             0, 0, 1, 1, None, None, self.hinst, None)
         if not hwnd:
             log("CreateWindowExW host FAILED err=%s" % ctypes.get_last_error())
             return 0
-        user32.SetLayeredWindowAttributes(hwnd, 0, 1, LWA_ALPHA)
+        rgn = gdi32.CreateRectRgn(0, 0, 0, 0)   # пустой регион -> окно невидимо
+        user32.SetWindowRgn(hwnd, rgn, False)
         if app_id:
             set_app_id(hwnd, app_id)       # отдельная кнопка в таскбаре до показа
         ic = hicon or self.hicon
@@ -1534,41 +1575,20 @@ class TrayApp:
         self._save()
         self._update_tray()
 
-    def _arrange(self, c, layout):
+    def _arrange(self, c, rects):
+        # rects — нормализованные (x,y,w,h) в долях 0..1 из выбранного пресета
         members = [h for h in c.members if user32.IsWindow(h) and not user32.IsIconic(h)]
-        n = len(members)
-        if n == 0:
+        if not members or not rects:
             return
         x, y, w, h = work_area()
-        g = 8
-        rects = []
-        if layout == "cols":
-            cw = (w - g * (n + 1)) // n
-            rects = [(x + g + i * (cw + g), y + g, cw, h - 2 * g) for i in range(n)]
-        elif layout == "grid":
-            cols = int(n ** 0.5)
-            if cols * cols < n:
-                cols += 1
-            rows = (n + cols - 1) // cols
-            cw = (w - g * (cols + 1)) // cols
-            ch = (h - g * (rows + 1)) // rows
-            for i in range(n):
-                r, col = divmod(i, cols)
-                rects.append((x + g + col * (cw + g), y + g + r * (ch + g), cw, ch))
-        else:   # master + stack
-            if n == 1:
-                rects = [(x + g, y + g, w - 2 * g, h - 2 * g)]
-            else:
-                mw = int((w - 3 * g) * 0.6)
-                sw = w - 3 * g - mw
-                rects.append((x + g, y + g, mw, h - 2 * g))
-                k = n - 1
-                sh = (h - g * (k + 1)) // k
-                for i in range(k):
-                    rects.append((x + 2 * g + mw, y + g + i * (sh + g), sw, sh))
-        for hwnd, rc in zip(members, rects):
+        g = 6
+        for hwnd, (nx, ny, nw, nh) in zip(members, rects):
+            rx = x + int(round(nx * w)) + g
+            ry = y + int(round(ny * h)) + g
+            rw = max(140, int(round(nw * w)) - 2 * g)
+            rh = max(100, int(round(nh * h)) - 2 * g)
             user32.ShowWindow(hwnd, SW_RESTORE)
-            user32.SetWindowPos(hwnd, HWND_TOP, int(rc[0]), int(rc[1]), int(rc[2]), int(rc[3]),
+            user32.SetWindowPos(hwnd, HWND_TOP, rx, ry, rw, rh,
                                 SWP_NOACTIVATE | SWP_NOOWNERZORDER)
 
     def _toggle_autostart(self):
@@ -1603,10 +1623,14 @@ class TrayApp:
                 head = f.read(2)
             if os.path.getsize(dst) < 1000000 or head != b"MZ":
                 raise IOError("bad download (size=%d)" % os.path.getsize(dst))
-            # тихая установка поверх (Inno, тот же AppId) -> обновит файлы и
-            # перезапустит; мы выходим, чтобы снять блокировку exe
-            subprocess.Popen([dst, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
-            self.root.after(400, self._quit)
+            # ВАЖНО: установщик запускаем ОТЛОЖЕННО (через ~3с), чтобы наш onefile-
+            # процесс успел выйти и дочистить распаковку в Temp. Иначе установка
+            # нового exe конфликтует с распаковкой -> "Failed to load Python DLL".
+            cmd = ('ping 127.0.0.1 -n 4 >nul & "%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+                   % dst)
+            subprocess.Popen(["cmd", "/c", cmd], creationflags=CREATE_NO_WINDOW,
+                             close_fds=True)
+            self.root.after(300, self._quit)
         except Exception as ex:
             log("do_update failed: %r" % ex)
             # запасной путь — открыть страницу релизов, поставит вручную в один клик
@@ -2202,12 +2226,42 @@ class TrayApp:
 
         TW, TH, COLS = 270, 156, 3
 
+        def finish(layout=None):
+            result["list"] = list(selected)
+            result["layout"] = layout
+            win.destroy()
+
+        # визуальные пресеты раскладки: прямоугольник экрана с окнами внутри,
+        # без подписей; набор зависит от числа выбранных окон
+        wa = work_area()
+        aspect = wa[2] / max(wa[3], 1)
+        presets_row = tk.Frame(win, bg=COL_SURFACE)
+
+        def rebuild_presets():
+            for ch in presets_row.winfo_children():
+                ch.destroy()
+            if not with_layouts:
+                return
+            for layout in layouts_for(len(selected))[:6]:
+                cw = 104
+                chh = max(46, int(cw / aspect))
+                cv = tk.Canvas(presets_row, width=cw, height=chh, bg=COL_BG,
+                               highlightthickness=1, highlightbackground=COL_BORDER,
+                               cursor="hand2")
+                pad = 3.0
+                iw, ih = cw - 2 * pad, chh - 2 * pad
+                for (nx, ny, nw, nh) in layout:
+                    cv.create_rectangle(pad + nx * iw + 1.5, pad + ny * ih + 1.5,
+                                        pad + (nx + nw) * iw - 1.5, pad + (ny + nh) * ih - 1.5,
+                                        fill=COL_ACCENT, outline="")
+                cv.bind("<Button-1>", lambda e, L=layout: finish(L))
+                cv.pack(side="left", padx=4)
+
         def make_tile(idx, hwnd, title):
             tile = tk.Frame(grid, bg=COL_BG, highlightthickness=2,
                             highlightbackground=(COL_ACCENT if hwnd in selected else COL_BORDER),
                             cursor="hand2")
             thumb = None
-            log("thumb capture hwnd=%s cls=%r" % (hwnd, get_class_name(hwnd)))
             ppm = capture_thumb(hwnd, TW, TH)
             if ppm:
                 try:
@@ -2224,7 +2278,7 @@ class TrayApp:
                 thumb = tk.Label(tile, text=T("no_preview"), bg=COL_BG,
                                  fg=COL_TEXT_DIM, width=34, height=8, font=FONT_SM)
             thumb.pack(padx=6, pady=(6, 2))
-            cap = tk.Label(tile, text=(title[:46] or "<без названия>"), bg=COL_BG,
+            cap = tk.Label(tile, text=(title[:46] or "—"), bg=COL_BG,
                            fg=COL_TEXT, font=FONT_SM, wraplength=TW, justify="left")
             cap.pack(padx=6, pady=(0, 6), anchor="w")
 
@@ -2235,6 +2289,7 @@ class TrayApp:
                 else:
                     selected.add(hwnd)
                     tile.configure(highlightbackground=COL_ACCENT)
+                rebuild_presets()
             for wdg in (tile, thumb, cap):
                 wdg.bind("<Button-1>", toggle)
             tile.grid(row=idx // COLS, column=idx % COLS, padx=8, pady=8, sticky="n")
@@ -2245,19 +2300,11 @@ class TrayApp:
         for i, (hwnd, title) in enumerate(targets):
             make_tile(i, hwnd, title)
 
-        def finish(layout=None):
-            result["list"] = list(selected)
-            result["layout"] = layout
-            win.destroy()
+        presets_row.pack(fill="x", padx=16, pady=(2, 4))
+        rebuild_presets()
 
         foot = tk.Frame(win, bg=COL_SURFACE)
-        foot.pack(fill="x", padx=16, pady=12)
-        if with_layouts:
-            tk.Label(foot, text=T("arrange"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
-                     font=FONT_SM).pack(side="left")
-            self._ghost_btn(foot, T("lay_cols"), lambda: finish("cols")).pack(side="left", padx=4)
-            self._ghost_btn(foot, T("lay_grid"), lambda: finish("grid")).pack(side="left", padx=4)
-            self._ghost_btn(foot, T("lay_master"), lambda: finish("master")).pack(side="left", padx=4)
+        foot.pack(fill="x", padx=16, pady=(0, 12))
         self._accent_btn(foot, "  " + T("apply") + "  ", lambda: finish(None)).pack(side="right")
         self._ghost_btn(foot, T("cancel"), win.destroy).pack(side="right", padx=(0, 8))
         win.bind("<Escape>", lambda e: win.destroy())
