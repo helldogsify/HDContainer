@@ -53,7 +53,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -314,6 +314,8 @@ STRINGS = {
     "choose_ico": {"en": "Choose .ico", "ru": "Выбрать .ico", "es": "Elegir .ico", "pt": "Escolher .ico", "de": ".ico wählen", "fr": "Choisir .ico", "zh": "选择 .ico"},
     "none_color": {"en": "None", "ru": "Без цвета", "es": "Ninguno", "pt": "Nenhuma", "de": "Keine", "fr": "Aucune", "zh": "无"},
     "shortcut_btn": {"en": "Desktop shortcut", "ru": "Ярлык на стол", "es": "Acceso directo", "pt": "Atalho", "de": "Verknüpfung", "fr": "Raccourci", "zh": "桌面快捷方式"},
+    "updating": {"en": "Downloading the update…", "ru": "Загружаю обновление…", "es": "Descargando la actualización…", "pt": "Baixando a atualização…", "de": "Update wird heruntergeladen…", "fr": "Téléchargement de la mise à jour…", "zh": "正在下载更新…"},
+    "installing": {"en": "Installing… the app will restart.", "ru": "Устанавливаю… приложение перезапустится.", "es": "Instalando… la app se reiniciará.", "pt": "Instalando… o app vai reiniciar.", "de": "Installation… die App startet neu.", "fr": "Installation… l’app va redémarrer.", "zh": "正在安装……应用将重启。"},
 }
 
 
@@ -1762,34 +1764,98 @@ class TrayApp:
         threading.Thread(target=worker, daemon=True).start()
 
     def _do_update(self, url):
-        try:
-            dst = os.path.join(tempfile.gettempdir(), "HDContainer-Setup.exe")
-            ctx = ssl.create_default_context()
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "HDContainer-Updater/%s" % VERSION})
-            with urllib.request.urlopen(req, timeout=60, context=ctx) as r:
-                with open(dst, "wb") as f:
-                    shutil.copyfileobj(r, f)
-            with open(dst, "rb") as f:
-                head = f.read(2)
-            if os.path.getsize(dst) < 1000000 or head != b"MZ":
-                raise IOError("bad download (size=%d)" % os.path.getsize(dst))
-            # ВАЖНО: установщик запускаем ОТЛОЖЕННО (через ~3с), чтобы наш onefile-
-            # процесс успел выйти и дочистить распаковку в Temp. Иначе установка
-            # нового exe конфликтует с распаковкой -> "Failed to load Python DLL".
-            cmd = ('ping 127.0.0.1 -n 4 >nul & "%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
-                   % dst)
-            subprocess.Popen(["cmd", "/c", cmd], creationflags=CREATE_NO_WINDOW,
-                             close_fds=True)
-            self.root.after(300, self._quit)
-        except Exception as ex:
-            log("do_update failed: %r" % ex)
-            # запасной путь — открыть страницу релизов, поставит вручную в один клик
+        # окно прогресса + загрузка в фоне (UI не зависает) + ретраи на флоду сети
+        win = self._dialog(T("update_title"), 440, 184)
+        status = tk.Label(win, text=T("updating"), bg=COL_SURFACE, fg=COL_TEXT,
+                          font=FONT, justify="left", wraplength=400)
+        status.pack(anchor="w", padx=20, pady=(24, 14))
+        track = tk.Canvas(win, height=10, bg=COL_BG, highlightthickness=0, bd=0)
+        track.pack(fill="x", padx=20)
+        bar = track.create_rectangle(0, 0, 0, 10, fill=COL_ACCENT, outline="")
+        pct = tk.Label(win, text="", bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM)
+        pct.pack(anchor="e", padx=20, pady=(6, 0))
+        st = {"done": False}
+
+        def set_bar(frac):
+            if not win.winfo_exists():
+                return
+            w = max(1, track.winfo_width())
+            frac = max(0.0, min(1.0, frac))
+            track.coords(bar, 0, 0, int(w * frac), 10)
+            pct.configure(text="%d%%" % int(frac * 100))
+
+        def marquee(pos):                       # неизвестен размер -> бегущая полоса
+            if st["done"] or not win.winfo_exists():
+                return
+            w = max(1, track.winfo_width())
+            seg, x = 0.32, (pos % 1.3) - 0.32
+            track.coords(bar, int(w * max(0.0, x)), 0,
+                         int(w * min(1.0, x + seg)), 10)
+            win.after(40, lambda: marquee(pos + 0.035))
+
+        def fail():
+            st["done"] = True
             try:
+                win.destroy()
+            except Exception:
+                pass
+            try:                                # запасной путь — страница релизов
                 webbrowser.open(GITHUB_URL + "/releases/latest")
             except Exception:
                 pass
             self._info(T("update_title"), T("update_fail_manual"))
+
+        def succeed(dst):
+            st["done"] = True
+            try:
+                set_bar(1.0)
+                status.configure(text=T("installing"))
+            except Exception:
+                pass
+            # ВАЖНО: установщик запускаем ОТЛОЖЕННО, чтобы наш onefile-процесс успел
+            # выйти и дочистить распаковку в Temp (иначе "Failed to load Python DLL")
+            cmd = ('ping 127.0.0.1 -n 4 >nul & "%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+                   % dst)
+            subprocess.Popen(["cmd", "/c", cmd], creationflags=CREATE_NO_WINDOW,
+                             close_fds=True)
+            self.root.after(900, self._quit)
+
+        def worker():
+            dst = os.path.join(tempfile.gettempdir(), "HDContainer-Setup.exe")
+            err = None
+            for attempt in range(3):
+                try:
+                    ctx = ssl.create_default_context()
+                    req = urllib.request.Request(
+                        url, headers={"User-Agent": "HDContainer-Updater/%s" % VERSION})
+                    with urllib.request.urlopen(req, timeout=90, context=ctx) as r:
+                        total = int(r.getheader("Content-Length") or 0)
+                        if total <= 0:
+                            self.root.after(0, lambda: marquee(0.0))
+                        got = 0
+                        with open(dst, "wb") as f:
+                            while True:
+                                chunk = r.read(65536)
+                                if not chunk:
+                                    break
+                                f.write(chunk)
+                                got += len(chunk)
+                                if total > 0:
+                                    self.root.after(0, set_bar, got / total)
+                    with open(dst, "rb") as f:
+                        head = f.read(2)
+                    if os.path.getsize(dst) < 1000000 or head != b"MZ":
+                        raise IOError("bad download (size=%d)" % os.path.getsize(dst))
+                    self.root.after(0, lambda: succeed(dst))
+                    return
+                except Exception as ex:
+                    err = ex
+                    log("do_update attempt %d failed: %r" % (attempt + 1, ex))
+                    time.sleep(2)
+            log("do_update gave up: %r" % err)
+            self.root.after(0, fail)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _activate(self, c):
         if c.active:
@@ -2352,6 +2418,11 @@ class TrayApp:
     def _dialog(self, title, w=420, h=180):
         win = tk.Toplevel(self.root)
         win.title(title)
+        try:                                   # иконка приложения вместо пера Tk
+            if os.path.exists(_ICON):
+                win.iconbitmap(_ICON)
+        except Exception:
+            pass
         win.configure(bg=COL_SURFACE)
         win.geometry("%dx%d" % (w, h))
         win.resizable(False, False)
