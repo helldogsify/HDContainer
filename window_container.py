@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1836,13 +1836,14 @@ class TrayApp:
                 status.configure(text=T("installing"))
             except Exception:
                 pass
-            # ВАЖНО: установщик запускаем ОТЛОЖЕННО, чтобы наш onefile-процесс успел
-            # выйти и дочистить распаковку в Temp (иначе "Failed to load Python DLL")
-            cmd = ('ping 127.0.0.1 -n 4 >nul & "%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
-                   % dst)
-            subprocess.Popen(["cmd", "/c", cmd], creationflags=CREATE_NO_WINDOW,
-                             close_fds=True)
-            self.root.after(900, self._quit)
+            if self._launch_updater(dst):
+                self.root.after(700, self._quit)
+            else:
+                try:
+                    win.destroy()
+                except Exception:
+                    pass
+                self._update_fallback()
 
         def worker():
             dst = os.path.join(tempfile.gettempdir(), "HDContainer-Setup.exe")
@@ -1880,6 +1881,65 @@ class TrayApp:
             self.root.after(0, fail)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _update_fallback(self):
+        try:
+            webbrowser.open(GITHUB_URL + "/releases/latest")
+        except Exception:
+            pass
+        self._info(T("update_title"), T("update_fail_manual"))
+
+    def _launch_updater(self, dst):
+        # ПОЧЕМУ так: onefile-сборка держит процесс в Job-объекте с kill-on-close,
+        # поэтому дочерний cmd/установщик умирает ВМЕСТЕ с приложением и установка
+        # не запускается (а CREATE_BREAKAWAY_FROM_JOB запрещён). Поэтому ставим
+        # через Планировщик задач — задача выполняется ВНЕ нашего job и переживает
+        # выход приложения. bat ждёт полного выхода приложения, затем ставит молча.
+        bat = os.path.join(tempfile.gettempdir(), "hdc_update.cmd")
+        task = "HDContainer_SelfUpdate"
+        script = (
+            "@echo off\r\n"
+            "setlocal\r\n"
+            "set n=0\r\n"
+            ":wait\r\n"
+            'tasklist /fi "imagename eq HDContainer.exe" 2>nul | '
+            'find /i "HDContainer.exe" >nul || goto run\r\n'
+            "ping 127.0.0.1 -n 2 >nul\r\n"
+            "set /a n+=1\r\n"
+            "if %%n%% lss 30 goto wait\r\n"
+            ":run\r\n"
+            '"%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART\r\n'
+            'schtasks /Delete /TN "%s" /F >nul 2>&1\r\n'
+            '(goto) 2>nul & del "%%~f0"\r\n'
+            % (dst, task)
+        )
+        try:
+            with open(bat, "w", encoding="ascii", newline="") as f:
+                f.write(script)
+        except Exception as ex:
+            log("update bat write failed: %r" % ex)
+            return False
+        try:
+            cf = CREATE_NO_WINDOW
+            subprocess.run(["schtasks", "/Create", "/TN", task, "/TR", '"%s"' % bat,
+                            "/SC", "ONCE", "/ST", "00:00", "/F"], creationflags=cf,
+                           timeout=20)
+            r = subprocess.run(["schtasks", "/Run", "/TN", task], creationflags=cf,
+                               timeout=20)
+            if r.returncode == 0:
+                return True
+            log("schtasks /Run rc=%s" % r.returncode)
+        except Exception as ex:
+            log("schtasks updater failed: %r" % ex)
+        # запасной путь (если Планировщик отключён): отвязанный процесс напрямую
+        try:
+            subprocess.Popen(["cmd", "/c", bat],
+                             creationflags=CREATE_NO_WINDOW | 0x00000008 | 0x00000200,
+                             close_fds=True)
+            return True
+        except Exception as ex:
+            log("detached updater failed: %r" % ex)
+        return False
 
     def _activate(self, c):
         if c.active:
@@ -1960,6 +2020,9 @@ class TrayApp:
                 pass
             return
         try:
+            # СНАЧАЛА прячем (шелл убирает кнопку таскбара), ПОТОМ уничтожаем —
+            # иначе остаётся «призрак» кнопки (виделось как «Default IME»)
+            user32.ShowWindow(host, SW_HIDE)
             user32.DestroyWindow(host)
         except Exception:
             pass
