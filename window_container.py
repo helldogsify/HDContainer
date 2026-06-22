@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.1.9"
+VERSION = "1.2.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1253,9 +1253,19 @@ class Container:
             return
         try:
             set_owner(h, m.o_owner)                # вернуть исходного владельца
-            # окно, спрятанное приложением в трей (Telegram и т.п.), НЕ трогаем —
-            # иначе остаётся «призрачная» кнопка таскбара без видимого окна
-            if user32.IsWindowVisible(h) and not user32.IsIconic(h):
+            # СБРОСИТЬ КЭШ владения: без этого система может ещё считать окно
+            # принадлежащим хосту, и DestroyWindow(host) уничтожит его вместе с
+            # хостом (окна приложения «пропадают», процесс жив) — это и был баг.
+            user32.SetWindowPos(h, None, 0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED)
+            if m.group_hidden:
+                # это окно МЫ прятали при сворачивании группы -> обязательно вернуть
+                user32.ShowWindow(h, SW_SHOWNA)
+                m.group_hidden = False
+            elif user32.IsWindowVisible(h) and not user32.IsIconic(h):
+                # окно, спрятанное приложением в трей (Telegram и т.п.), НЕ трогаем —
+                # иначе остаётся «призрачная» кнопка таскбара без видимого окна
                 user32.ShowWindow(h, SW_HIDE)
                 user32.ShowWindow(h, SW_SHOWNA)    # обновить таскбар, без кражи фокуса
         except Exception as ex:
@@ -1896,13 +1906,67 @@ class TrayApp:
         self._save()
         self._update_tray()
 
-    def _deactivate(self, c):
-        c.detach_all()
-        if c.host_hwnd:
+    def _disown_owned_by(self, host):
+        """Снять владение со ВСЕХ окон, ещё принадлежащих host, и вернуть скрытым
+        видимость. Страховка перед DestroyWindow: иначе система уничтожит эти
+        окна вместе с хостом (окна приложений «исчезают», процесс остаётся жив)."""
+        if not host:
+            return []
+        owned = self._owned_by(host)
+        for h in owned:
             try:
-                user32.DestroyWindow(c.host_hwnd)
+                set_owner(h, 0)
+                user32.SetWindowPos(h, None, 0, 0, 0, 0,
+                                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                                    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED)
+                if not user32.IsWindowVisible(h):
+                    user32.ShowWindow(h, SW_SHOWNA)
             except Exception:
                 pass
+        return owned
+
+    def _owned_by(self, host):
+        owned = []
+
+        def _cb(hwnd, _l):
+            try:
+                if user32.GetWindow(hwnd, GW_OWNER) == host:
+                    owned.append(hwnd)
+            except Exception:
+                pass
+            return True
+        try:
+            user32.EnumWindows(_EnumProc(_cb), 0)
+        except Exception as ex:
+            log("owned-by enum failed: %r" % ex)
+        return owned
+
+    def _safe_destroy_host(self, host):
+        # уничтожаем хост ТОЛЬКО когда им НИЧЕГО не владеет. Сначала пытаемся снять
+        # владение; если что-то осталось — НЕ уничтожаем (прячем хост и «утекаем»
+        # невидимым окном), лучше так, чем уничтожить окно пользователя.
+        if not host:
+            return
+        left = self._disown_owned_by(host)
+        if left:
+            log("safe_destroy: force-disowned %d window(s) from host %s"
+                % (len(left), host))
+        if self._owned_by(host):
+            log("safe_destroy: host %s still owns windows -> hide, do NOT destroy"
+                % host)
+            try:
+                user32.ShowWindow(host, SW_HIDE)
+            except Exception:
+                pass
+            return
+        try:
+            user32.DestroyWindow(host)
+        except Exception:
+            pass
+
+    def _deactivate(self, c):
+        c.detach_all()
+        self._safe_destroy_host(c.host_hwnd)
         c.host_hwnd = 0
         c.active = False
         self.pending = [p for p in self.pending if p["c"] is not c]
@@ -2547,11 +2611,7 @@ class TrayApp:
     def _quit(self):
         for c in self.containers:
             c.detach_all()
-            if c.host_hwnd:
-                try:
-                    user32.DestroyWindow(c.host_hwnd)
-                except Exception:
-                    pass
+            self._safe_destroy_host(c.host_hwnd)
             c.host_hwnd = 0
             c.active = False
         self._save_recovery()      # пустой список
