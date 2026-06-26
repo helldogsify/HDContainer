@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -462,6 +462,8 @@ MF_POPUP = 0x0010
 MF_SEPARATOR = 0x0800
 MF_GRAYED = 0x0001
 MF_CHECKED = 0x0008
+WM_SYSCOMMAND = 0x0112
+IDM_EDIT = 0x9000          # своя команда меню окна «Редактировать контейнер»
 TPM_LEFTALIGN = 0x0000
 TPM_RIGHTBUTTON = 0x0002
 TPM_RETURNCMD = 0x0100
@@ -612,6 +614,7 @@ _decl(user32.LoadIconW, HICON, [HINSTANCE, LPCWSTR])
 _decl(user32.CreatePopupMenu, HMENU, [])
 _decl(user32.DestroyMenu, BOOL, [HMENU])
 _decl(user32.AppendMenuW, BOOL, [HMENU, UINT, ctypes.c_size_t, LPCWSTR])
+_decl(user32.GetSystemMenu, HMENU, [HWND, BOOL])
 _decl(user32.TrackPopupMenu, BOOL,
       [HMENU, UINT, ctypes.c_int, ctypes.c_int, ctypes.c_int, HWND, ctypes.c_void_p])
 _decl(user32.GetCursorPos, BOOL, [ctypes.POINTER(POINT)])
@@ -807,37 +810,41 @@ def work_area():
     return r.left, r.top, r.right - r.left, r.bottom - r.top
 
 
-def layouts_for(n):
-    """Набор раскладок для n окон: список раскладок; каждая — список (x,y,w,h) в долях 0..1."""
+def _layout_rects(kind, n):
+    """Раскладка ВИДА `kind` для n окон -> список (x,y,w,h) в долях 0..1.
+    Вид фиксирован, поэтому раскладку можно «переразложить» под любое число окон
+    (закрыл одно из трёх колонок |_|_|_| -> два встают |__|__|)."""
     if n <= 0:
         return []
     if n == 1:
-        return [[(0.0, 0.0, 1.0, 1.0)]]
-    cols = [(i / n, 0.0, 1.0 / n, 1.0) for i in range(n)]
-    rows = [(0.0, i / n, 1.0, 1.0 / n) for i in range(n)]
-    out = [cols, rows]
-    if n == 2:
-        return out
-    if n == 3:
-        out.append([(0.0, 0.0, 0.5, 1.0), (0.5, 0.0, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)])
-        out.append([(0.0, 0.0, 1.0, 0.5), (0.0, 0.5, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)])
-        return out
-    if n == 4:
-        out.append([(0.0, 0.0, 0.5, 0.5), (0.5, 0.0, 0.5, 0.5),
-                    (0.0, 0.5, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)])
-        out.append([(0.0, 0.0, 0.5, 1.0)] +
-                   [(0.5, i / 3.0, 0.5, 1.0 / 3.0) for i in range(3)])
-        return out
-    # n >= 5: сетка + колонки + ряды + главное со стеком
-    c = int(n ** 0.5)
-    if c * c < n:
-        c += 1
-    rr = (n + c - 1) // c
-    grid = [((i % c) / c, (i // c) / rr, 1.0 / c, 1.0 / rr) for i in range(n)]
-    out.append(grid)
-    k = n - 1
-    out.append([(0.0, 0.0, 0.6, 1.0)] + [(0.6, i / k, 0.4, 1.0 / k) for i in range(k)])
-    return out
+        return [(0.0, 0.0, 1.0, 1.0)]
+    if kind == "rows":
+        return [(0.0, i / n, 1.0, 1.0 / n) for i in range(n)]
+    if kind == "grid":
+        c = int(n ** 0.5)
+        if c * c < n:
+            c += 1
+        rr = (n + c - 1) // c
+        return [((i % c) / c, (i // c) / rr, 1.0 / c, 1.0 / rr) for i in range(n)]
+    if kind == "master":
+        k = n - 1
+        return [(0.0, 0.0, 0.6, 1.0)] + [(0.6, i / k, 0.4, 1.0 / k) for i in range(k)]
+    # "cols" (по умолчанию): n равных колонок
+    return [(i / n, 0.0, 1.0 / n, 1.0) for i in range(n)]
+
+
+def layouts_for(n):
+    """Пресеты раскладки для n окон: список (kind, rects)."""
+    if n <= 0:
+        return []
+    if n == 1:
+        return [("cols", _layout_rects("cols", 1))]
+    kinds = ["cols", "rows"]
+    if n >= 3:
+        kinds.append("master")
+    if n >= 4:
+        kinds.append("grid")
+    return [(k, _layout_rects(k, n)) for k in kinds]
 
 
 def load_icon_file(path, size=256):
@@ -1154,6 +1161,7 @@ class Container:
         self.apps = list(apps or [])      # [{"exe","title","cls","rect"}]
         self.icon = icon                  # путь к .ico контейнера (или None)
         self.color = color                # "#rrggbb" цветная метка (или None)
+        self.layout = None                # вид раскладки (cols/rows/grid/master)
         self.members = {}                 # hwnd -> Managed
         self.active = False
         self.host_hwnd = 0
@@ -1161,13 +1169,15 @@ class Container:
 
     # --- сериализация ---
     def to_dict(self):
-        return {"name": self.name, "title": self.title,
-                "apps": self.apps, "icon": self.icon, "color": self.color}
+        return {"name": self.name, "title": self.title, "apps": self.apps,
+                "icon": self.icon, "color": self.color, "layout": self.layout}
 
     @staticmethod
     def from_dict(d):
-        return Container(d.get("name", "Контейнер"), d.get("title"),
-                         d.get("apps"), d.get("icon"), d.get("color"))
+        c = Container(d.get("name", "Контейнер"), d.get("title"),
+                      d.get("apps"), d.get("icon"), d.get("color"))
+        c.layout = d.get("layout")
+        return c
 
     # --- подписи приложений (для переоткрытия + восстановления позиций) ---
     def _find_sig(self, exe, title):
@@ -1368,6 +1378,13 @@ class TrayApp:
             log("activate_by_name: no container %r" % name)
 
     def _host_proc(self, hwnd, msg, wparam, lparam):
+        # пункт «Редактировать контейнер» из меню окна (ПКМ по кнопке в таскбаре)
+        if msg == WM_SYSCOMMAND and (wparam & 0xFFF0) == IDM_EDIT:
+            for c in self.containers:
+                if c.host_hwnd == hwnd:
+                    self.root.after(1, lambda c=c: self._edit_container(c))
+                    break
+            return 0
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _tk_exc(self, exc, val, tb):
@@ -1631,6 +1648,15 @@ class TrayApp:
             user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, ic)
             user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, ic)
         user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
+        # пункт «Редактировать контейнер» в меню окна -> доступен по ПКМ
+        # (на Win11 — Shift+ПКМ) по кнопке контейнера в таскбаре
+        try:
+            sm = user32.GetSystemMenu(hwnd, False)
+            if sm:
+                user32.AppendMenuW(sm, MF_SEPARATOR, 0, None)
+                user32.AppendMenuW(sm, MF_STRING, IDM_EDIT, T("edit_container"))
+        except Exception as ex:
+            log("system menu add failed: %r" % ex)
         log("HOST created hwnd=%s '%s'" % (hwnd, title))
         return hwnd
 
@@ -1767,6 +1793,16 @@ class TrayApp:
                                 | SWP_NOOWNERZORDER)
         if placed:
             user32.SetForegroundWindow(placed[0])
+
+    def _reflow(self, c):
+        # переразложить ВИДИМЫЕ окна под запомненный вид раскладки c.layout —
+        # вызывается при закрытии окна, чтобы оставшиеся заняли всё место
+        if not getattr(c, "layout", None) or not c.active:
+            return
+        members = [h for h in c.members
+                   if user32.IsWindow(h) and not user32.IsIconic(h)]
+        if members:
+            self._arrange(c, _layout_rects(c.layout, len(members)))
 
     def _toggle_autostart(self):
         set_autostart(not autostart_enabled())
@@ -2301,7 +2337,7 @@ class TrayApp:
     def _edit_container(self, c):
         is_new = c not in self.containers
         win = self._dialog(T("edit_container"), 940, 700)
-        draft = {"icon": c.icon, "layout": None}
+        draft = {"icon": c.icon, "layout": c.layout}
         color_state = {"v": c.color}
         cur_members = [h for h in c.members if user32.IsWindow(h)] if c.active else []
         selected = set(cur_members)
@@ -2485,20 +2521,20 @@ class TrayApp:
             pw = 56
             ph = max(34, int(pw / aspect))
             iw, ih = pw - 6, ph - 6
-            for layout in layouts_for(len(selected))[:6]:
-                issel = (draft["layout"] == layout)
+            for kind, rects in layouts_for(len(selected))[:6]:
+                issel = (draft["layout"] == kind)
                 cv = tk.Canvas(presets_row, width=pw, height=ph, bg=COL_BG,
                                highlightthickness=1, cursor="hand2", bd=0,
                                highlightbackground=(COL_ACCENT if issel else COL_BORDER))
-                for (nx, ny, nw, nh) in layout:
+                for (nx, ny, nw, nh) in rects:
                     cv.create_rectangle(
                         3 + nx * iw + 1, 3 + ny * ih + 1,
                         3 + (nx + nw) * iw - 1, 3 + (ny + nh) * ih - 1,
                         fill=(COL_ACCENT if issel else COL_SURFACE2),
                         outline=(COL_ACCENT_HI if issel else COL_TEXT_DIM), width=1)
 
-                def choose(_e=None, L=layout):
-                    draft["layout"] = None if draft["layout"] == L else L
+                def choose(_e=None, K=kind):
+                    draft["layout"] = None if draft["layout"] == K else K
                     rebuild_presets()
                 cv.bind("<Button-1>", choose)
                 cv.pack(side="left", padx=(0, 6))
@@ -2595,13 +2631,14 @@ class TrayApp:
                     if h not in c.members and user32.IsWindow(h):
                         c.attach(h, c.host_hwnd)
                 self._set_current(c)
+            c.layout = draft["layout"]          # запомнить ВИД раскладки
             self._apply_host_icon(c)
             self._save()
             self._update_tray()
-            layout = draft["layout"]
+            kind = c.layout
             close()
-            if layout and c.active:
-                self.root.after(60, lambda: self._arrange(c, layout))
+            if kind and c.active:
+                self.root.after(60, lambda: self._reflow(c))
 
         # второстепенные действия (тихие ссылки)
         def link(parent, text, cmd, danger=False):
@@ -2773,8 +2810,9 @@ class TrayApp:
 
         changed = False
         for c in self.containers:
-            if c.active and c.prune():
+            if c.active and c.prune():       # окно закрыли -> убрали из контейнера
                 changed = True
+                self._reflow(c)              # оставшиеся занимают освободившееся место
 
         if self.pending:
             still = []
