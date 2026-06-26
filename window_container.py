@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1986,11 +1986,16 @@ class TrayApp:
         return owned
 
     def _owned_by(self, host):
+        # ТОЛЬКО чужие (других процессов) окна, ещё принадлежащие host — это и есть
+        # окна приложений пользователя, которые нельзя уничтожать. Свои окна
+        # (служебное «Default IME» и т.п.) система авто-переназначает на host и
+        # держать из-за них хост живым нельзя — иначе в таскбаре висит «призрак».
         owned = []
 
         def _cb(hwnd, _l):
             try:
-                if user32.GetWindow(hwnd, GW_OWNER) == host:
+                if user32.GetWindow(hwnd, GW_OWNER) == host \
+                        and get_pid(hwnd) != self.my_pid:
                     owned.append(hwnd)
             except Exception:
                 pass
@@ -2011,17 +2016,26 @@ class TrayApp:
         if left:
             log("safe_destroy: force-disowned %d window(s) from host %s"
                 % (len(left), host))
-        if self._owned_by(host):
-            log("safe_destroy: host %s still owns windows -> hide, do NOT destroy"
-                % host)
+        stuck = self._owned_by(host)
+        if stuck:
+            # реально не смогли отвязать чужое окно пользователя (напр. UIPI/админ):
+            # хост не уничтожаем, но УБИРАЕМ его кнопку из таскбара, чтобы не было
+            # «призрака» — снимаем WS_EX_APPWINDOW и ставим WS_EX_TOOLWINDOW.
+            log("safe_destroy: host %s still owns %d foreign win %r -> detab+hide"
+                % (host, len(stuck), [get_class_name(h) for h in stuck]))
             try:
+                ex = user32.GetWindowLongW(host, GWL_EXSTYLE) & 0xFFFFFFFF
+                user32.SetWindowLongW(host, GWL_EXSTYLE,
+                                      (ex & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW)
                 user32.ShowWindow(host, SW_HIDE)
+                user32.SetWindowPos(host, None, 0, 0, 0, 0,
+                                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                                    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED)
             except Exception:
                 pass
             return
         try:
-            # СНАЧАЛА прячем (шелл убирает кнопку таскбара), ПОТОМ уничтожаем —
-            # иначе остаётся «призрак» кнопки (виделось как «Default IME»)
+            # СНАЧАЛА прячем (шелл убирает кнопку таскбара), ПОТОМ уничтожаем
             user32.ShowWindow(host, SW_HIDE)
             user32.DestroyWindow(host)
         except Exception:
