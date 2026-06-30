@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.2.5"
+VERSION = "1.2.6"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -627,6 +627,14 @@ _decl(kernel32.OpenProcess, HANDLE, [DWORD, BOOL, DWORD])
 _decl(kernel32.QueryFullProcessImageNameW, BOOL,
       [HANDLE, DWORD, LPWSTR, ctypes.POINTER(DWORD)])
 _decl(kernel32.CloseHandle, BOOL, [HANDLE])
+# ВАЖНО: без объявления HANDLE-аргумент усекается до 32 бит на x64 -> ожидание
+# не работает и сторож «срабатывает» слишком рано. Объявляем явно.
+_decl(kernel32.WaitForSingleObject, DWORD, [HANDLE, DWORD])
+# снимок процессов (Toolhelp) — узнать «жив ли PID» без доступа к процессу:
+# работает даже когда OpenProcess отказывает (иной токен/сессия у задачи)
+_decl(kernel32.CreateToolhelp32Snapshot, HANDLE, [DWORD, DWORD])
+_decl(kernel32.Process32FirstW, BOOL, [HANDLE, ctypes.c_void_p])
+_decl(kernel32.Process32NextW, BOOL, [HANDLE, ctypes.c_void_p])
 
 _decl(shell32.Shell_NotifyIconW, BOOL, [DWORD, ctypes.POINTER(NOTIFYICONDATAW)])
 
@@ -1347,6 +1355,9 @@ class TrayApp:
 
         # сторож: вернёт окна в норму, если нас резко убьют (без перезапуска)
         self.root.after(1500, self._launch_watchdog)
+        # подчистить разовую задачу обновления, если осталась после установки
+        # (задача не может удалить сама себя, пока выполняется её действие)
+        self.root.after(3000, self._cleanup_update_task)
 
         # внешний WM_CLOSE (напр. при обновлении) -> штатное завершение,
         # которое снимает владение со всех окон (а не убивает их)
@@ -1938,39 +1949,41 @@ class TrayApp:
 
     def _launch_updater(self, dst):
         # ПОЧЕМУ так: onefile-сборка держит процесс в Job-объекте с kill-on-close,
-        # поэтому дочерний cmd/установщик умирает ВМЕСТЕ с приложением и установка
-        # не запускается (а CREATE_BREAKAWAY_FROM_JOB запрещён). Поэтому ставим
-        # через Планировщик задач — задача выполняется ВНЕ нашего job и переживает
-        # выход приложения. bat ждёт полного выхода приложения, затем ставит молча.
-        bat = os.path.join(tempfile.gettempdir(), "hdc_update.cmd")
+        # поэтому дочерний установщик умирает ВМЕСТЕ с приложением и установка не
+        # запускается (CREATE_BREAKAWAY_FROM_JOB запрещён). Ставим через Планировщик
+        # — задача выполняется ВНЕ нашего job и переживает выход приложения.
+        #
+        # ПОЛНОСТЬЮ НЕВИДИМО: действие задачи = wscript.exe <vbs> (у wscript нет окна
+        # консоли -> никакого мелькающего cmd), а сам Setup vbs запускает скрыто
+        # (sh.Run ..., 0). Проверено: установка проходит, окон не появляется. Путь к
+        # Setup с пробелами безопасен — внутри vbs обрамляем его Chr(34). Setup сам
+        # тихо закрывает старую копию (--quit + taskkill) и по завершении стартует
+        # новую версию (postinstall [Run]).
+        vbs = os.path.join(tempfile.gettempdir(), "hdc_update.vbs")
         task = "HDContainer_SelfUpdate"
+        logf = os.path.join(_DIR, "update_setup.log")
         script = (
-            "@echo off\r\n"
-            "setlocal\r\n"
-            "set n=0\r\n"
-            ":wait\r\n"
-            'tasklist /fi "imagename eq HDContainer.exe" 2>nul | '
-            'find /i "HDContainer.exe" >nul || goto run\r\n'
-            "ping 127.0.0.1 -n 2 >nul\r\n"
-            "set /a n+=1\r\n"
-            "if %%n%% lss 30 goto wait\r\n"
-            ":run\r\n"
-            '"%s" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART\r\n'
-            'schtasks /Delete /TN "%s" /F >nul 2>&1\r\n'
-            '(goto) 2>nul & del "%%~f0"\r\n'
-            % (dst, task)
+            'Set sh = CreateObject("WScript.Shell")\r\n'
+            'WScript.Sleep 2500\r\n'                    # дать приложению выйти и дочиститься
+            'sh.Run Chr(34) & "%s" & Chr(34) & '
+            '" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=" & '
+            'Chr(34) & "%s" & Chr(34), 0, True\r\n'     # 0 = скрытое окно, True = ждать
+            'sh.Run "schtasks /Delete /TN %s /F", 0, True\r\n'
+            'On Error Resume Next\r\n'
+            'CreateObject("Scripting.FileSystemObject").DeleteFile WScript.ScriptFullName\r\n'
+            % (dst, logf, task)
         )
         try:
-            with open(bat, "w", encoding="ascii", newline="") as f:
+            with open(vbs, "w", encoding="utf-16") as f:   # wscript читает UTF-16 (BOM)
                 f.write(script)
         except Exception as ex:
-            log("update bat write failed: %r" % ex)
+            log("update vbs write failed: %r" % ex)
             return False
         try:
             cf = CREATE_NO_WINDOW
-            subprocess.run(["schtasks", "/Create", "/TN", task, "/TR", '"%s"' % bat,
-                            "/SC", "ONCE", "/ST", "00:00", "/F"], creationflags=cf,
-                           timeout=20)
+            subprocess.run(["schtasks", "/Create", "/TN", task, "/TR",
+                            'wscript.exe "%s"' % vbs, "/SC", "ONCE", "/ST", "00:00",
+                            "/F"], creationflags=cf, timeout=20)
             r = subprocess.run(["schtasks", "/Run", "/TN", task], creationflags=cf,
                                timeout=20)
             if r.returncode == 0:
@@ -1978,15 +1991,23 @@ class TrayApp:
             log("schtasks /Run rc=%s" % r.returncode)
         except Exception as ex:
             log("schtasks updater failed: %r" % ex)
-        # запасной путь (если Планировщик отключён): отвязанный процесс напрямую
+        # запасной путь (если Планировщик отключён): невидимый wscript напрямую
         try:
-            subprocess.Popen(["cmd", "/c", bat],
+            subprocess.Popen(["wscript.exe", vbs],
                              creationflags=CREATE_NO_WINDOW | 0x00000008 | 0x00000200,
                              close_fds=True)
             return True
         except Exception as ex:
             log("detached updater failed: %r" % ex)
         return False
+
+    def _cleanup_update_task(self):
+        # после обновления свежезапущенная копия убирает разовую задачу обновления
+        try:
+            subprocess.run(["schtasks", "/Delete", "/TN", "HDContainer_SelfUpdate",
+                            "/F"], creationflags=CREATE_NO_WINDOW, timeout=10)
+        except Exception:
+            pass
 
     def _activate(self, c):
         if c.active:
@@ -2906,18 +2927,27 @@ class TrayApp:
         # сторож в ОТДЕЛЬНОМ процессе (через Планировщик -> вне нашего job): он
         # переживёт наш краш и СРАЗУ вернёт окна в нормальный вид, не требуя
         # перезапуска приложения. (PyInstaller держит детей в kill-on-close job.)
+        # Запускаем НЕВИДИМО: задача = wscript.exe <vbs> (у wscript нет окна
+        # консоли -> при каждом старте никакого мелькающего cmd), vbs стартует
+        # сторожа (HDContainer.exe --noconsole, тоже без окна). Имя задачи
+        # фиксированное -> /Create /F перезаписывает прежнюю, задачи не копятся.
         exe = os.path.abspath(sys.argv[0])
-        bat = os.path.join(tempfile.gettempdir(), "hdc_watchdog_%d.cmd" % self.my_pid)
-        task = "HDContainer_Watchdog_%d" % self.my_pid
-        script = ('@echo off\r\n"%s" --watchdog %d\r\ndel "%%~f0"\r\n'
-                  % (exe, self.my_pid))
+        vbs = os.path.join(tempfile.gettempdir(), "hdc_watchdog.vbs")
+        task = "HDContainer_Watchdog"
+        script = (
+            'CreateObject("WScript.Shell").Run '
+            'Chr(34) & "%s" & Chr(34) & " --watchdog %d", 0, False\r\n'
+            'On Error Resume Next\r\n'
+            'CreateObject("Scripting.FileSystemObject").DeleteFile WScript.ScriptFullName\r\n'
+            % (exe, self.my_pid)
+        )
         try:
-            with open(bat, "w", encoding="ascii", newline="") as f:
+            with open(vbs, "w", encoding="utf-16") as f:
                 f.write(script)
             cf = CREATE_NO_WINDOW
-            subprocess.run(["schtasks", "/Create", "/TN", task, "/TR", '"%s"' % bat,
-                            "/SC", "ONCE", "/ST", "00:00", "/F"], creationflags=cf,
-                           timeout=15)
+            subprocess.run(["schtasks", "/Create", "/TN", task, "/TR",
+                            'wscript.exe "%s"' % vbs, "/SC", "ONCE", "/ST", "00:00",
+                            "/F"], creationflags=cf, timeout=15)
             subprocess.run(["schtasks", "/Run", "/TN", task], creationflags=cf, timeout=15)
         except Exception as ex:
             log("launch watchdog failed: %r" % ex)
@@ -3246,6 +3276,34 @@ def _restore_orphan(m):
         return False
 
 
+class PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [("dwSize", DWORD), ("cntUsage", DWORD), ("th32ProcessID", DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", DWORD),
+                ("cntThreads", DWORD), ("th32ParentProcessID", DWORD),
+                ("pcPriClassBase", ctypes.c_long), ("dwFlags", DWORD),
+                ("szExeFile", ctypes.c_wchar * 260)]
+
+
+def _pid_alive(pid):
+    # есть ли процесс с таким PID. Снимок Toolhelp не требует доступа к процессу,
+    # поэтому работает даже там, где OpenProcess отказывает (иной токен/сессия).
+    INVALID = ctypes.c_void_p(-1).value
+    snap = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)   # TH32CS_SNAPPROCESS
+    if not snap or snap == INVALID:
+        return True                       # не смогли проверить -> считаем живым
+    try:
+        pe = PROCESSENTRY32W()
+        pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        ok = kernel32.Process32FirstW(snap, ctypes.byref(pe))
+        while ok:
+            if pe.th32ProcessID == pid:
+                return True
+            ok = kernel32.Process32NextW(snap, ctypes.byref(pe))
+        return False
+    finally:
+        kernel32.CloseHandle(snap)
+
+
 def _run_watchdog(args):
     """Процесс-сторож (запущен через Планировщик -> ВНЕ нашего job, переживает
     наш краш). Ждёт смерти основного процесса; если это был КРАШ (снимок не
@@ -3257,21 +3315,33 @@ def _run_watchdog(args):
     SYNCHRONIZE = 0x00100000
     try:
         hp = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        log("watchdog waiting on pid=%s hp=%s" % (pid, hp))
         if hp:
-            kernel32.WaitForSingleObject(hp, 0xFFFFFFFF)   # ждём выхода процесса
+            rc = kernel32.WaitForSingleObject(hp, 0xFFFFFFFF)   # ждём выхода процесса
             kernel32.CloseHandle(hp)
-    except Exception:
-        pass
+            log("watchdog wait returned rc=%s (main exited)" % rc)
+        else:
+            # OpenProcess недоступен (иной токен/сессия) -> опрос существования pid
+            log("watchdog: OpenProcess failed, polling pid")
+            while _pid_alive(pid):
+                time.sleep(1.0)
+            log("watchdog: pid gone (main exited)")
+    except Exception as ex:
+        log("watchdog wait failed: %r" % ex)
     time.sleep(0.5)                        # дать ОС осиротить окна умершего хоста
     try:
-        for cd in (_read_recovery_snapshot() or []):
+        conts = _read_recovery_snapshot() or []
+        n = sum(len(cd.get("members", [])) for cd in conts)
+        log("watchdog snapshot: %d container(s), %d member(s)" % (len(conts), n))
+        for cd in conts:
             for m in cd.get("members", []):
                 _restore_orphan(m)
     except Exception as ex:
         log("watchdog failed: %r" % ex)
+    # убрать свою разовую задачу (её действие — wscript — давно вышло, удаление ОК)
     try:
-        subprocess.run(["schtasks", "/Delete", "/TN", "HDContainer_Watchdog_%d" % pid,
-                        "/F"], creationflags=CREATE_NO_WINDOW, timeout=10)
+        subprocess.run(["schtasks", "/Delete", "/TN", "HDContainer_Watchdog", "/F"],
+                       creationflags=CREATE_NO_WINDOW, timeout=10)
     except Exception:
         pass
 
