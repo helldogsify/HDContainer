@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.2.3"
+VERSION = "1.2.4"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1336,6 +1336,14 @@ class TrayApp:
         self._run_recovery()
         self._load_containers()
         self._add_tray()
+
+        # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
+        # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
+        # и перезапустит только то, что не выжило. Никаких ручных действий.
+        for _nm in getattr(self, "_recover_pending", []):
+            _c = next((x for x in self.containers if x.name == _nm), None)
+            if _c and not _c.active:
+                self.root.after(1000, lambda c=_c: self._activate(c))
 
         # внешний WM_CLOSE (напр. при обновлении) -> штатное завершение,
         # которое снимает владение со всех окон (а не убивает их)
@@ -2871,41 +2879,70 @@ class TrayApp:
     #  Страховка от потери окон (orphan recovery)
     # ===================================================================
     def _save_recovery(self):
+        # снимок активных контейнеров и их окон. Пишется при каждом изменении;
+        # при штатном выходе перетирается пустым -> наличие записей = БЫЛ КРАШ.
         try:
-            data = []
+            out = []
             for c in self.containers:
+                if not (c.active and c.members):
+                    continue
+                mem = []
                 for m in c.members.values():
-                    data.append([m.hwnd, m.o_owner, m.o_style, m.o_exstyle, list(m.o_rect)])
+                    sig = m.sig or {}
+                    mem.append({"hwnd": m.hwnd, "owner": m.o_owner,
+                                "exe": sig.get("exe", "")})
+                out.append({"name": c.name, "members": mem})
             with open(_RECOVERY, "w", encoding="utf-8") as f:
-                json.dump(data, f)
+                json.dump({"containers": out}, f)
         except Exception:
             pass
 
     def _run_recovery(self):
+        # после краха/жёсткого убийства хост умирает, а окна-члены ВЫЖИВАЮТ
+        # «сиротами» (проверено эмпирически). Возвращаем им видимость+кнопку
+        # таскбара и помечаем контейнеры на авто-восстановление (см. __init__).
+        self._recover_pending = []
+        data = None
         try:
-            if not os.path.exists(_RECOVERY):
-                return
-            with open(_RECOVERY, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            for rec in data:
-                try:
-                    hwnd, o_owner, o_style, o_exstyle, rect = rec
-                    if not user32.IsWindow(hwnd):
-                        continue
-                    cur = user32.GetWindow(hwnd, GW_OWNER)
-                    if cur and user32.IsWindow(cur):
-                        continue
-                    set_owner(hwnd, o_owner)
-                    user32.ShowWindow(hwnd, SW_SHOW)
-                    log("RECOVERED hwnd=%s" % hwnd)
-                except Exception as ex:
-                    log("recovery item failed: %r" % ex)
+            if os.path.exists(_RECOVERY):
+                with open(_RECOVERY, "r", encoding="utf-8") as f:
+                    data = json.load(f)
         except Exception:
-            pass
+            data = None
         try:
             os.remove(_RECOVERY)
         except Exception:
             pass
+        conts = data.get("containers") if isinstance(data, dict) else None
+        if not conts:
+            return
+        for cd in conts:
+            survived = 0
+            for m in cd.get("members", []):
+                h = m.get("hwnd")
+                if not h or not user32.IsWindow(h):
+                    continue
+                try:                         # защита от переиспользования hwnd: сверяем exe
+                    if m.get("exe") and exe_for_hwnd(h).lower() != m["exe"].lower():
+                        continue
+                except Exception:
+                    pass
+                cur = user32.GetWindow(h, GW_OWNER)
+                if cur and user32.IsWindow(cur):
+                    continue                 # окно ещё кому-то принадлежит — не трогаем
+                try:
+                    set_owner(h, m.get("owner") or 0)
+                    user32.SetWindowPos(h, None, 0, 0, 0, 0,
+                                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                                        SWP_NOACTIVATE | SWP_FRAMECHANGED)
+                    user32.ShowWindow(h, SW_HIDE)
+                    user32.ShowWindow(h, SW_SHOW)   # вернуть видимость + кнопку таскбара
+                    survived += 1
+                    log("RECOVERED orphan hwnd=%s" % h)
+                except Exception as ex:
+                    log("recover show failed: %r" % ex)
+            if survived:                      # есть что вернуть -> восстановим контейнер
+                self._recover_pending.append(cd.get("name"))
 
     # ===================================================================
     #  Диалоги (tk)
