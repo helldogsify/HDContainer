@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.2.4"
+VERSION = "1.2.5"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1344,6 +1344,9 @@ class TrayApp:
             _c = next((x for x in self.containers if x.name == _nm), None)
             if _c and not _c.active:
                 self.root.after(1000, lambda c=_c: self._activate(c))
+
+        # сторож: вернёт окна в норму, если нас резко убьют (без перезапуска)
+        self.root.after(1500, self._launch_watchdog)
 
         # внешний WM_CLOSE (напр. при обновлении) -> штатное завершение,
         # которое снимает владение со всех окон (а не убивает их)
@@ -2892,56 +2895,46 @@ class TrayApp:
                     mem.append({"hwnd": m.hwnd, "owner": m.o_owner,
                                 "exe": sig.get("exe", "")})
                 out.append({"name": c.name, "members": mem})
-            with open(_RECOVERY, "w", encoding="utf-8") as f:
+            tmp = _RECOVERY + ".tmp"          # атомарная запись -> сторож не прочитает «обрывок»
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump({"containers": out}, f)
+            os.replace(tmp, _RECOVERY)
         except Exception:
             pass
 
-    def _run_recovery(self):
-        # после краха/жёсткого убийства хост умирает, а окна-члены ВЫЖИВАЮТ
-        # «сиротами» (проверено эмпирически). Возвращаем им видимость+кнопку
-        # таскбара и помечаем контейнеры на авто-восстановление (см. __init__).
-        self._recover_pending = []
-        data = None
+    def _launch_watchdog(self):
+        # сторож в ОТДЕЛЬНОМ процессе (через Планировщик -> вне нашего job): он
+        # переживёт наш краш и СРАЗУ вернёт окна в нормальный вид, не требуя
+        # перезапуска приложения. (PyInstaller держит детей в kill-on-close job.)
+        exe = os.path.abspath(sys.argv[0])
+        bat = os.path.join(tempfile.gettempdir(), "hdc_watchdog_%d.cmd" % self.my_pid)
+        task = "HDContainer_Watchdog_%d" % self.my_pid
+        script = ('@echo off\r\n"%s" --watchdog %d\r\ndel "%%~f0"\r\n'
+                  % (exe, self.my_pid))
         try:
-            if os.path.exists(_RECOVERY):
-                with open(_RECOVERY, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-        except Exception:
-            data = None
+            with open(bat, "w", encoding="ascii", newline="") as f:
+                f.write(script)
+            cf = CREATE_NO_WINDOW
+            subprocess.run(["schtasks", "/Create", "/TN", task, "/TR", '"%s"' % bat,
+                            "/SC", "ONCE", "/ST", "00:00", "/F"], creationflags=cf,
+                           timeout=15)
+            subprocess.run(["schtasks", "/Run", "/TN", task], creationflags=cf, timeout=15)
+        except Exception as ex:
+            log("launch watchdog failed: %r" % ex)
+
+    def _run_recovery(self):
+        # на запуске: если был краш (снимок не пуст), вернуть выжившие окна и
+        # пометить контейнеры на авто-восстановление (сторож уже мог их вернуть —
+        # это безвредно). Граф. выход пишет пустой снимок -> сюда не зайдём.
+        self._recover_pending = []
+        conts = _read_recovery_snapshot()
         try:
             os.remove(_RECOVERY)
         except Exception:
             pass
-        conts = data.get("containers") if isinstance(data, dict) else None
-        if not conts:
-            return
-        for cd in conts:
-            survived = 0
-            for m in cd.get("members", []):
-                h = m.get("hwnd")
-                if not h or not user32.IsWindow(h):
-                    continue
-                try:                         # защита от переиспользования hwnd: сверяем exe
-                    if m.get("exe") and exe_for_hwnd(h).lower() != m["exe"].lower():
-                        continue
-                except Exception:
-                    pass
-                cur = user32.GetWindow(h, GW_OWNER)
-                if cur and user32.IsWindow(cur):
-                    continue                 # окно ещё кому-то принадлежит — не трогаем
-                try:
-                    set_owner(h, m.get("owner") or 0)
-                    user32.SetWindowPos(h, None, 0, 0, 0, 0,
-                                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                                        SWP_NOACTIVATE | SWP_FRAMECHANGED)
-                    user32.ShowWindow(h, SW_HIDE)
-                    user32.ShowWindow(h, SW_SHOW)   # вернуть видимость + кнопку таскбара
-                    survived += 1
-                    log("RECOVERED orphan hwnd=%s" % h)
-                except Exception as ex:
-                    log("recover show failed: %r" % ex)
-            if survived:                      # есть что вернуть -> восстановим контейнер
+        for cd in (conts or []):
+            survived = sum(1 for m in cd.get("members", []) if _restore_orphan(m))
+            if survived:
                 self._recover_pending.append(cd.get("name"))
 
     # ===================================================================
@@ -3211,6 +3204,78 @@ class TrayApp:
         self.root.mainloop()
 
 
+def _read_recovery_snapshot():
+    try:
+        if not os.path.exists(_RECOVERY):
+            return None
+        with open(_RECOVERY, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("containers") if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _restore_orphan(m):
+    """Вернуть «осиротевшее» (после смерти хоста) окно в нормальный вид: снять
+    владельца, обновить рамку, показать и вернуть кнопку таскбара."""
+    h = m.get("hwnd")
+    if not h or not user32.IsWindow(h):
+        return False
+    try:
+        if m.get("exe") and exe_for_hwnd(h).lower() != m["exe"].lower():
+            return False                  # переиспользованный hwnd — не наше окно
+    except Exception:
+        pass
+    cur = user32.GetWindow(h, GW_OWNER)
+    if cur and user32.IsWindow(cur):
+        return False                      # ещё кому-то принадлежит — не трогаем
+    try:
+        set_owner(h, m.get("owner") or 0)
+        user32.SetWindowPos(h, None, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                            SWP_NOACTIVATE | SWP_FRAMECHANGED)
+        user32.ShowWindow(h, SW_HIDE)
+        ex = user32.GetWindowLongW(h, GWL_EXSTYLE) & 0xFFFFFFFF
+        user32.SetWindowLongW(h, GWL_EXSTYLE,
+                              (ex | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW)
+        user32.ShowWindow(h, SW_SHOW)     # видимость + кнопка таскбара
+        log("RESTORED orphan hwnd=%s" % h)
+        return True
+    except Exception as ex:
+        log("restore orphan failed: %r" % ex)
+        return False
+
+
+def _run_watchdog(args):
+    """Процесс-сторож (запущен через Планировщик -> ВНЕ нашего job, переживает
+    наш краш). Ждёт смерти основного процесса; если это был КРАШ (снимок не
+    пустой) — возвращает окна в нормальный вид СРАЗУ, без перезапуска приложения."""
+    try:
+        pid = int(args[args.index("--watchdog") + 1])
+    except Exception:
+        return
+    SYNCHRONIZE = 0x00100000
+    try:
+        hp = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if hp:
+            kernel32.WaitForSingleObject(hp, 0xFFFFFFFF)   # ждём выхода процесса
+            kernel32.CloseHandle(hp)
+    except Exception:
+        pass
+    time.sleep(0.5)                        # дать ОС осиротить окна умершего хоста
+    try:
+        for cd in (_read_recovery_snapshot() or []):
+            for m in cd.get("members", []):
+                _restore_orphan(m)
+    except Exception as ex:
+        log("watchdog failed: %r" % ex)
+    try:
+        subprocess.run(["schtasks", "/Delete", "/TN", "HDContainer_Watchdog_%d" % pid,
+                        "/F"], creationflags=CREATE_NO_WINDOW, timeout=10)
+    except Exception:
+        pass
+
+
 def _parse_launch(argv):
     if "--launch" in argv:
         i = argv.index("--launch")
@@ -3221,6 +3286,10 @@ def _parse_launch(argv):
 
 def main():
     args = sys.argv[1:]
+    # режим сторожа: ждём смерти основного процесса и возвращаем окна в норму
+    if "--watchdog" in args:
+        _run_watchdog(args)
+        return
     # штатно закрыть запущенный экземпляр (для деинсталлятора): WM_CLOSE -> _quit,
     # который снимает владение со всех окон, и ждём, пока процесс действительно выйдет
     if "--quit" in args:
