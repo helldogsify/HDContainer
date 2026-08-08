@@ -59,7 +59,7 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.2.6"
+VERSION = "1.2.7"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -78,6 +78,7 @@ kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 shell32 = ctypes.WinDLL("shell32", use_last_error=True)
 gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
 ole32 = ctypes.WinDLL("ole32", use_last_error=True)
+version = ctypes.WinDLL("version", use_last_error=True)   # имена программ из exe
 
 
 def _exe_dir():
@@ -200,6 +201,8 @@ COL_ACCENT   = "#4c8bf5"
 COL_ACCENT_HI = "#629bff"
 COL_TEXT     = "#e6e8ea"
 COL_TEXT_DIM = "#9aa0a6"
+COL_DANGER    = "#ff453a"        # опасные действия видно сразу, а не по наведению
+COL_DANGER_HI = "#ff6b61"
 
 FONT       = ("Segoe UI", 10)
 FONT_SM    = ("Segoe UI", 9)
@@ -317,6 +320,10 @@ STRINGS = {
     "lbl_icon": {"en": "Icon", "ru": "Иконка", "es": "Icono", "pt": "Ícone", "de": "Symbol", "fr": "Icône", "zh": "图标"},
     "lbl_color": {"en": "Color", "ru": "Цвет", "es": "Color", "pt": "Cor", "de": "Farbe", "fr": "Couleur", "zh": "颜色"},
     "lbl_windows": {"en": "Windows", "ru": "Окна", "es": "Ventanas", "pt": "Janelas", "de": "Fenster", "fr": "Fenêtres", "zh": "窗口"},
+    "pick_apps": {"en": "Select ▾", "ru": "Выбрать ▾", "es": "Seleccionar ▾", "pt": "Selecionar ▾", "de": "Auswählen ▾", "fr": "Sélectionner ▾", "zh": "选择 ▾"},
+    "apps_hint": {"en": "All windows of one app", "ru": "Все окна одной программы", "es": "Todas las ventanas de una app", "pt": "Todas as janelas de um app", "de": "Alle Fenster einer App", "fr": "Toutes les fenêtres d’une app", "zh": "某个程序的所有窗口"},
+    "apps_row": {"en": "All %s windows · %d", "ru": "Все окна %s · %d", "es": "Todas las ventanas de %s · %d", "pt": "Todas as janelas de %s · %d", "de": "Alle %s-Fenster · %d", "fr": "Toutes les fenêtres %s · %d", "zh": "%s 的所有窗口 · %d"},
+    "no_app_groups": {"en": "No app has more than one window", "ru": "Нет программ с несколькими окнами", "es": "Ninguna app tiene más de una ventana", "pt": "Nenhum app tem mais de uma janela", "de": "Keine App hat mehrere Fenster", "fr": "Aucune app n’a plusieurs fenêtres", "zh": "没有程序开着多个窗口"},
     "choose_ico": {"en": "Choose icon", "ru": "Выбрать иконку", "es": "Elegir icono", "pt": "Escolher ícone", "de": "Symbol wählen", "fr": "Choisir une icône", "zh": "选择图标"},
     "none_color": {"en": "None", "ru": "Без цвета", "es": "Ninguno", "pt": "Nenhuma", "de": "Keine", "fr": "Aucune", "zh": "无"},
     "shortcut_btn": {"en": "Desktop shortcut", "ru": "Ярлык на стол", "es": "Acceso directo", "pt": "Atalho", "de": "Verknüpfung", "fr": "Raccourci", "zh": "桌面快捷方式"},
@@ -638,6 +645,13 @@ _decl(kernel32.Process32NextW, BOOL, [HANDLE, ctypes.c_void_p])
 
 _decl(shell32.Shell_NotifyIconW, BOOL, [DWORD, ctypes.POINTER(NOTIFYICONDATAW)])
 
+# ресурс версии exe -> отображаемое имя программы («Google Chrome» вместо chrome.exe)
+_decl(version.GetFileVersionInfoSizeW, DWORD, [LPCWSTR, ctypes.POINTER(DWORD)])
+_decl(version.GetFileVersionInfoW, BOOL, [LPCWSTR, DWORD, DWORD, ctypes.c_void_p])
+_decl(version.VerQueryValueW, BOOL,
+      [ctypes.c_void_p, LPCWSTR, ctypes.POINTER(ctypes.c_void_p),
+       ctypes.POINTER(UINT)])
+
 _decl(user32.IsIconic, BOOL, [HWND])
 _decl(user32.GetDC, wintypes.HDC, [HWND])
 _decl(user32.ReleaseDC, ctypes.c_int, [HWND, wintypes.HDC])
@@ -767,6 +781,71 @@ def exe_for_hwnd(h):
     finally:
         kernel32.CloseHandle(hp)
     return ""
+
+
+_APPNAME_CACHE = {}
+
+
+def app_display_name(exe):
+    """Человеческое имя программы: «Google Chrome» вместо chrome.exe.
+
+    Берём поле FileDescription из ресурса версии exe — именно его показывает
+    Проводник в колонке «Описание». Если ресурса нет (или файл недоступен) —
+    откатываемся на имя файла без расширения."""
+    if not exe:
+        return ""
+    key = exe.lower()
+    if key in _APPNAME_CACHE:
+        return _APPNAME_CACHE[key]
+    name = ""
+    try:
+        size = version.GetFileVersionInfoSizeW(exe, None)
+        if size:
+            buf = ctypes.create_string_buffer(size)
+            if version.GetFileVersionInfoW(exe, 0, size, buf):
+                ptr = ctypes.c_void_p()
+                ln = UINT()
+                # какой язык/кодовую страницу несёт ресурс — узнаём из Translation
+                if version.VerQueryValueW(buf, "\\VarFileInfo\\Translation",
+                                          ctypes.byref(ptr), ctypes.byref(ln)) and ln.value >= 4:
+                    lang, cp = ctypes.cast(
+                        ptr, ctypes.POINTER(wintypes.WORD * 2)).contents
+                    sub = "\\StringFileInfo\\%04x%04x\\FileDescription" % (lang, cp)
+                    if version.VerQueryValueW(buf, sub, ctypes.byref(ptr),
+                                              ctypes.byref(ln)) and ln.value:
+                        name = ctypes.wstring_at(ptr, ln.value).strip("\x00 ").strip()
+    except Exception:
+        name = ""
+    if not name:
+        base = os.path.basename(exe)
+        name = os.path.splitext(base)[0] or base
+    _APPNAME_CACHE[key] = name
+    return name
+
+
+def group_targets_by_app(targets, min_windows=2, exe_of=None, name_of=None):
+    """Сгруппировать окна по ПРОГРАММЕ (по её отображаемому имени, поэтому разные
+    сборки одной программы склеиваются). Возвращает [(имя, [hwnd, ...]), ...],
+    отсортированное по имени; группы меньше min_windows окон отбрасываются —
+    ради одного окна кнопка «выбрать все» не нужна.
+
+    exe_of/name_of вынесены в параметры, чтобы функцию можно было проверить
+    без Windows-окон."""
+    exe_of = exe_of or exe_for_hwnd
+    name_of = name_of or app_display_name
+    groups = {}
+    for hwnd, _title in targets:
+        try:
+            name = name_of(exe_of(hwnd))
+        except Exception:
+            name = ""
+        if not name:
+            continue
+        g = groups.setdefault(name.lower(), [name, []])
+        g[1].append(hwnd)
+    out = [(nm, hws) for nm, hws in groups.values() if len(hws) >= min_windows]
+    out.sort(key=lambda p: p[0].lower())
+    return out
 
 
 def is_cloaked(h):
@@ -2358,6 +2437,68 @@ class TrayApp:
         win.after(300, lambda: win.winfo_exists()
                   and win.bind("<FocusOut>", _close_outside))
 
+    def _apps_popup(self, anchor, groups, selected, on_toggle):
+        """Выпадающий список «все окна программы»: строка на программу, у которой
+        открыто несколько окон. Клик отмечает всю группу, повторный — снимает.
+        Список НЕ закрывается после клика — чтобы отметить несколько программ."""
+        win = tk.Toplevel(anchor.winfo_toplevel())   # дитя редактора -> закроется с ним
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.configure(bg=COL_BORDER)
+        fr = tk.Frame(win, bg=COL_SURFACE)
+        fr.pack(padx=1, pady=1)
+        tk.Label(fr, text=T("apps_hint"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                 font=FONT_SM).pack(anchor="w", padx=12, pady=(9, 5))
+
+        rows = []
+
+        def refresh():
+            for lbl, hwnds in rows:
+                on = all(h in selected for h in hwnds)
+                lbl.configure(fg=(COL_TEXT if on else COL_TEXT_DIM),
+                              text=("✓  " if on else "     ") + lbl._caption)
+
+        if not groups:
+            tk.Label(fr, text=T("no_app_groups"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                     font=FONT_SM).pack(anchor="w", padx=12, pady=(0, 10))
+        for name, hwnds in groups:
+            lbl = tk.Label(fr, bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT,
+                           cursor="hand2", anchor="w", padx=12, pady=6)
+            lbl._caption = T("apps_row", name, len(hwnds))
+            lbl.pack(fill="x")
+            lbl.bind("<Enter>", lambda e, l=lbl: l.configure(bg=COL_HOVER))
+            lbl.bind("<Leave>", lambda e, l=lbl: l.configure(bg=COL_SURFACE))
+
+            def click(_e=None, hws=hwnds):
+                on_toggle(hws)
+                refresh()
+            lbl.bind("<Button-1>", click)
+            rows.append((lbl, hwnds))
+        refresh()
+
+        anchor.update_idletasks()
+        win.update_idletasks()
+        x = max(0, anchor.winfo_rootx() + anchor.winfo_width() - win.winfo_reqwidth())
+        y = anchor.winfo_rooty() + anchor.winfo_height() + 6
+        win.geometry("+%d+%d" % (x, y))
+        win.lift()
+        win.focus_force()
+        win.bind("<Escape>", lambda e: win.destroy())
+
+        def _close_outside(_e=None):
+            try:
+                f = win.focus_get()
+            except Exception:
+                f = None
+            if f is not None and str(f).startswith(str(win)):
+                return                       # клик внутри списка — не закрываем
+            try:
+                win.destroy()
+            except Exception:
+                pass
+        win.after(300, lambda: win.winfo_exists()
+                  and win.bind("<FocusOut>", _close_outside))
+
     def _create_container(self):
         c = Container(T("container_n", len(self.containers) + 1))
         self._edit_container(c)            # is_new определяется по отсутствию в списке
@@ -2521,8 +2662,11 @@ class TrayApp:
 
         # ---------- окна ----------
         tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=20, pady=(8, 0))
-        tk.Label(win, text=T("lbl_windows"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
-                 font=FONT_SM).pack(anchor="w", padx=20, pady=(6, 2))
+        win_head = tk.Frame(win, bg=COL_SURFACE)
+        win_head.pack(fill="x", padx=20, pady=(6, 2))
+        tk.Label(win_head, text=T("lbl_windows"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                 font=FONT_SM).pack(side="left")
+        # кнопка «Выбрать ▾» пакуется ниже — ей нужен уже готовый список окон
 
         # ---------- низ: кнопки, разделитель, второстепенные действия ----------
         foot = tk.Frame(win, bg=COL_SURFACE)
@@ -2572,10 +2716,22 @@ class TrayApp:
                 cv.pack(side="left", padx=(0, 6))
 
         TW, TH, COLS = 264, 150, 3
+        tiles = {}                     # hwnd -> плитка (чтобы подсвечивать снаружи)
+
+        def set_sel(hwnd, on):
+            """Единая точка изменения выбора: и клик по плитке, и выбор группы."""
+            if on:
+                selected.add(hwnd)
+            else:
+                selected.discard(hwnd)
+            tile = tiles.get(hwnd)
+            if tile is not None:
+                tile.configure(highlightbackground=(COL_ACCENT if on else COL_BORDER))
 
         def make_tile(idx, hwnd, title):
             tile = tk.Frame(grid, bg=COL_BG, highlightthickness=2, cursor="hand2",
                             highlightbackground=(COL_ACCENT if hwnd in selected else COL_BORDER))
+            tiles[hwnd] = tile
             thumb = None
             ppm = capture_thumb(hwnd, TW, TH)
             if ppm:
@@ -2597,13 +2753,8 @@ class TrayApp:
                            font=FONT_SM, wraplength=TW, justify="left")
             cap.pack(padx=6, pady=(0, 6), anchor="w")
 
-            def toggle(_=None, hwnd=hwnd, tile=tile):
-                if hwnd in selected:
-                    selected.discard(hwnd)
-                    tile.configure(highlightbackground=COL_BORDER)
-                else:
-                    selected.add(hwnd)
-                    tile.configure(highlightbackground=COL_ACCENT)
+            def toggle(_=None, hwnd=hwnd):
+                set_sel(hwnd, hwnd not in selected)
                 rebuild_presets()
             for wdg in (tile, thumb, cap):
                 wdg.bind("<Button-1>", toggle)
@@ -2672,13 +2823,16 @@ class TrayApp:
             if kind and c.active:
                 self.root.after(60, lambda: self._reflow(c))
 
-        # второстепенные действия (тихие ссылки)
+        # второстепенные действия (тихие ссылки). «Удалить» — КРАСНАЯ всегда, а не
+        # только под курсором: опасное действие должно быть видно сразу.
         def link(parent, text, cmd, danger=False):
-            l = tk.Label(parent, text=text, bg=COL_SURFACE, fg=COL_TEXT_DIM,
+            base = COL_DANGER if danger else COL_TEXT_DIM
+            hover = COL_DANGER_HI if danger else COL_TEXT
+            l = tk.Label(parent, text=text, bg=COL_SURFACE, fg=base,
                          font=FONT_SM, cursor="hand2")
             l.bind("<Button-1>", lambda e: cmd())
-            l.bind("<Enter>", lambda e: l.configure(fg=("#ff453a" if danger else COL_TEXT)))
-            l.bind("<Leave>", lambda e: l.configure(fg=COL_TEXT_DIM))
+            l.bind("<Enter>", lambda e: l.configure(fg=hover))
+            l.bind("<Leave>", lambda e: l.configure(fg=base))
             return l
 
         def dot(parent):
@@ -2689,7 +2843,9 @@ class TrayApp:
         link(links, T("shortcut_btn"), lambda: self._create_shortcut(c)).pack(side="left")
         if not is_new:
             dot(links)
-            link(links, T("delete"), do_delete, danger=True).pack(side="left")
+            # «Удалить контейнер», а не просто «Удалить» — рядом лежат действия
+            # над оформлением, и должно быть ясно, что удаляется весь контейнер
+            link(links, T("delete_title"), do_delete, danger=True).pack(side="left")
 
         self._accent_btn(foot, "  " + T("save") + "  ", do_save).pack(side="right")
         self._ghost_btn(foot, T("cancel"), close).pack(side="right", padx=(0, 10))
@@ -2700,6 +2856,25 @@ class TrayApp:
                      font=FONT).grid(padx=20, pady=20)
         for i, (hwnd, title) in enumerate(targets):
             make_tile(i, hwnd, title)
+
+        # быстрый выбор «все окна программы»: группы считаем по ПОКАЗАННЫМ окнам,
+        # поэтому чужие (занятые другим контейнером) окна сюда не попадут в принципе
+        groups = group_targets_by_app(targets)
+
+        def toggle_group(hwnds):
+            on = not all(h in selected for h in hwnds)
+            for h in hwnds:
+                set_sel(h, on)
+            rebuild_presets()
+
+        if groups:
+            btn = tk.Label(win_head, text=T("pick_apps"), bg=COL_SURFACE,
+                           fg=COL_TEXT_DIM, font=FONT_SM, cursor="hand2")
+            btn.bind("<Enter>", lambda e: btn.configure(fg=COL_TEXT))
+            btn.bind("<Leave>", lambda e: btn.configure(fg=COL_TEXT_DIM))
+            btn.bind("<Button-1>",
+                     lambda e: self._apps_popup(btn, groups, selected, toggle_group))
+            btn.pack(side="right")
 
         body.pack(fill="both", expand=True, padx=14, pady=(0, 4))
         rebuild_presets()
