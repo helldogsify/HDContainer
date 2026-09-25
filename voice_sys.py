@@ -226,6 +226,7 @@ _MOD_BIT = {0xA0: MOD_SHIFT, 0xA1: MOD_SHIFT, 0x10: MOD_SHIFT,
             0x5B: MOD_WIN, 0x5C: MOD_WIN}
 SIDED_MODIFIERS = {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C}
 VK_RCONTROL = 0xA3
+VK_LMENU = 0xA4
 
 
 class KBDLLHOOKSTRUCT(ctypes.Structure):
@@ -267,6 +268,9 @@ class KeyHook:
         self.log = log or (lambda m: None)
         self.mods, self.vk, self.enabled = 0, VK_RCONTROL, True
         self.recording = False           # пока идёт запись — Esc перехватываем
+        self.mask_taps = False           # режим «нажал-нажал»: гасить меню Alt на каждом нажатии
+        self.arm_delay = 0.2             # дольше этого удержание — это запись, а не обычный Alt
+        self._press_t = 0.0
         self.capture = False
         self._down = set()
         self._active = False
@@ -348,10 +352,22 @@ class KeyHook:
             if vk == self.vk:
                 if not up and not repeat:
                     self._active, self._chorded = True, False
+                    self._press_t = time.time()
                     self.events.put(("press",))
                 elif up and self._active:
                     self._active = False
-                    self.events.put(("release",) if not self._chorded else ("chord_release",))
+                    if self._chorded:
+                        self.events.put(("chord_release",))
+                        return False
+                    self.events.put(("release",))
+                    held = time.time() - self._press_t
+                    if vk in _MENU_KEYS and (self.mask_taps or held >= self.arm_delay):
+                        # одиночное отпускание Alt/Win Windows превращает в «меню окна» /
+                        # «Пуск» — и наша вставка Ctrl+V ушла бы в меню. Вставляем перед
+                        # отпусканием «пустую» клавишу (как AutoHotkey/PowerToys): для
+                        # Windows это уже сочетание, меню не открывается.
+                        _send_mask_then_up(vk)
+                        return True
                 return False                     # сам модификатор не глотаем
             if self._active and not up and not self._chorded and vk != VK_ESCAPE:
                 self._chorded = True
@@ -375,27 +391,49 @@ class KeyHook:
             return True
         return False
 
+    def _mods_down(self, exclude):
+        # в режиме записи сочетания клавиши глотаются, и GetAsyncKeyState их не видит —
+        # поэтому модификаторы считаем по собственному учёту нажатий хука
+        m = 0
+        for v in self._down:
+            if v != exclude:
+                m |= _MOD_BIT.get(v, 0)
+        return m
+
     def _handle_capture(self, vk, up, repeat):
+        """Запись нового сочетания. ВСЕ клавиши глотаем: иначе одиночный Alt
+        уводит окно в режим меню, и оно не закрывается, пока не кликнешь."""
         if not up:
             if repeat:
-                return vk not in _MOD_BIT
+                return True
             if vk in _MOD_BIT:
-                others = {v for v in self._down if v != vk and key_down(v)}
+                others = {v for v in self._down if v != vk}
                 self._cap_single = vk if (vk in SIDED_MODIFIERS and not others) else None
-                return False
+                return True
+            mods = self._mods_down(vk)
             self._cap_single = None
             self.capture = False
             self._swallow_up.add(vk)
-            if vk == VK_ESCAPE and self._mods_now(vk) == 0:
+            if vk == VK_ESCAPE and mods == 0:
                 self.events.put(("capture_cancel",))
             else:
-                self.events.put(("captured", self._mods_now(vk), vk))
+                self.events.put(("captured", mods, vk))
             return True
         if vk == self._cap_single:               # модификатор нажали и отпустили в одиночку
             self.capture = False
             self._cap_single = None
             self.events.put(("captured", 0, vk))
-        return False
+        return True
+
+
+_MENU_KEYS = {0xA4, 0xA5, 0x5B, 0x5C}          # Alt и Win: одиночное отпускание открывает меню
+VK_MASK = 0xE8                                  # неназначенная клавиша (её же использует AutoHotkey)
+
+
+def _send_mask_then_up(vk):
+    seq = [_key_input(VK_MASK, False), _key_input(VK_MASK, True), _key_input(vk, True)]
+    arr = (INPUT * len(seq))(*seq)
+    user32.SendInput(len(seq), arr, ctypes.sizeof(INPUT))
 
 
 # ---------------------------------------------------------------------------
