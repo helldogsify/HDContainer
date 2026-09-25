@@ -1050,7 +1050,7 @@ class VoiceController:
                      % (probe.get("uia"), probe.get("ctrl"), probe.get("cls"), editable,
                         len(sel or "")))
             answer, warn = False, ""
-            if not sel and not self.get("cleanup"):
+            if not sel and not self.get("cleanup") and not ve.COMMAND_HINT.search(text):
                 result = text
                 if s.runner:
                     s.runner.cancel()
