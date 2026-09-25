@@ -199,6 +199,7 @@ STATE_COLORS = {
     "error": ((255, 84, 72), (255, 160, 60)),
     "setup": ((255, 176, 48), (255, 84, 72)),
 }
+LABEL_STATES = {"error", "setup"}
 HIDE_AFTER = {"pasted": 2.2, "copied": 3.0, "answer": 4.0, "nothing": 1.6, "cancel": 1.0,
               "error": 7.0, "setup": 8.0}
 
@@ -315,7 +316,7 @@ def _font(names, size):
 #  Индикатор над часами: слоёная окно с per-pixel alpha, рисуем через Pillow
 # ---------------------------------------------------------------------------
 class Overlay:
-    W0, H0 = 360, 136         # логический размер окна (до DPI); запас под свечение
+    W0, H0 = 460, 136         # логический размер окна (до DPI); запас под свечение и подсказку
     ORB = 30                  # радиус «сферы»
 
     def __init__(self, root, on_click, log):
@@ -492,8 +493,10 @@ class Overlay:
         self._draw_core(od, oc, k, s, t, c1, c2)
         orb = orb.resize((ob, ob), Image.LANCZOS)
         img.alpha_composite(orb, (cx - ob // 2, cy - ob // 2))
-        # --- плашка с текстом ---
-        self._draw_label(img, cx - R - int(12 * s), cy, c1)
+        # --- плашка с текстом: только когда без неё не понять, что делать ---
+        # (ошибка / «нужно настроить»); в обычной работе — один круг с анимацией
+        if self.state in LABEL_STATES:
+            self._draw_label(img, cx - R - int(12 * s), cy, c1)
         return img
 
     def _draw_core(self, d, oc, k, s, t, c1, c2):
@@ -521,7 +524,22 @@ class Overlay:
                 d.ellipse((x - r, y - r, x + r, y + r), fill=col)
             r0 = (3 + 1.2 * math.sin(t * 4)) * s * k
             d.ellipse((oc - r0, oc - r0, oc + r0, oc + r0), fill=(255, 255, 255, 220))
-        elif st in ("pasted", "copied", "answer"):
+        elif st in ("copied", "answer"):
+            # в буфер обмена (не вставлено) — значок планшета с зажимом «проявляется» снизу вверх
+            p = min(1.0, (time.time() - self.t_state) / 0.28)
+            u = s * k
+            w, h = 8.5 * u, 11 * u
+            top = oc - h + 1.5 * u
+            d.rounded_rectangle((oc - w, top, oc + w, oc + h), radius=2.5 * u,
+                                outline=c1 + (255,), width=int(2.6 * u))
+            d.rounded_rectangle((oc - 4 * u, top - 2.5 * u, oc + 4 * u, top + 2.5 * u), radius=1.5 * u,
+                                fill=c1 + (255,))
+            for i, yy in enumerate((-2.5, 2.0, 6.5)):
+                if p > i / 3.0:
+                    ww = (4.5 if i < 2 else 2.5) * u
+                    d.line((oc - 4.5 * u, oc + yy * u, oc - 4.5 * u + 2 * ww, oc + yy * u),
+                           fill=(c2 if st == "answer" else c1) + (230,), width=int(2 * u))
+        elif st == "pasted":
             p = min(1.0, (time.time() - self.t_state) / 0.28)
             pts = [(-8, 0), (-2.5, 6), (9, -7)]
             pts = [(oc + x * s * k, oc + y * s * k) for x, y in pts]
