@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.2.7"
+#define MyAppVersion "1.3.0"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -65,6 +65,10 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall
+
+[UninstallDelete]
+; скачанные модели Whisper (~0,5 ГБ) и временные файлы голосового ввода
+Type: filesandordirs; Name: "{localappdata}\HDContainer\whisper"
 
 [UninstallRun]
 ; корректно закрыть запущенный экземпляр перед удалением файлов

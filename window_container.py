@@ -59,7 +59,13 @@ try:                                   # Pillow: аватар из любой к
 except Exception:
     HAVE_PIL = False
 
-VERSION = "1.2.7"
+try:                                   # голосовой ввод (горячая клавиша -> Whisper -> LLM)
+    import voice
+except Exception:
+    voice = None
+    _VOICE_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.3.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -113,6 +119,17 @@ _LOG = os.path.join(_DIR, "HDContainer_debug.log")
 _RECOVERY = os.path.join(_DIR, "HDContainer_recovery.json")
 _STORE = os.path.join(_DIR, "HDContainer_containers.json")
 _ICONDIR = os.path.join(_DIR, "icons")   # пользовательские иконки контейнеров
+
+
+def _local_dir():
+    # тяжёлые данные (модели Whisper ~0,5 ГБ) — в Local, не в Roaming
+    base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
+    d = os.path.join(base, "HDContainer")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except Exception:
+        pass
+    return d
 
 
 def _migrate_data():
@@ -447,6 +464,7 @@ WM_CLOSE = 0x0010
 WM_SETICON = 0x0080
 WM_COMMAND = 0x0111
 WM_COPYDATA = 0x004A
+WM_HOTKEY = 0x0312
 
 CREATE_NO_WINDOW = 0x08000000
 WM_LBUTTONUP = 0x0202
@@ -1424,6 +1442,16 @@ class TrayApp:
         self._load_containers()
         self._add_tray()
 
+        # голосовой ввод: горячая клавиша регистрируется на нашем же окне сообщений
+        self.voice = None
+        if voice is not None:
+            try:
+                self.voice = voice.VoiceController(self, lambda: LANG, log, _local_dir())
+            except Exception:
+                log("voice init failed:\n" + traceback.format_exc())
+        else:
+            log("voice import failed:\n" + globals().get("_VOICE_IMPORT_ERR", ""))
+
         # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
         # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
         # и перезапустит только то, что не выжило. Никаких ручных действий.
@@ -1459,6 +1487,12 @@ class TrayApp:
             low = lparam & 0xFFFF
             if low in (WM_LBUTTONUP, WM_RBUTTONUP, WM_CONTEXTMENU):
                 self._show_menu()
+            return 0
+        if msg == WM_HOTKEY and self.voice is not None:
+            try:
+                self.voice.on_hotkey(wparam)
+            except Exception as ex:
+                log("voice hotkey failed: %r" % ex)
             return 0
         if msg == WM_COPYDATA:
             try:
@@ -1592,6 +1626,9 @@ class TrayApp:
             tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
         self._popup_action_row(frame, "＋", T("create_container"), W,
                                lambda: act(self._create_container))
+        if self.voice is not None:
+            self._popup_action_row(frame, "🎙", voice.V("menu"), W,
+                                   lambda: act(self.voice.open_settings))
         self._popup_action_row(frame, "⚙", T("settings"), W,
                                lambda: act(self._open_settings))
         self._popup_action_row(frame, "⏻", T("quit"), W,
@@ -2930,6 +2967,8 @@ class TrayApp:
         self._update_tray()
 
     def _quit(self):
+        if getattr(self, "voice", None) is not None:
+            self.voice.shutdown()          # снять хоткей, погасить whisper-server
         for c in self.containers:
             c.detach_all()
             self._safe_destroy_host(c.host_hwnd)
@@ -3350,7 +3389,7 @@ class TrayApp:
                 self._settings_win.destroy()
             except Exception:
                 pass
-        win = self._dialog(T("settings_title"), 470, 500)
+        win = self._dialog(T("settings_title"), 470, 530)
         self._settings_win = win
         pad = 24
         tk.Label(win, text=T("settings_title"), bg=COL_SURFACE, fg=COL_TEXT,
@@ -3365,6 +3404,11 @@ class TrayApp:
                        font=FONT_SM, cursor="hand2")
         upd.pack(anchor="w", padx=pad, pady=(10, 4))
         upd.bind("<Button-1>", lambda e: self._check_update_bg(True))
+        if self.voice is not None:
+            vl = tk.Label(win, text="🎙  " + voice.V("menu") + "…", bg=COL_SURFACE,
+                          fg=COL_ACCENT, font=FONT_SM, cursor="hand2")
+            vl.pack(anchor="w", padx=pad, pady=(2, 4))
+            vl.bind("<Button-1>", lambda e: self.voice.open_settings())
 
         tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=pad, pady=14)
 
