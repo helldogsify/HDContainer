@@ -861,6 +861,49 @@ def _selection_text(el, limit=200000):
         _release(tp.value)
 
 
+UIA_PaneControlTypeId = 50033
+UIA_CustomControlTypeId = 50025
+UIA_GroupControlTypeId = 50026
+TreeScope_Descendants = 4
+
+
+def _find_first(auto, el, prop, variant):
+    """FindFirst(потомки, prop == variant) -> указатель на элемент или None."""
+    cond = ctypes.c_void_p()
+    if _vcall(auto, 23, [ctypes.c_int, VARIANT, ctypes.POINTER(ctypes.c_void_p)],
+              prop, variant, ctypes.byref(cond)) != 0 or not cond.value:
+        return None
+    try:
+        found = ctypes.c_void_p()
+        if _vcall(el, 5, [ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)],
+                  TreeScope_Descendants, cond.value, ctypes.byref(found)) != 0:
+            return None
+        return found.value or None
+    finally:
+        _release(cond.value)
+
+
+def _variant_bool(v):
+    var = VARIANT()
+    var.vt = VT_BOOL
+    ctypes.memmove(var.data, (b"\xff\xff" if v else b"\x00\x00"), 2)
+    return var
+
+
+def _variant_i4(v):
+    var = VARIANT()
+    var.vt = VT_I4
+    ctypes.memmove(var.data, ctypes.byref(ctypes.c_int(v)), 4)
+    return var
+
+
+def _focused_inside(auto, el):
+    """WinUI 3 / XAML Islands (новый WhatsApp, Блокнот Win11): GetFocusedElement
+    отдаёт контейнер-мост (Pane «Microsoft.UI.Content.DesktopChildSiteBridge»),
+    а не само поле. Ищем внутри элемент с настоящим клавиатурным фокусом."""
+    return _find_first(auto, el, UIA_HasKeyboardFocusPropertyId, _variant_bool(True))
+
+
 def uia_probe(fg):
     """Что сейчас в фокусе. -> dict:
        editable: True/False/None (None — не удалось понять)
@@ -882,6 +925,13 @@ def uia_probe(fg):
             return res                                  # фокус не в окне, где нажали хоткей
         res["uia"] = True
         ctrl = _prop(el.value, UIA_ControlTypePropertyId) or 0
+        if ctrl in (UIA_PaneControlTypeId, UIA_CustomControlTypeId, UIA_GroupControlTypeId):
+            inner = _focused_inside(auto.value, el.value)
+            if inner:
+                _release(el.value)
+                el = ctypes.c_void_p(inner)
+                ctrl = _prop(el.value, UIA_ControlTypePropertyId) or 0
+                res["inner"] = True
         res["ctrl"] = ctrl
         res["cls"] = _prop(el.value, UIA_ClassNamePropertyId) or ""
         has_val = _prop(el.value, UIA_IsValuePatternAvailablePropertyId)
