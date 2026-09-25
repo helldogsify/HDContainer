@@ -58,6 +58,18 @@ VSTR = {
     "sec_hotkey": {"en": "Hotkey", "ru": "Горячая клавиша", "es": "Atajo", "pt": "Atalho", "de": "Hotkey", "fr": "Raccourci", "zh": "快捷键"},
     "change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
     "press_combo": {"en": "Press the new key combination,\nor press and release a single key like Right Ctrl…\nEsc — cancel", "ru": "Нажми новое сочетание клавиш\nили нажми и отпусти одну клавишу, например правый Ctrl…\nEsc — отмена", "es": "Pulsa la nueva combinación\no pulsa y suelta una sola tecla, como Ctrl derecho…\nEsc — cancelar", "pt": "Pressione a nova combinação\nou pressione e solte uma tecla, como Ctrl direito…\nEsc — cancelar", "de": "Drücke die neue Tastenkombination\noder drücke und löse eine einzelne Taste wie Strg rechts…\nEsc — Abbrechen", "fr": "Appuie sur la nouvelle combinaison\nou appuie et relâche une seule touche, comme Ctrl droit…\nÉchap — annuler", "zh": "请按下新的组合键，\n或按下并松开单个键（如右 Ctrl）…\nEsc — 取消"},
+    "llm_remote": {"en": "Claude on another computer — via HDContainer on the PC that has Claude Code", "ru": "Claude на другом компьютере — через HDContainer на ПК, где есть Claude Code", "es": "Claude en otro equipo — a través de HDContainer en el PC que tiene Claude Code", "pt": "Claude em outro computador — via HDContainer no PC que tem o Claude Code", "de": "Claude auf einem anderen Computer — über HDContainer auf dem PC mit Claude Code", "fr": "Claude sur un autre ordinateur — via HDContainer sur le PC qui a Claude Code", "zh": "另一台电脑上的 Claude — 通过装有 Claude Code 的电脑上的 HDContainer"},
+    "remote_hint": {"en": "On the PC with Claude Code open Voice input → “Share Claude Code with other computers”, turn it on, and copy the address and key here.", "ru": "На ПК с Claude Code открой «Голосовой ввод» → «Поделиться Claude Code с другими компьютерами», включи и скопируй сюда адрес и ключ.", "es": "En el PC con Claude Code abre Entrada por voz → «Compartir Claude Code con otros equipos», actívalo y copia aquí la dirección y la clave.", "pt": "No PC com o Claude Code abra Entrada por voz → “Compartilhar o Claude Code com outros computadores”, ative e copie aqui o endereço e a chave.", "de": "Öffne auf dem PC mit Claude Code Spracheingabe → „Claude Code mit anderen Computern teilen“, schalte es ein und kopiere Adresse und Schlüssel hierher.", "fr": "Sur le PC qui a Claude Code, ouvre Saisie vocale → « Partager Claude Code avec d’autres ordinateurs », active-le et copie ici l’adresse et la clé.", "zh": "在装有 Claude Code 的电脑上打开“语音输入 → 与其他电脑共享 Claude Code”，开启后把地址和密钥复制到这里。"},
+    "remote_url": {"en": "Address (e.g. 100.112.15.42 or http://100.112.15.42:8765/v1)", "ru": "Адрес (например, 100.112.15.42 или http://100.112.15.42:8765/v1)", "es": "Dirección (p. ej. 100.112.15.42 o http://100.112.15.42:8765/v1)", "pt": "Endereço (ex.: 100.112.15.42 ou http://100.112.15.42:8765/v1)", "de": "Adresse (z. B. 100.112.15.42 oder http://100.112.15.42:8765/v1)", "fr": "Adresse (ex. 100.112.15.42 ou http://100.112.15.42:8765/v1)", "zh": "地址（例如 100.112.15.42 或 http://100.112.15.42:8765/v1）"},
+    "pan_local": {"en": "Local Whisper settings", "ru": "Настройки локального Whisper", "es": "Ajustes de Whisper local", "pt": "Configurações do Whisper local", "de": "Einstellungen für lokales Whisper", "fr": "Réglages de Whisper local", "zh": "本地 Whisper 设置"},
+    "pan_cloud": {"en": "Cloud recognition settings", "ru": "Настройки облачного распознавания", "es": "Ajustes del reconocimiento en la nube", "pt": "Configurações do reconhecimento na nuvem", "de": "Einstellungen der Cloud-Erkennung", "fr": "Réglages de la reconnaissance cloud", "zh": "云端识别设置"},
+    "pan_cc": {"en": "Claude Code on this PC", "ru": "Claude Code на этом ПК", "es": "Claude Code en este PC", "pt": "Claude Code neste PC", "de": "Claude Code auf diesem PC", "fr": "Claude Code sur ce PC", "zh": "本机上的 Claude Code"},
+    "pan_remote": {"en": "Connection to the other computer", "ru": "Подключение к другому компьютеру", "es": "Conexión con el otro equipo", "pt": "Conexão com o outro computador", "de": "Verbindung zum anderen Computer", "fr": "Connexion à l’autre ordinateur", "zh": "连接到另一台电脑"},
+    "pan_oai": {"en": "OpenAI-compatible service", "ru": "OpenAI-совместимый сервис", "es": "Servicio compatible con OpenAI", "pt": "Serviço compatível com OpenAI", "de": "OpenAI-kompatibler Dienst", "fr": "Service compatible OpenAI", "zh": "兼容 OpenAI 的服务"},
+    "share_panel": {"en": "Give these to the other computer", "ru": "Это нужно ввести на другом компьютере", "es": "Introduce esto en el otro equipo", "pt": "Informe isto no outro computador", "de": "Dies auf dem anderen Computer eingeben", "fr": "À saisir sur l’autre ordinateur", "zh": "在另一台电脑上填写以下信息"},
+    "share_none": {"en": "Claude Code isn’t installed on this PC, so there is nothing to share. Turn this off here and choose “Claude on another computer” above.", "ru": "На этом ПК нет Claude Code — делиться нечем. Выключи это здесь и выбери выше «Claude на другом компьютере».", "es": "Este PC no tiene Claude Code, no hay nada que compartir. Desactívalo aquí y elige arriba «Claude en otro equipo».", "pt": "Este PC não tem o Claude Code, não há o que compartilhar. Desative aqui e escolha acima “Claude em outro computador”.", "de": "Auf diesem PC ist kein Claude Code installiert – nichts zu teilen. Schalte es hier aus und wähle oben „Claude auf einem anderen Computer“.", "fr": "Claude Code n’est pas installé sur ce PC : rien à partager. Désactive-le ici et choisis plus haut « Claude sur un autre ordinateur ».", "zh": "本机未安装 Claude Code，无可共享。请在此关闭，并在上方选择“另一台电脑上的 Claude”。"},
+    "o_need_model": {"en": "Speech model isn’t downloaded yet", "ru": "Модель распознавания ещё не скачана", "es": "El modelo de voz aún no está descargado", "pt": "O modelo de fala ainda não foi baixado", "de": "Das Sprachmodell ist noch nicht heruntergeladen", "fr": "Le modèle vocal n’est pas encore téléchargé", "zh": "语音模型尚未下载"},
+    "o_need_llm": {"en": "Text processing isn’t set up", "ru": "Не настроена обработка текста", "es": "El procesamiento de texto no está configurado", "pt": "O processamento de texto não está configurado", "de": "Textverarbeitung ist nicht eingerichtet", "fr": "Le traitement du texte n’est pas configuré", "zh": "尚未设置文本处理"},
     "sec_share": {"en": "Share Claude Code with other computers", "ru": "Поделиться Claude Code с другими компьютерами", "es": "Compartir Claude Code con otros equipos", "pt": "Compartilhar o Claude Code com outros computadores", "de": "Claude Code mit anderen Computern teilen", "fr": "Partager Claude Code avec d’autres ordinateurs", "zh": "与其他电脑共享 Claude Code"},
     "share_desc": {"en": "This PC processes voice text for your other computers with its Claude Code, so they need no Claude Code or API key. On the other PC choose “OpenAI-compatible → HDContainer on another PC” and paste the address and key below. Works best over Tailscale or a home network.", "ru": "Этот ПК обрабатывает текст голосового ввода для других ваших компьютеров своим Claude Code — там не нужны ни Claude Code, ни API-ключ. На другом ПК выбери «OpenAI-совместимые → HDContainer on another PC» и вставь адрес и ключ отсюда. Лучше всего — через Tailscale или домашнюю сеть.", "es": "Este PC procesa el texto de voz de tus otros equipos con su Claude Code; allí no hace falta Claude Code ni clave API. En el otro PC elige «Compatible con OpenAI → HDContainer on another PC» y pega la dirección y la clave de abajo. Mejor por Tailscale o red doméstica.", "pt": "Este PC processa o texto de voz dos seus outros computadores com o Claude Code dele; lá não é preciso Claude Code nem chave de API. No outro PC escolha “Compatível com OpenAI → HDContainer on another PC” e cole o endereço e a chave abaixo. Melhor via Tailscale ou rede doméstica.", "de": "Dieser PC verarbeitet den Sprachtext deiner anderen Computer mit seinem Claude Code – dort brauchst du weder Claude Code noch API-Schlüssel. Wähle auf dem anderen PC „OpenAI-kompatibel → HDContainer on another PC“ und füge Adresse und Schlüssel von unten ein. Am besten über Tailscale oder das Heimnetz.", "fr": "Ce PC traite le texte vocal de tes autres ordinateurs avec son Claude Code : pas besoin de Claude Code ni de clé API là-bas. Sur l’autre PC, choisis « Compatible OpenAI → HDContainer on another PC » et colle l’adresse et la clé ci-dessous. Idéal via Tailscale ou le réseau domestique.", "zh": "这台电脑用自己的 Claude Code 为你的其他电脑处理语音文本，那些电脑无需安装 Claude Code 或 API 密钥。在另一台电脑上选择“兼容 OpenAI → HDContainer on another PC”，并粘贴下面的地址和密钥。最好通过 Tailscale 或家庭网络使用。"},
     "share_enable": {"en": "Accept requests from other computers", "ru": "Принимать запросы с других компьютеров", "es": "Aceptar solicitudes de otros equipos", "pt": "Aceitar pedidos de outros computadores", "de": "Anfragen von anderen Computern annehmen", "fr": "Accepter les requêtes d’autres ordinateurs", "zh": "接受其他电脑的请求"},
@@ -159,8 +171,9 @@ DEFAULTS = {
     "cleanup": True, "autopaste": True, "restore_clip": True,
     "p_dict": "", "p_edit": "",
     "share_enabled": False, "share_port": 8765, "share_token": "",
+    "rm_url": "", "rm_key": "",
 }
-SECRET_KEYS = {"stt_key", "an_key", "oa_key", "share_token"}
+SECRET_KEYS = {"stt_key", "an_key", "oa_key", "share_token", "rm_key"}
 
 # ---------------------------------------------------------------------------
 #  Палитра состояний индикатора
@@ -660,6 +673,8 @@ class VoiceController:
         self.hook.start()
         self.register_hotkey()
         self.share = None
+        self._p = self._pbg = None
+        self._migrate()
         self.apply_share()
         self.root.after(20, self._hook_loop)
         self.root.after(60000, self._idle_tick)
@@ -748,25 +763,28 @@ class VoiceController:
 
     # ---- проверка готовности ----
     def _setup_problem(self):
+        """Короткое описание того, что не настроено (или None)."""
         if self.get("stt") == "local":
             if not self.whisper.is_installed(self.get("w_model")):
-                return V("not_installed", ve.WHISPER_MODELS.get(self.get("w_model"), 0))
+                return V("o_need_model")
         elif not self.get("stt_url"):
-            return V("sec_stt")
+            return V("o_setup")
         llm = self.get("llm")
         if llm == "claude_code" and not ve.find_claude(self.get("cc_path")):
-            return V("cc_missing")
+            return V("o_need_llm")
+        if llm == "remote" and not (self.get("rm_url") and self.get("rm_key")):
+            return V("o_need_llm")
         if llm == "anthropic" and not self.get("an_key"):
-            return V("llm_api")
+            return V("o_need_llm")
         if llm == "openai" and not self.get("oa_url"):
-            return V("sec_llm")
+            return V("o_need_llm")
         return None
 
     # ---- запись ----
     def _start(self):
         problem = self._setup_problem()
         if problem:
-            self.overlay.show("setup", V("o_setup"), V("o_click"), clickable=True)
+            self.overlay.show("setup", problem, V("o_click"), clickable=True)
             self.log("voice: setup needed: %s" % problem)
             return
         fg = vs.user32.GetForegroundWindow()
@@ -802,8 +820,9 @@ class VoiceController:
                                          spf, os.path.join(ve.scratch_dir(), "cwd"), self.log)
                 if not s.cancelled:
                     s.runner.start()
-            elif self.get("llm") == "openai" and self.get("oa_preset") == "hdcontainer":
-                ve.remote_warm(self.get("oa_url"), self.get("oa_key"), self._system_prompt())
+            elif self.get("llm") == "remote":
+                ve.remote_warm(ve.remote_base(self.get("rm_url")), self.get("rm_key"),
+                               self._system_prompt())
             if self.get("stt") == "local":
                 self.whisper.ensure_server(self.get("w_model"), self.get("lang"))
         except Exception as ex:
@@ -912,6 +931,9 @@ class VoiceController:
                 runner = ve.ClaudeCode(ve.find_claude(self.get("cc_path")), self.get("cc_model"),
                                        spf, os.path.join(ve.scratch_dir(), "cwd"), self.log)
             return runner.ask(text)
+        if p == "remote":
+            return ve.openai_ask(ve.remote_base(self.get("rm_url")), self.get("rm_key"), ve.SHARE_MODEL_ID,
+                                 self._system_prompt(), text)
         if p == "anthropic":
             return ve.anthropic_ask(self.get("an_key"), self.get("an_model"), self._system_prompt(), text)
         return ve.openai_ask(self.get("oa_url"), self.get("oa_key"), self.get("oa_model"),
@@ -1025,6 +1047,23 @@ class VoiceController:
         vs.clip_set_text(text)
         return "copied"
 
+    def _migrate(self):
+        v = self.app.settings.get("voice") or {}
+        # 1.3.2: «Claude на другом ПК» был пресетом OpenAI-совместимых
+        if v.get("llm") == "openai" and v.get("oa_preset") == "hdcontainer":
+            self.set("llm", "remote", save=False)
+            self.set("rm_url", self.get("oa_url"), save=False)
+            self.set("rm_key", self.get("oa_key"), save=False)
+            self.set("oa_preset", "openai", save=False)
+            self.set("oa_url", DEFAULTS["oa_url"], save=False)
+            self.set("oa_model", DEFAULTS["oa_model"], save=False)
+        # раздавать Claude Code может только тот ПК, где он есть
+        if v.get("share_enabled") and not ve.find_claude(self.get("cc_path")):
+            self.set("share_enabled", False, save=False)
+            self.log("voice: share disabled — no Claude Code on this PC")
+        if v:
+            self.app._set_setting("voice", self.app.settings.get("voice", {}))
+
     # ---- «Поделиться Claude Code» (сервер для других ПК) ----
     def apply_share(self):
         if self.share:
@@ -1120,14 +1159,20 @@ class VoiceController:
     # ---- мелкие виджеты ----
     PAD = 24
 
+    # Виджеты рисуются в «текущий контейнер» self._p с фоном self._pbg: это либо
+    # само тело окна, либо карточка настроек выбранного варианта (см. _panel).
+    def _px(self, indent=0):
+        base = 14 if self._p is not self._body else self.PAD
+        return (base + indent, base)
+
     def _h(self, text):
         tk.Label(self._body, text=text, bg=self.c_sf, fg=self.c_tx, font=("Segoe UI Semibold", 11)).pack(
-            anchor="w", padx=self.PAD, pady=(18, 6))
+            anchor="w", padx=self.PAD, pady=(20, 6))
 
-    def _note(self, parent, text, fg=None, pady=(0, 4)):
-        lb = tk.Label(parent, text=text, bg=self.c_sf, fg=fg or self.c_dim, font=("Segoe UI", 9),
-                      justify="left", wraplength=520, anchor="w")
-        lb.pack(anchor="w", fill="x", padx=self.PAD, pady=pady)
+    def _note(self, text, fg=None, pady=(0, 4), indent=0):
+        lb = tk.Label(self._p, text=text, bg=self._pbg, fg=fg or self.c_dim, font=("Segoe UI", 9),
+                      justify="left", wraplength=500 - indent, anchor="w")
+        lb.pack(anchor="w", fill="x", padx=self._px(indent), pady=pady)
         return lb
 
     def _check(self, text, key, on_change=None):
@@ -1137,29 +1182,61 @@ class VoiceController:
                 on_change(v)
         self.app._setting_check(self._body, text, bool(self.get(key)), setter, self.PAD)
 
-    def _radio(self, options, key, indent=0):
+    def _radio(self, options, key, panels=None):
+        """panels: {value: (заголовок, функция-построитель)} — карточка под выбранным вариантом."""
         cur = self.get(key)
         for val, label in options:
-            row = tk.Frame(self._body, bg=self.c_sf)
-            row.pack(fill="x", padx=(self.PAD + indent, self.PAD), pady=2)
+            row = tk.Frame(self._p, bg=self._pbg)
+            row.pack(fill="x", padx=self._px(), pady=2)
             on = (val == cur)
-            dot = tk.Label(row, text="◉" if on else "○", bg=self.c_sf,
+            dot = tk.Label(row, text="◉" if on else "○", bg=self._pbg,
                            fg=self.c_ac if on else self.c_dim, font=("Segoe UI Symbol", 12), cursor="hand2")
-            dot.pack(side="left")
-            lb = tk.Label(row, text="  " + label, bg=self.c_sf, fg=self.c_tx if on else self.c_dim,
-                          font=("Segoe UI", 10), cursor="hand2", justify="left", wraplength=500, anchor="w")
-            lb.pack(side="left", fill="x")
+            dot.pack(side="left", anchor="n")
+            # отступ — через padx, а не пробелами: тогда перенесённая строка
+            # начинается ровно под первой, а не под кружком
+            lb = tk.Label(row, text=label, bg=self._pbg, fg=self.c_tx if on else self.c_dim,
+                          font=("Segoe UI", 10), cursor="hand2", justify="left", wraplength=470, anchor="w")
+            lb.pack(side="left", fill="x", padx=(8, 0), pady=(2, 0))
 
             def pick(_e=None, v=val):
                 self.set(key, v)
                 self._rebuild()
             dot.bind("<Button-1>", pick)
             lb.bind("<Button-1>", pick)
+            if on and panels and val in panels:
+                title, build = panels[val]
+                with self._panel(title):
+                    build()
 
-    def _entry(self, label, key, secret=False, indent=24, width=None):
-        row = tk.Frame(self._body, bg=self.c_sf)
-        row.pack(fill="x", padx=(self.PAD + indent, self.PAD), pady=3)
-        tk.Label(row, text=label, bg=self.c_sf, fg=self.c_dim, font=("Segoe UI", 9)).pack(anchor="w")
+    class _PanelCtx:
+        def __init__(self, ctl, title):
+            self.ctl, self.title = ctl, title
+
+        def __enter__(self):
+            c = self.ctl
+            outer = tk.Frame(c._body, bg=c.c_sf2)
+            outer.pack(fill="x", padx=(c.PAD + 26, c.PAD), pady=(4, 8))
+            tk.Frame(outer, bg=c.c_ac, width=3).pack(side="left", fill="y")
+            inner = tk.Frame(outer, bg=c.c_sf2)
+            inner.pack(side="left", fill="both", expand=True, pady=(10, 12))
+            tk.Label(inner, text=self.title, bg=c.c_sf2, fg=c.c_tx, font=("Segoe UI Semibold", 9)).pack(
+                anchor="w", padx=14, pady=(0, 4))
+            self.saved = (c._p, c._pbg)
+            c._p, c._pbg = inner, c.c_sf2
+            return inner
+
+        def __exit__(self, *exc):
+            self.ctl._p, self.ctl._pbg = self.saved
+            return False
+
+    def _panel(self, title):
+        """Карточка с настройками выбранного варианта — видно, к чему они относятся."""
+        return self._PanelCtx(self, title)
+
+    def _entry(self, label, key, secret=False, on_change=None):
+        row = tk.Frame(self._p, bg=self._pbg)
+        row.pack(fill="x", padx=self._px(), pady=3)
+        tk.Label(row, text=label, bg=self._pbg, fg=self.c_dim, font=("Segoe UI", 9)).pack(anchor="w")
         var = tk.StringVar(value=self.get(key) or "")
         ent = tk.Entry(row, textvariable=var, font=("Segoe UI", 10), bg=self.c_bg, fg=self.c_tx,
                        insertbackground=self.c_tx, relief="flat", highlightthickness=1,
@@ -1167,17 +1244,22 @@ class VoiceController:
         ent.pack(fill="x", ipady=4)
         for combo in ("<Control-a>", "<Control-A>"):
             ent.bind(combo, lambda e, en=ent: (en.select_range(0, "end"), "break")[-1])
-        var.trace_add("write", lambda *_: self.set(key, var.get().strip()))
+
+        def changed(*_):
+            self.set(key, var.get().strip())
+            if on_change:
+                on_change()
+        var.trace_add("write", changed)
         return ent
 
-    def _dropdown(self, label, items, key, indent=24, on_pick=None):
+    def _dropdown(self, label, items, key, on_pick=None):
         """items: [(value, text)]"""
-        row = tk.Frame(self._body, bg=self.c_sf)
-        row.pack(fill="x", padx=(self.PAD + indent, self.PAD), pady=3)
-        tk.Label(row, text=label, bg=self.c_sf, fg=self.c_dim, font=("Segoe UI", 9)).pack(side="left")
+        row = tk.Frame(self._p, bg=self._pbg)
+        row.pack(fill="x", padx=self._px(), pady=3)
+        tk.Label(row, text=label, bg=self._pbg, fg=self.c_dim, font=("Segoe UI", 9)).pack(side="left")
         cur = self.get(key)
         cur_txt = next((t for v, t in items if v == cur), str(cur))
-        val = tk.Label(row, text=cur_txt + "   ⌄", bg=self.c_sf, fg=self.c_ac, font=("Segoe UI", 10),
+        val = tk.Label(row, text=cur_txt + "   ⌄", bg=self._pbg, fg=self.c_ac, font=("Segoe UI", 10),
                        cursor="hand2")
         val.pack(side="right")
 
@@ -1211,11 +1293,11 @@ class VoiceController:
         pop.after(200, lambda: pop.winfo_exists() and pop.bind("<FocusOut>", lambda e: pop.destroy()))
         pop.bind("<Escape>", lambda e: pop.destroy())
 
-    def _copy_row(self, label, value, extra=None, indent=24):
-        row = tk.Frame(self._body, bg=self.c_sf)
-        row.pack(fill="x", padx=(self.PAD + indent, self.PAD), pady=3)
-        tk.Label(row, text=label, bg=self.c_sf, fg=self.c_dim, font=("Segoe UI", 9)).pack(anchor="w")
-        line = tk.Frame(row, bg=self.c_sf)
+    def _copy_row(self, label, value, extra=None):
+        row = tk.Frame(self._p, bg=self._pbg)
+        row.pack(fill="x", padx=self._px(), pady=3)
+        tk.Label(row, text=label, bg=self._pbg, fg=self.c_dim, font=("Segoe UI", 9)).pack(anchor="w")
+        line = tk.Frame(row, bg=self._pbg)
         line.pack(fill="x")
         ent = tk.Entry(line, font=("Consolas", 10), bg=self.c_bg, fg=self.c_tx, relief="flat",
                        readonlybackground=self.c_bg, highlightthickness=1,
@@ -1229,10 +1311,10 @@ class VoiceController:
             self.root.clipboard_append(value)
             btn.configure(text=V("copied"))
             self.root.after(1200, lambda: btn.winfo_exists() and btn.configure(text=V("copy")))
-        btn = self.app._ghost_btn(line, V("copy"), copy)
+        btn = self.app._accent_btn(line, V("copy"), copy)
         btn.pack(side="left", padx=(8, 0))
         if extra:
-            lk = tk.Label(line, text=extra[0], bg=self.c_sf, fg=self.c_ac, font=("Segoe UI", 9),
+            lk = tk.Label(line, text=extra[0], bg=self._pbg, fg=self.c_ac, font=("Segoe UI", 9),
                           cursor="hand2")
             lk.pack(side="left", padx=(10, 0))
             lk.bind("<Button-1>", lambda e: extra[1]())
@@ -1249,9 +1331,9 @@ class VoiceController:
             self.apply_share()
             self._rebuild()
 
-    def _btn_row(self, indent=24):
-        row = tk.Frame(self._body, bg=self.c_sf)
-        row.pack(fill="x", padx=(self.PAD + indent, self.PAD), pady=(6, 2))
+    def _btn_row(self):
+        row = tk.Frame(self._p, bg=self._pbg)
+        row.pack(fill="x", padx=self._px(), pady=(6, 2))
         return row
 
     def _textbox(self, label, key, default):
@@ -1268,62 +1350,73 @@ class VoiceController:
             self.set(key, "" if v == default.strip() else v)
         tb.bind("<KeyRelease>", save)
         tb.bind("<FocusOut>", save)
-        row = self._btn_row(0)
+        row = self._btn_row()
         lk = tk.Label(row, text=V("reset"), bg=self.c_sf, fg=self.c_ac, font=("Segoe UI", 9), cursor="hand2")
         lk.pack(side="right")
         lk.bind("<Button-1>", lambda e: (self.set(key, ""), tb.delete("1.0", "end"), tb.insert("1.0", default)))
 
+    def _test_row(self):
+        row = self._btn_row()
+        res = tk.Label(row, text="", bg=self._pbg, fg=self.c_dim, font=("Segoe UI", 9), justify="left",
+                       wraplength=360, anchor="w")
+        self.app._accent_btn(row, V("test"), lambda: self._test_llm(res)).pack(side="left", anchor="n")
+        res.pack(side="left", padx=10, fill="x")
+
     # ---- содержимое ----
     def _build(self):
         b, a = self._body, self.app
+        self._p, self._pbg = b, self.c_sf
         tk.Label(b, text=V("title"), bg=self.c_sf, fg=self.c_tx, font=("Segoe UI Semibold", 14)).pack(
             anchor="w", padx=self.PAD, pady=(18, 6))
-        self._note(b, V("intro"), pady=(0, 6))
+        self._note(V("intro"), pady=(0, 6))
         self._check(V("enable"), "enabled", lambda v: self.register_hotkey())
 
         # горячая клавиша
         self._h(V("sec_hotkey"))
-        row = self._btn_row(0)
+        row = self._btn_row()
         tk.Label(row, text=vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")), bg=self.c_sf2,
                  fg=self.c_tx, font=("Consolas", 11), padx=12, pady=5).pack(side="left")
         a._ghost_btn(row, V("change"), self._capture_hotkey).pack(side="left", padx=10)
         if self.hook.modifier_only:
-            self._note(b, V("hk_single_note"), pady=(4, 0))
+            self._note(V("hk_single_note"), pady=(4, 2))
         self._radio([("hold", V("mode_hold")), ("toggle", V("mode_toggle"))], "mode")
 
         # микрофон
         self._h(V("sec_mic"))
         mics = [("", V("mic_default"))] + [(n, n) for n in vs.list_mics()]
-        self._dropdown(V("sec_mic"), mics, "mic", indent=0)
+        self._dropdown(V("sec_mic"), mics, "mic")
 
         # распознавание
         self._h(V("sec_stt"))
-        self._radio([("local", V("stt_local")), ("cloud", V("stt_cloud"))], "stt")
         langs = [(c, V("lang_auto") if c == "auto" else c) for c in ve.LANGS]
-        if self.get("stt") == "local":
-            models = [("base", V("m_base")), ("small", V("m_small")), ("large-v3-turbo-q5_0", V("m_turbo"))]
+
+        def stt_local():
+            models = [("base", V("m_base")), ("small", V("m_small")),
+                      ("large-v3-turbo-q5_0", V("m_turbo"))]
             self._dropdown(V("model"), models, "w_model", on_pick=lambda v: self.whisper.stop())
             self._dropdown(V("lang"), langs, "lang", on_pick=lambda v: self.whisper.stop())
             m = self.get("w_model")
             row = self._btn_row()
             if self.dl and self.dl.get("model") == m and not self.dl.get("finished"):
-                self._dl_label = tk.Label(row, text=V("downloading", 0), bg=self.c_sf, fg=self.c_ac,
+                self._dl_label = tk.Label(row, text=V("downloading", 0), bg=self._pbg, fg=self.c_ac,
                                           font=("Segoe UI", 9))
                 self._dl_label.pack(side="left")
             elif self.whisper.is_installed(m):
-                tk.Label(row, text="✓ " + V("installed"), bg=self.c_sf, fg="#34d399",
+                tk.Label(row, text="✓ " + V("installed"), bg=self._pbg, fg="#34d399",
                          font=("Segoe UI", 9)).pack(side="left")
-                lk = tk.Label(row, text=V("delete_model"), bg=self.c_sf, fg=self.c_dim,
+                lk = tk.Label(row, text=V("delete_model"), bg=self._pbg, fg=self.c_dim,
                               font=("Segoe UI", 9), cursor="hand2")
                 lk.pack(side="right")
                 lk.bind("<Button-1>", lambda e: (self.whisper.remove_model(m), self._rebuild()))
             else:
-                tk.Label(row, text=V("not_installed", ve.WHISPER_MODELS[m]), bg=self.c_sf, fg=self.c_dim,
+                tk.Label(row, text=V("not_installed", ve.WHISPER_MODELS[m]), bg=self._pbg, fg=self.c_dim,
                          font=("Segoe UI", 9)).pack(side="left")
                 a._accent_btn(row, V("download"), lambda: self._download(m)).pack(side="right")
                 if self.dl and self.dl.get("err") and self.dl.get("model") == m:
-                    self._note(b, V("test_fail", self.dl["err"]), fg=self.c_err)
-        else:
+                    self._note(V("test_fail", self.dl["err"]), fg=self.c_err)
+            self._entry(V("vocab"), "stt_prompt")
+
+        def stt_cloud():
             presets = [(p[0], p[1]) for p in ve.STT_PRESETS]
 
             def on_stt_preset(v):
@@ -1336,24 +1429,35 @@ class VoiceController:
             self._entry(V("key"), "stt_key", secret=True)
             self._entry(V("model"), "stt_model")
             self._dropdown(V("lang"), langs, "lang")
-        self._entry(V("vocab"), "stt_prompt", indent=0)
+            self._entry(V("vocab"), "stt_prompt")
+
+        self._radio([("local", V("stt_local")), ("cloud", V("stt_cloud"))], "stt",
+                    {"local": (V("pan_local"), stt_local), "cloud": (V("pan_cloud"), stt_cloud)})
 
         # LLM
         self._h(V("sec_llm"))
-        self._radio([("claude_code", V("llm_cc")), ("anthropic", V("llm_api")), ("openai", V("llm_oai"))], "llm")
-        llm = self.get("llm")
-        if llm == "claude_code":
-            self._entry(V("cc_path"), "cc_path")
+        def llm_cc():
             exe = ve.find_claude(self.get("cc_path"))
             if exe:
-                self._note(b, V("cc_found", exe), fg="#34d399").pack_configure(padx=(self.PAD + 24, self.PAD))
+                self._note("✓ " + V("cc_found", exe), fg="#34d399")
             else:
-                self._note(b, V("cc_missing"), fg=self.c_err).pack_configure(padx=(self.PAD + 24, self.PAD))
+                self._note(V("cc_missing"), fg=self.c_err)
+            self._entry(V("cc_path"), "cc_path")
             self._entry(V("model_empty_default"), "cc_model")
-        elif llm == "anthropic":
+            self._test_row()
+
+        def llm_remote():
+            self._note(V("remote_hint"), pady=(0, 6))
+            self._entry(V("remote_url"), "rm_url")
+            self._entry(V("share_key"), "rm_key", secret=True)
+            self._test_row()
+
+        def llm_api():
             self._entry(V("key"), "an_key", secret=True)
             self._dropdown(V("model"), [(m, m) for m in ve.ANTHROPIC_MODELS], "an_model")
-        else:
+            self._test_row()
+
+        def llm_oai():
             presets = [(p[0], p[1]) for p in ve.LLM_PRESETS]
 
             def on_llm_preset(v):
@@ -1365,46 +1469,47 @@ class VoiceController:
                 if p[2] or p[3]:
                     self.set("oa_model", p[3])
             self._dropdown(V("preset"), presets, "oa_preset", on_pick=on_llm_preset)
-            if self.get("oa_preset") == "hdcontainer":
-                self._note(b, V("share_client")).pack_configure(padx=(self.PAD + 24, self.PAD))
             self._entry(V("url"), "oa_url")
             self._entry(V("key"), "oa_key", secret=True)
             self._entry(V("model"), "oa_model")
-        row = self._btn_row()
-        res = tk.Label(row, text="", bg=self.c_sf, fg=self.c_dim, font=("Segoe UI", 9), justify="left",
-                       wraplength=400, anchor="w")
-        a._ghost_btn(row, V("test"), lambda: self._test_llm(res)).pack(side="left")
-        res.pack(side="left", padx=10, fill="x")
+            self._test_row()
 
-        # сервер для других ПК
-        self._h(V("sec_share"))
-        self._note(b, V("share_desc"), pady=(0, 6))
+        self._radio([("claude_code", V("llm_cc")), ("remote", V("llm_remote")),
+                     ("anthropic", V("llm_api")), ("openai", V("llm_oai"))], "llm",
+                    {"claude_code": (V("pan_cc"), llm_cc), "remote": (V("pan_remote"), llm_remote),
+                     "anthropic": (V("llm_api"), llm_api), "openai": (V("pan_oai"), llm_oai)})
 
-        def toggle_share(v):
-            self.apply_share()
-            self._rebuild()
-        self._check(V("share_enable"), "share_enabled", toggle_share)
-        if self.get("share_enabled"):
-            port = self.get("share_port")
-            if self.share and self.share.httpd:
-                self._note(b, "● " + V("share_on", int(port)), fg="#34d399").pack_configure(
-                    padx=(self.PAD + 30, self.PAD))
-            elif self.share and self.share.error:
-                self._note(b, V("share_err", int(port), self.share.error), fg=self.c_err).pack_configure(
-                    padx=(self.PAD + 30, self.PAD))
-            for ip in ve.local_addresses()[:3]:
-                self._copy_row(V("share_addr"), "http://%s:%s/v1" % (ip, port))
-            self._copy_row(V("share_key"), self.get("share_token"),
-                           extra=(V("share_newkey"), lambda: (self.set("share_token", ve.new_token()),
-                                                              self.apply_share(), self._rebuild())))
-            pe = self._entry(V("share_port"), "share_port")
-            pe.bind("<FocusOut>", lambda e: self._port_changed())
-            pe.bind("<Return>", lambda e: self._port_changed())
+        # сервер для других ПК — только там, где есть что раздавать
+        if ve.find_claude(self.get("cc_path")) or self.get("share_enabled"):
+            self._h(V("sec_share"))
+            self._note(V("share_desc"), pady=(0, 6))
+
+            def toggle_share(v):
+                self.apply_share()
+                self._rebuild()
+            self._check(V("share_enable"), "share_enabled", toggle_share)
+            if self.get("share_enabled"):
+                with self._panel(V("share_panel")):
+                    port = self.get("share_port")
+                    if self.share and self.share.httpd:
+                        self._note("● " + V("share_on", int(port)), fg="#34d399")
+                    elif self.share and self.share.error:
+                        self._note(V("share_err", int(port), self.share.error), fg=self.c_err)
+                    elif not ve.find_claude(self.get("cc_path")):
+                        self._note(V("share_none"), fg=self.c_err)
+                    for ip in ve.local_addresses()[:3]:
+                        self._copy_row(V("share_addr"), "http://%s:%s/v1" % (ip, port))
+                    self._copy_row(V("share_key"), self.get("share_token"),
+                                   extra=(V("share_newkey"), lambda: (self.set("share_token", ve.new_token()),
+                                                                      self.apply_share(), self._rebuild())))
+                    pe = self._entry(V("share_port"), "share_port")
+                    pe.bind("<FocusOut>", lambda e: self._port_changed())
+                    pe.bind("<Return>", lambda e: self._port_changed())
 
         # поведение
         self._h(V("sec_behavior"))
         self._check(V("cleanup"), "cleanup")
-        self._note(b, V("cleanup_note"), pady=(0, 6)).pack_configure(padx=(self.PAD + 30, self.PAD))
+        self._note(V("cleanup_note"), pady=(0, 6), indent=30)
         self._check(V("autopaste"), "autopaste")
         self._check(V("restore"), "restore_clip")
 

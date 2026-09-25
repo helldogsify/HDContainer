@@ -507,7 +507,6 @@ LLM_PRESETS = [
     ("deepseek", "DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"),
     ("mistral", "Mistral", "https://api.mistral.ai/v1", "mistral-small-latest"),
     ("xai", "xAI Grok", "https://api.x.ai/v1", "grok-3-mini"),
-    ("hdcontainer", "HDContainer on another PC (Claude Code)", "", "claude-code"),
     ("ollama", "Ollama (local)", "http://localhost:11434/v1", "llama3.2"),
     ("lmstudio", "LM Studio (local)", "http://localhost:1234/v1", ""),
     ("custom", "Custom", "", ""),
@@ -759,6 +758,21 @@ def local_addresses():
         a, b = (int(x) for x in ip.split(".")[:2])
         return (0 if a == 100 and 64 <= b <= 127 else 1, ip)
     return sorted(ips, key=rank)
+
+
+def remote_base(addr, port=8765):
+    """«100.112.15.42», «host:8765», «http://host:8765/v1» -> http://host:port/v1"""
+    a = (addr or "").strip().rstrip("/")
+    if not a:
+        return ""
+    if "://" not in a:
+        a = "http://" + a
+    scheme, rest = a.split("://", 1)
+    host, _, path = rest.partition("/")
+    if ":" not in host:
+        host += ":%d" % port
+    path = path.strip("/")
+    return "%s://%s/%s" % (scheme, host, path or "v1")
 
 
 def remote_warm(url, key, system):
