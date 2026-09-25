@@ -54,7 +54,7 @@ Hold **Right Ctrl** anywhere and talk (any key or combination can be set instead
 - **Nothing selected**: dictation. Speech is recognized, then cleaned up by an LLM (punctuation, misheard words, filler words) and typed into the text field under your cursor. If the cursor isn't in a text field, the text goes to the clipboard.
 - **Text selected**: what you say is an instruction for that text, like *"translate into English"*, *"tidy this up"* or *"check for mistakes"*. The result replaces the selection, or goes to the clipboard if the text can't be edited. If you ask a question about the text (*"what does this mean?"*), the answer goes to the clipboard and your text is left untouched.
 
-- **Commands while dictating.** Start or end your dictation with an instruction, like *"…see you at ten. Translate to English"*, *"make it more formal"* or *"as a list"*. It is applied to the text and left out of the result. Only the very beginning or end counts, so a phrase in the middle (*"Masha, translate this contract into English"*) stays part of your message.
+- **Commands while dictating.** Start or end your dictation with an instruction, like *"…see you at ten. Translate to English"*, *"make it more formal"* or *"as a list"*. It is applied to the text and left out of the result. Commands are looked for mainly at the beginning and the end. A phrase addressed to someone else (*"Masha, translate this contract into English"*) stays part of your message.
 
 Everything is set up in **tray → Voice input**:
 
