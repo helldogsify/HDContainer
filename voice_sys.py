@@ -149,7 +149,13 @@ def send_combo(mods, vk):
     return user32.SendInput(len(seq), arr, ctypes.sizeof(INPUT))
 
 
+_SIDE_NAMES = {0xA0: "Left Shift", 0xA1: "Right Shift", 0xA2: "Left Ctrl", 0xA3: "Right Ctrl",
+               0xA4: "Left Alt", 0xA5: "Right Alt", 0x5B: "Left Win", 0x5C: "Right Win"}
+
+
 def vk_name(vk):
+    if vk in _SIDE_NAMES:
+        return _SIDE_NAMES[vk]
     ext = 1 if vk in _EXTENDED_VKS else 0
     sc = user32.MapVirtualKeyW(vk, 0)
     buf = ctypes.create_unicode_buffer(64)
@@ -198,6 +204,198 @@ def window_pid(h):
     pid = DWORD(0)
     user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
     return pid.value
+
+
+# ---------------------------------------------------------------------------
+#  Горячая клавиша через низкоуровневый хук клавиатуры (WH_KEYBOARD_LL)
+#
+#  Почему не RegisterHotKey: он не видит отпускание клавиши, не умеет «одну
+#  клавишу-модификатор» (правый Ctrl) и не гасит автоповтор. Хук живёт в СВОЁМ
+#  потоке со своим циклом сообщений и никогда не трогает tkinter (вызов tk из
+#  нативного колбэка внутри mainloop роняет интерпретатор) — только кладёт
+#  события в очередь, которую tk разбирает по таймеру.
+# ---------------------------------------------------------------------------
+WH_KEYBOARD_LL = 13
+WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP = 0x100, 0x101, 0x104, 0x105
+LLKHF_INJECTED = 0x10
+WM_QUIT = 0x0012
+
+_MOD_BIT = {0xA0: MOD_SHIFT, 0xA1: MOD_SHIFT, 0x10: MOD_SHIFT,
+            0xA2: MOD_CONTROL, 0xA3: MOD_CONTROL, 0x11: MOD_CONTROL,
+            0xA4: MOD_ALT, 0xA5: MOD_ALT, 0x12: MOD_ALT,
+            0x5B: MOD_WIN, 0x5C: MOD_WIN}
+SIDED_MODIFIERS = {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C}
+VK_RCONTROL = 0xA3
+
+
+class KBDLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [("vkCode", DWORD), ("scanCode", DWORD), ("flags", DWORD),
+                ("time", DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+
+
+_LRESULT = ctypes.c_ssize_t
+_HOOKPROC = ctypes.WINFUNCTYPE(_LRESULT, ctypes.c_int, ctypes.c_size_t, ctypes.c_ssize_t)
+
+
+class _MSG(ctypes.Structure):
+    _fields_ = [("hwnd", HWND), ("message", UINT), ("wParam", ctypes.c_size_t),
+                ("lParam", ctypes.c_ssize_t), ("time", DWORD), ("pt", wintypes.POINT),
+                ("lPrivate", DWORD)]
+
+
+_decl(user32.SetWindowsHookExW, HANDLE, [ctypes.c_int, _HOOKPROC, HANDLE, DWORD])
+_decl(user32.CallNextHookEx, _LRESULT, [HANDLE, ctypes.c_int, ctypes.c_size_t, ctypes.c_ssize_t])
+_decl(user32.UnhookWindowsHookEx, BOOL, [HANDLE])
+_decl(user32.GetMessageW, BOOL, [ctypes.POINTER(_MSG), HWND, UINT, UINT])
+_decl(user32.PostThreadMessageW, BOOL, [DWORD, UINT, ctypes.c_size_t, ctypes.c_ssize_t])
+_decl(kernel32.GetCurrentThreadId, DWORD, [])
+_decl(kernel32.GetModuleHandleW, HANDLE, [LPCWSTR])
+
+
+class KeyHook:
+    """События в self.events (queue.Queue):
+         ("press",) / ("release",)  — горячая клавиша нажата / отпущена
+         ("chord",)                 — к одиночному модификатору добавили другую клавишу
+                                      (обычное сочетание вроде RCtrl+C, не запись)
+         ("esc",)                   — Esc во время записи (Esc поглощается)
+         ("captured", mods, vk) / ("capture_cancel",) — режим записи нового сочетания
+    """
+
+    def __init__(self, log=None):
+        import queue as _q
+        self.events = _q.Queue()
+        self.log = log or (lambda m: None)
+        self.mods, self.vk, self.enabled = 0, VK_RCONTROL, True
+        self.recording = False           # пока идёт запись — Esc перехватываем
+        self.capture = False
+        self._down = set()
+        self._active = False
+        self._chorded = False
+        self._swallow_up = set()
+        self._cap_single = None
+        self._tid = 0
+        self._hook = None
+        self._proc = _HOOKPROC(self._cb)
+
+    def configure(self, mods, vk, enabled=True):
+        self.mods, self.vk, self.enabled = int(mods), int(vk), bool(enabled)
+        self._active = False
+
+    @property
+    def modifier_only(self):
+        return self.mods == 0 and self.vk in SIDED_MODIFIERS
+
+    def start(self):
+        ready = threading.Event()
+
+        def run():
+            self._tid = kernel32.GetCurrentThreadId()
+            self._hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._proc,
+                                                  kernel32.GetModuleHandleW(None), 0)
+            if not self._hook:
+                self.log("keyboard hook failed: %d" % ctypes.get_last_error())
+            ready.set()
+            msg = _MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                pass
+            if self._hook:
+                user32.UnhookWindowsHookEx(self._hook)
+                self._hook = None
+        threading.Thread(target=run, daemon=True, name="hdc-keyhook").start()
+        ready.wait(2.0)
+        return bool(self._hook)
+
+    def stop(self):
+        if self._tid:
+            user32.PostThreadMessageW(self._tid, WM_QUIT, 0, 0)
+
+    def _mods_now(self, exclude):
+        m = 0
+        for v in list(self._down):
+            if v == exclude:
+                continue
+            if not key_down(v):                 # отпускание пропустили (экран блокировки и т.п.)
+                self._down.discard(v)
+                continue
+            m |= _MOD_BIT.get(v, 0)
+        return m
+
+    def _cb(self, code, wp, lp):
+        try:
+            if code == 0:
+                kb = KBDLLHOOKSTRUCT.from_address(lp)
+                if not (kb.flags & LLKHF_INJECTED) and self._handle(
+                        kb.vkCode, wp in (WM_KEYUP, WM_SYSKEYUP)):
+                    return 1                     # клавишу «съели»
+        except Exception:
+            pass
+        return user32.CallNextHookEx(None, code, wp, lp)
+
+    def _handle(self, vk, up):
+        repeat = (not up) and vk in self._down
+        if up:
+            self._down.discard(vk)
+        else:
+            self._down.add(vk)
+        if up and vk in self._swallow_up:
+            self._swallow_up.discard(vk)
+            return True
+        if self.capture:
+            return self._handle_capture(vk, up, repeat)
+        if not self.enabled:
+            return False
+        if self.modifier_only:
+            if vk == self.vk:
+                if not up and not repeat:
+                    self._active, self._chorded = True, False
+                    self.events.put(("press",))
+                elif up and self._active:
+                    self._active = False
+                    self.events.put(("release",) if not self._chorded else ("chord_release",))
+                return False                     # сам модификатор не глотаем
+            if self._active and not up and not self._chorded and vk != VK_ESCAPE:
+                self._chorded = True
+                self.events.put(("chord",))
+                return False
+        elif vk == self.vk:
+            if not up:
+                if self._active:
+                    return True                  # автоповтор — глотаем (никаких «+++»)
+                if self._mods_now(vk) == self.mods:
+                    self._active = True
+                    self.events.put(("press",))
+                    return True
+            elif self._active:
+                self._active = False
+                self.events.put(("release",))
+                return True
+        if vk == VK_ESCAPE and self.recording and not up and not repeat:
+            self._swallow_up.add(vk)
+            self.events.put(("esc",))
+            return True
+        return False
+
+    def _handle_capture(self, vk, up, repeat):
+        if not up:
+            if repeat:
+                return vk not in _MOD_BIT
+            if vk in _MOD_BIT:
+                others = {v for v in self._down if v != vk and key_down(v)}
+                self._cap_single = vk if (vk in SIDED_MODIFIERS and not others) else None
+                return False
+            self._cap_single = None
+            self.capture = False
+            self._swallow_up.add(vk)
+            if vk == VK_ESCAPE and self._mods_now(vk) == 0:
+                self.events.put(("capture_cancel",))
+            else:
+                self.events.put(("captured", self._mods_now(vk), vk))
+            return True
+        if vk == self._cap_single:               # модификатор нажали и отпустили в одиночку
+            self.capture = False
+            self._cap_single = None
+            self.events.put(("captured", 0, vk))
+        return False
 
 
 # ---------------------------------------------------------------------------

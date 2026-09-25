@@ -49,7 +49,7 @@ It lives in the **system tray** — no main window in your way.
 
 ## Voice input
 
-Hold **Shift + Num +** anywhere and talk. A small animated indicator appears above the clock while HDContainer listens; let go and your speech is turned into text.
+Hold **Right Ctrl** anywhere and talk (any key or combination can be set instead). A small animated indicator appears above the clock while HDContainer listens; let go and your speech is turned into text.
 
 - **Nothing selected**: dictation. Speech is recognized, then cleaned up by an LLM (punctuation, misheard words, filler words) and typed into the text field under your cursor. If the cursor isn't in a text field, the text goes to the clipboard.
 - **Text selected**: what you say is an instruction for that text, like *"translate into English"*, *"tidy this up"* or *"check for mistakes"*. The result replaces the selection, or goes to the clipboard if the text can't be edited. If you ask a question about the text (*"what does this mean?"*), the answer goes to the clipboard and your text is left untouched.
@@ -60,7 +60,7 @@ Everything is set up in **tray → Voice input**:
 |---|---|
 | Speech recognition | **Local Whisper** ([whisper.cpp](https://github.com/ggml-org/whisper.cpp)): offline, free and private. The model (base / small / large‑v3‑turbo) is downloaded on first use and kept in memory while you use it. Or any **OpenAI‑compatible** transcription API (Groq, OpenAI, your own server). |
 | Text processing | **Claude Code**: uses your Claude subscription through the `claude` CLI, with no API key. **Anthropic API key.** **Any OpenAI‑compatible API**: OpenAI, OpenRouter, Gemini, Groq, DeepSeek, Mistral, xAI, or local Ollama / LM Studio. |
-| Hotkey | Any key combination; *hold to talk* or *press to start / press to stop*. Esc cancels. |
+| Hotkey | Right Ctrl by default, or any key or combination; *hold to talk* or *press to start / press to stop*. Right Ctrl pressed together with another key (Ctrl+C…) works as usual. Esc cancels. |
 | Behavior | Paste automatically or just copy; keep your original clipboard; editable LLM instructions; a vocabulary hint for names and terms. |
 
 API keys are stored encrypted with Windows DPAPI under your user account.

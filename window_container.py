@@ -65,7 +65,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1407,6 +1407,7 @@ class TrayApp:
         self.pending = []             # отложенный подхват после запуска приложения
         self._reassert = []           # повторная установка позиции только что добавленных окон
         self._menu_actions = {}
+        self._native_q = []           # действия из нативных колбэков (см. _defer)
         self._pending_update = None   # (tag, url), выставляется фоновым потоком
         self.settings = load_settings()
         global LANG
@@ -1471,6 +1472,7 @@ class TrayApp:
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
         self.root.after(700, self._poll)
         self.root.after(300, self._watch)
+        self.root.after(30, self._drain_native)
 
         # запуск по ярлыку: --launch "<имя>" -> поднять этот контейнер
         if launch_name:
@@ -1486,7 +1488,7 @@ class TrayApp:
         if msg == WM_TRAY:
             low = lparam & 0xFFFF
             if low in (WM_LBUTTONUP, WM_RBUTTONUP, WM_CONTEXTMENU):
-                self._show_menu()
+                self._defer(self._show_menu)
             return 0
         if msg == WM_HOTKEY and self.voice is not None:
             try:
@@ -1499,11 +1501,29 @@ class TrayApp:
                 cds = COPYDATASTRUCT.from_address(int(lparam))
                 name = ctypes.wstring_at(cds.lpData) if cds.lpData else ""
                 if name:
-                    self.root.after(1, lambda n=name: self._activate_by_name(n))
+                    self._defer(lambda n=name: self._activate_by_name(n))
             except Exception as ex:
                 log("copydata failed: %r" % ex)
             return 1
         return user32.CallWindowProcW(self._old_proc, hwnd, msg, wparam, lparam)
+
+    # ⚠️ Оконные процедуры (_on_message, _host_proc) — нативные колбэки внутри
+    # mainloop. Любой вызов tkinter оттуда (даже root.after) портит сохранённое
+    # tkinter-ом состояние потока, и на следующем Tcl-колбэке интерпретатор
+    # падает: «Fatal Python error: PyEval_RestoreThread … thread state is NULL».
+    # Поэтому из колбэков только кладём действие в список, а выполняем его здесь,
+    # в обычном таймере tk.
+    def _defer(self, fn):
+        self._native_q.append(fn)
+
+    def _drain_native(self):
+        while self._native_q:
+            fn = self._native_q.pop(0)
+            try:
+                fn()
+            except Exception:
+                log("deferred call failed:\n" + traceback.format_exc())
+        self.root.after(30, self._drain_native)
 
     def _activate_by_name(self, name):
         c = next((x for x in self.containers if x.name == name), None)
@@ -1517,7 +1537,7 @@ class TrayApp:
         if msg == WM_SYSCOMMAND and (wparam & 0xFFF0) == IDM_EDIT:
             for c in self.containers:
                 if c.host_hwnd == hwnd:
-                    self.root.after(1, lambda c=c: self._edit_container(c))
+                    self._defer(lambda c=c: self._edit_container(c))
                     break
             return 0
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)

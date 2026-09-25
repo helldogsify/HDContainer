@@ -57,7 +57,8 @@ VSTR = {
     "enable": {"en": "Enable voice input", "ru": "Включить голосовой ввод", "es": "Activar entrada por voz", "pt": "Ativar entrada por voz", "de": "Spracheingabe aktivieren", "fr": "Activer la saisie vocale", "zh": "启用语音输入"},
     "sec_hotkey": {"en": "Hotkey", "ru": "Горячая клавиша", "es": "Atajo", "pt": "Atalho", "de": "Hotkey", "fr": "Raccourci", "zh": "快捷键"},
     "change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
-    "press_combo": {"en": "Press the new key combination…\nEsc — cancel", "ru": "Нажми новое сочетание клавиш…\nEsc — отмена", "es": "Pulsa la nueva combinación…\nEsc — cancelar", "pt": "Pressione a nova combinação…\nEsc — cancelar", "de": "Drücke die neue Tastenkombination…\nEsc — Abbrechen", "fr": "Appuie sur la nouvelle combinaison…\nÉchap — annuler", "zh": "请按下新的组合键…\nEsc — 取消"},
+    "press_combo": {"en": "Press the new key combination,\nor press and release a single key like Right Ctrl…\nEsc — cancel", "ru": "Нажми новое сочетание клавиш\nили нажми и отпусти одну клавишу, например правый Ctrl…\nEsc — отмена", "es": "Pulsa la nueva combinación\no pulsa y suelta una sola tecla, como Ctrl derecho…\nEsc — cancelar", "pt": "Pressione a nova combinação\nou pressione e solte uma tecla, como Ctrl direito…\nEsc — cancelar", "de": "Drücke die neue Tastenkombination\noder drücke und löse eine einzelne Taste wie Strg rechts…\nEsc — Abbrechen", "fr": "Appuie sur la nouvelle combinaison\nou appuie et relâche une seule touche, comme Ctrl droit…\nÉchap — annuler", "zh": "请按下新的组合键，\n或按下并松开单个键（如右 Ctrl）…\nEsc — 取消"},
+    "hk_single_note": {"en": "Hold it and talk. Pressed together with another key it works as usual (e.g. Ctrl+C) and no recording starts.", "ru": "Держишь — идёт запись. Нажатая вместе с другой клавишей работает как обычно (например, Ctrl+C), запись не начинается.", "es": "Mantenla pulsada y habla. Junto con otra tecla funciona como siempre (p. ej. Ctrl+C) y no graba.", "pt": "Segure e fale. Junto com outra tecla funciona normalmente (ex.: Ctrl+C) e não grava.", "de": "Gedrückt halten und sprechen. Zusammen mit einer anderen Taste wirkt sie wie gewohnt (z. B. Strg+C), es wird nicht aufgenommen.", "fr": "Maintiens-la et parle. Avec une autre touche elle fonctionne normalement (ex. Ctrl+C), sans enregistrement.", "zh": "按住即录音。与其他键一起按时照常工作（例如 Ctrl+C），不会开始录音。"},
     "hk_busy": {"en": "This combination is already used by another program", "ru": "Это сочетание уже занято другой программой", "es": "Otra aplicación ya usa esta combinación", "pt": "Outro programa já usa esta combinação", "de": "Diese Kombination wird bereits von einem anderen Programm verwendet", "fr": "Cette combinaison est déjà utilisée par un autre programme", "zh": "该组合键已被其他程序占用"},
     "mode_hold": {"en": "Hold to talk", "ru": "Удерживать и говорить", "es": "Mantener para hablar", "pt": "Segurar para falar", "de": "Halten zum Sprechen", "fr": "Maintenir pour parler", "zh": "按住说话"},
     "mode_toggle": {"en": "Press to start, press again to finish", "ru": "Нажал — говоришь, нажал ещё раз — готово", "es": "Pulsa para empezar, otra vez para terminar", "pt": "Pressione para começar e de novo para terminar", "de": "Drücken zum Starten, erneut zum Beenden", "fr": "Appuie pour commencer, encore pour terminer", "zh": "按一次开始，再按一次结束"},
@@ -134,7 +135,7 @@ def V(key, *args):
 
 DEFAULTS = {
     "enabled": True,
-    "hk_mods": vs.MOD_SHIFT, "hk_vk": vs.VK_ADD, "mode": "hold",
+    "hk_mods": 0, "hk_vk": vs.VK_RCONTROL, "mode": "hold",
     "mic": "",
     "stt": "local", "w_model": "small", "lang": "auto", "stt_prompt": "",
     "stt_preset": "groq", "stt_url": "https://api.groq.com/openai/v1", "stt_key": "",
@@ -321,8 +322,7 @@ class Overlay:
         if msg == WM_MOUSEACTIVATE:
             return MA_NOACTIVATE
         if msg == WM_LBUTTONUP and self.clickable:
-            self.root.after(1, self.on_click)
-            self.hide(0)
+            self._clicked = True              # tk из нативного колбэка трогать нельзя
             return 0
         return u32.DefWindowProcW(hwnd, msg, wp, lp)
 
@@ -385,6 +385,10 @@ class Overlay:
         if not self.hwnd:
             self._ticking = False
             return
+        if getattr(self, "_clicked", False):
+            self._clicked = False
+            self.hide(0)
+            self.on_click()
         now = time.time()
         if self.hide_at and now >= self.hide_at:
             self.target_alpha = 0.0
@@ -619,7 +623,12 @@ class VoiceController:
         self.win = None
         self.dl = None                  # {"done":..,"total":..,"err":..,"model":..}
         vs.CLIP_HWND = app.msg_hwnd
+        self._arm_t = 0.0
+        self._capture_dlg = None
+        self.hook = vs.KeyHook(log)
+        self.hook.start()
         self.register_hotkey()
+        self.root.after(20, self._hook_loop)
         self.root.after(60000, self._idle_tick)
 
     # ---- настройки ----
@@ -633,34 +642,76 @@ class VoiceController:
         if save:
             self.app._set_setting("voice", d)
 
-    # ---- горячая клавиша ----
+    # ---- горячая клавиша (низкоуровневый хук, см. voice_sys.KeyHook) ----
+    ARM_DELAY = 0.2         # одиночный модификатор: запись стартует, если держат дольше
+
     def register_hotkey(self):
-        vs.user32.UnregisterHotKey(self.app.msg_hwnd, HOTKEY_ID)
-        self._hk_ok = False
-        if not self.get("enabled"):
-            return True
-        ok = vs.user32.RegisterHotKey(self.app.msg_hwnd, HOTKEY_ID,
-                                      self.get("hk_mods") | vs.MOD_NOREPEAT, self.get("hk_vk"))
-        self._hk_ok = bool(ok)
-        self.log("voice hotkey %s -> %s" % (vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")),
-                                             "ok" if ok else "BUSY"))
+        self.hook.configure(self.get("hk_mods"), self.get("hk_vk"), self.get("enabled"))
+        self._hk_ok = bool(self.hook._hook)
+        self.log("voice hotkey %s (%s) hook=%s" % (
+            vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")), self.get("mode"),
+            "ok" if self._hk_ok else "FAILED"))
         return self._hk_ok
 
     def unregister_hotkey(self):
-        vs.user32.UnregisterHotKey(self.app.msg_hwnd, HOTKEY_ID)
-        self._hk_ok = False
+        self.hook.configure(self.get("hk_mods"), self.get("hk_vk"), False)
 
     def on_hotkey(self, wparam):
-        if wparam != HOTKEY_ID:
-            return False
-        self.root.after(0, self._hotkey_pressed)
-        return True
+        return False            # RegisterHotKey больше не используется
 
-    def _hotkey_pressed(self):
-        if self.state == "idle":
-            self._start()
-        elif self.state == "recording" and self.get("mode") == "toggle":
-            self._stop_recording()
+    def _hook_loop(self):
+        # разбираем события хука здесь, в обычном таймере tk (никогда из колбэка)
+        try:
+            while True:
+                try:
+                    ev = self.hook.events.get_nowait()
+                except queue.Empty:
+                    break
+                self._on_key_event(ev)
+            if self.state == "arming" and time.time() - self._arm_t >= self.ARM_DELAY:
+                self.state = "idle"
+                self._start()
+        except Exception:
+            self.log("voice key loop:\n" + traceback.format_exc())
+        self.root.after(20, self._hook_loop)
+
+    def _on_key_event(self, ev):
+        kind = ev[0]
+        if kind in ("captured", "capture_cancel"):
+            self._capture_done(ev)
+            return
+        toggle = self.get("mode") == "toggle"
+        single = self.hook.modifier_only
+        if kind == "press":
+            if toggle and not single:
+                if self.state == "idle":
+                    self._start()
+                elif self.state == "recording":
+                    self._stop_recording()
+            elif not toggle and self.state == "idle":
+                if single:
+                    self.state, self._arm_t = "arming", time.time()
+                else:
+                    self._start()
+        elif kind == "release":
+            if toggle:
+                if single:                    # одиночный модификатор: «тап» = старт/стоп
+                    if self.state == "idle":
+                        self._start()
+                    elif self.state == "recording":
+                        self._stop_recording()
+            elif self.state == "arming":
+                self.state = "idle"           # коротко нажали — это не запись
+            elif self.state == "recording":
+                self._stop_recording()
+        elif kind in ("chord", "chord_release"):
+            if self.state == "arming":
+                self.state = "idle"
+            elif self.state == "recording" and not toggle:
+                self._cancel(silent=True)     # это было обычное сочетание (RCtrl+C…)
+        elif kind == "esc":
+            if self.state == "recording":
+                self._cancel()
 
     # ---- проверка готовности ----
     def _setup_problem(self):
@@ -694,6 +745,7 @@ class VoiceController:
             return
         self.sess = s
         self.state = "recording"
+        self.hook.recording = True
         self.overlay.show("listen", V("o_listen"), V("o_listen_sub", "0:00"), rec=s.rec)
         # пока человек говорит: смотрим, что в фокусе/выделено, и прогреваем движки
         s.probe_thr = threading.Thread(target=self._probe, args=(s,), daemon=True)
@@ -726,12 +778,13 @@ class VoiceController:
         s = self.sess
         if self.state != "recording" or s is None:
             return
-        if vs.key_down(vs.VK_ESCAPE):
-            self._cancel()
-            return
         if self.get("mode") == "hold" and not vs.key_down(self.get("hk_vk")):
-            self._stop_recording()
-            return
+            s.lost_key = getattr(s, "lost_key", 0) + 1
+            if s.lost_key > 10:               # отпускание не пришло (экран блокировки и т.п.)
+                self._stop_recording()
+                return
+        else:
+            s.lost_key = 0
         d = s.rec.duration
         if d > 300:
             self._stop_recording()
@@ -739,18 +792,23 @@ class VoiceController:
         self.overlay.update(sub=V("o_listen_sub", "%d:%02d" % (int(d) // 60, int(d) % 60)))
         self.root.after(40, self._hold_poll)
 
-    def _cancel(self):
+    def _cancel(self, silent=False):
         s = self.sess
         s.cancelled = True
         s.rec.stop()
         if s.runner:
             s.runner.cancel()
         self.state = "idle"
+        self.hook.recording = False
         self.sess = None
-        self.overlay.show("cancel", V("o_cancel"))
+        if silent:
+            self.overlay.hide(0)
+        else:
+            self.overlay.show("cancel", V("o_cancel"))
 
     def _stop_recording(self):
         s = self.sess
+        self.hook.recording = False
         s.rec.stop()
         dur, peak = s.rec.duration, s.rec.peak_rms
         self.log("voice: recorded %.2fs peak=%.4f" % (dur, peak))
@@ -941,7 +999,7 @@ class VoiceController:
 
     def shutdown(self):
         try:
-            self.unregister_hotkey()
+            self.hook.stop()
             if self.sess and self.sess.runner:
                 self.sess.runner.cancel()
             self.whisper.stop()
@@ -1136,8 +1194,8 @@ class VoiceController:
         tk.Label(row, text=vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")), bg=self.c_sf2,
                  fg=self.c_tx, font=("Consolas", 11), padx=12, pady=5).pack(side="left")
         a._ghost_btn(row, V("change"), self._capture_hotkey).pack(side="left", padx=10)
-        if self.get("enabled") and not self._hk_ok and not self.register_hotkey():
-            self._note(b, V("hk_busy"), fg=self.c_err, pady=(4, 0))
+        if self.hook.modifier_only:
+            self._note(b, V("hk_single_note"), pady=(4, 0))
         self._radio([("hold", V("mode_hold")), ("toggle", V("mode_toggle"))], "mode")
 
         # микрофон
@@ -1235,27 +1293,33 @@ class VoiceController:
 
     # ---- действия окна ----
     def _capture_hotkey(self):
-        self.unregister_hotkey()
-        dlg = self.app._dialog(V("sec_hotkey"), 380, 150)
+        dlg = self.app._dialog(V("sec_hotkey"), 420, 170)
         tk.Label(dlg, text=V("press_combo"), bg=self.c_sf, fg=self.c_tx, font=("Segoe UI", 11),
                  justify="center").pack(expand=True)
-        mod_codes = {16, 17, 18, 91, 92, 160, 161, 162, 163, 164, 165}
+        self._capture_dlg = dlg
+        self.hook.capture = True
 
-        def on_key(e):
-            vk = e.keycode
-            if vk == vs.VK_ESCAPE:
+        def closed():
+            self.hook.capture = False
+            self._capture_dlg = None
+            try:
                 dlg.destroy()
-                return "break"
-            if vk in mod_codes:
-                return "break"
-            self.set("hk_mods", vs.current_mods())
-            self.set("hk_vk", vk)
-            dlg.destroy()
-            return "break"
-        dlg.bind("<KeyPress>", on_key)
+            except Exception:
+                pass
+        dlg.protocol("WM_DELETE_WINDOW", closed)
         dlg.focus_force()
-        self.root.wait_window(dlg)
-        self.register_hotkey()
+
+    def _capture_done(self, ev):
+        if ev[0] == "captured":
+            self.set("hk_mods", ev[1])
+            self.set("hk_vk", ev[2])
+            self.register_hotkey()
+        dlg, self._capture_dlg = self._capture_dlg, None
+        if dlg:
+            try:
+                dlg.destroy()
+            except Exception:
+                pass
         if self.win:
             self._rebuild()
 
