@@ -18,9 +18,12 @@
 """
 
 import glob
+import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -31,6 +34,7 @@ import urllib.error
 import urllib.request
 import uuid
 import zipfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import voice_sys as vs
 
@@ -503,6 +507,7 @@ LLM_PRESETS = [
     ("deepseek", "DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"),
     ("mistral", "Mistral", "https://api.mistral.ai/v1", "mistral-small-latest"),
     ("xai", "xAI Grok", "https://api.x.ai/v1", "grok-3-mini"),
+    ("hdcontainer", "HDContainer on another PC (Claude Code)", "", "claude-code"),
     ("ollama", "Ollama (local)", "http://localhost:11434/v1", "llama3.2"),
     ("lmstudio", "LM Studio (local)", "http://localhost:1234/v1", ""),
     ("custom", "Custom", "", ""),
@@ -536,3 +541,233 @@ def write_prompt_file(path, text):
 
 def scratch_dir():
     return os.path.join(tempfile.gettempdir(), "HDContainer-voice")
+
+
+# ---------------------------------------------------------------------------
+#  «Поделиться Claude Code»: этот ПК обслуживает запросы других компьютеров
+#  (например, ноутбука без Claude Code) по OpenAI-совместимому API.
+# ---------------------------------------------------------------------------
+SHARE_MODEL_ID = "claude-code"
+
+
+class WarmPool:
+    """Один заранее запущенный `claude -p` под последний системный промпт.
+    Сразу после выдачи процесса поднимаем следующий — повторные запросы
+    не ждут холодного старта CLI."""
+    MAX_AGE = 10 * 60
+
+    def __init__(self, get_exe, get_model, log):
+        self.get_exe, self.get_model, self.log = get_exe, get_model, log
+        self._lock = threading.Lock()
+        self._runner = None
+        self._key = None
+        self._born = 0.0
+
+    @staticmethod
+    def _hash(system):
+        return hashlib.sha1(system.encode("utf-8")).hexdigest()[:16]
+
+    def _spawn(self, system):
+        key = self._hash(system)
+        spf = write_prompt_file(os.path.join(scratch_dir(), "share_%s.txt" % key), system)
+        r = ClaudeCode(self.get_exe(), self.get_model(), spf, os.path.join(scratch_dir(), "cwd"),
+                       self.log)
+        r.start()
+        return key, r
+
+    def _fresh(self, key):
+        r = self._runner
+        return bool(r and self._key == key and r.proc and r.proc.poll() is None
+                    and time.time() - self._born < self.MAX_AGE)
+
+    def warm(self, system):
+        with self._lock:
+            if self._fresh(self._hash(system)):
+                return
+            if self._runner:
+                self._runner.cancel()
+            self._key, self._runner = self._spawn(system)
+            self._born = time.time()
+
+    def take(self, system):
+        with self._lock:
+            if self._fresh(self._hash(system)):
+                r = self._runner
+            else:
+                if self._runner:
+                    self._runner.cancel()
+                _k, r = self._spawn(system)
+            self._runner = None
+        # следующий запрос скорее всего будет с тем же промптом — греем заранее
+        threading.Thread(target=self.safe_warm, args=(system,), daemon=True).start()
+        return r
+
+    def safe_warm(self, system):
+        try:
+            self.warm(system)
+        except Exception as ex:
+            self.log("share warm failed: %r" % ex)
+
+    def close(self):
+        with self._lock:
+            if self._runner:
+                self._runner.cancel()
+            self._runner = None
+
+
+def _msg_text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(p.get("text", "") for p in content if isinstance(p, dict))
+    return ""
+
+
+class ShareServer:
+    def __init__(self, pool, token, port, log):
+        self.pool, self.token, self.port, self.log = pool, token, int(port), log
+        self.httpd = None
+        self.error = None
+        self._sem = threading.Semaphore(2)
+
+    def start(self):
+        srv = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a):
+                pass
+
+            def _send(self, code, obj):
+                body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _authed(self):
+                if not is_private_ip(self.client_address[0]):
+                    # ключ идёт открытым текстом по HTTP — в интернет не выставляемся
+                    self._send(403, {"error": {"message": "only private networks (Tailscale, LAN)"}})
+                    return False
+                got =(self.headers.get("Authorization") or "").replace("Bearer ", "", 1).strip()
+                if srv.token and hmac.compare_digest(got.encode(), srv.token.encode()):
+                    return True
+                self._send(401, {"error": {"message": "bad or missing API key"}})
+                return False
+
+            def _json(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                return json.loads(self.rfile.read(n).decode("utf-8") or "{}") if n else {}
+
+            def do_GET(self):
+                if not self._authed():
+                    return
+                if self.path.rstrip("/").endswith("/models"):
+                    return self._send(200, {"object": "list", "data": [
+                        {"id": SHARE_MODEL_ID, "object": "model", "owned_by": "hdcontainer"}]})
+                self._send(200, {"ok": True, "service": "HDContainer: Claude Code share"})
+
+            def do_POST(self):
+                if not self._authed():
+                    return
+                try:
+                    data = self._json()
+                except ValueError:
+                    return self._send(400, {"error": {"message": "invalid JSON"}})
+                path = self.path.rstrip("/")
+                msgs = data.get("messages") or []
+                system = "\n\n".join(_msg_text(m.get("content")) for m in msgs
+                                     if m.get("role") == "system")
+                if path.endswith("/hdc/warm"):
+                    threading.Thread(target=srv.pool.safe_warm,
+                                     args=(data.get("system") or system,), daemon=True).start()
+                    return self._send(200, {"ok": True})
+                if not path.endswith("/chat/completions"):
+                    return self._send(404, {"error": {"message": "not found"}})
+                user = next((_msg_text(m.get("content")) for m in reversed(msgs)
+                             if m.get("role") == "user"), "")
+                if not user:
+                    return self._send(400, {"error": {"message": "no user message"}})
+                t0 = time.time()
+                with srv._sem:
+                    try:
+                        text = srv.pool.take(system).ask(user)
+                    except VoiceError as ex:
+                        srv.log("share: error %s" % ex)
+                        return self._send(502, {"error": {"message": str(ex)}})
+                srv.log("share: %s answered in %.1fs" % (self.client_address[0], time.time() - t0))
+                self._send(200, {
+                    "id": "hdc-" + uuid.uuid4().hex[:12], "object": "chat.completion",
+                    "created": int(time.time()), "model": SHARE_MODEL_ID,
+                    "choices": [{"index": 0, "finish_reason": "stop",
+                                 "message": {"role": "assistant", "content": text}}]})
+
+        class Server(ThreadingHTTPServer):
+            def handle_error(self, request, client_address):
+                pass                  # клиент оборвал keep-alive и т.п.; в exe без консоли stderr нет
+
+        try:
+            self.httpd = Server(("0.0.0.0", self.port), Handler)
+            self.httpd.daemon_threads = True
+        except OSError as ex:
+            self.error = str(ex)
+            self.log("share: cannot listen on %d: %s" % (self.port, ex))
+            return False
+        threading.Thread(target=self.httpd.serve_forever, daemon=True, name="hdc-share").start()
+        self.log("share: listening on :%d" % self.port)
+        return True
+
+    def stop(self):
+        if self.httpd:
+            try:
+                self.httpd.shutdown()
+                self.httpd.server_close()
+            except Exception:
+                pass
+            self.httpd = None
+        self.pool.close()
+
+
+def new_token():
+    return "hdc-" + secrets.token_urlsafe(24)
+
+
+def is_private_ip(ip):
+    """Tailscale/CGNAT 100.64/10, LAN 10/8, 172.16/12, 192.168/16, localhost."""
+    try:
+        a, b = (int(x) for x in ip.split(".")[:2])
+    except ValueError:
+        return ip in ("::1",)
+    return (a == 10 or a == 127 or (a == 172 and 16 <= b <= 31) or (a == 192 and b == 168)
+            or (a == 100 and 64 <= b <= 127))
+
+
+def local_addresses():
+    """Частные IPv4-адреса этого ПК; адреса Tailscale (100.64.0.0/10) — первыми."""
+    ips = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ips.add(info[4][0])
+    except Exception:
+        pass
+    ips = {ip for ip in ips if is_private_ip(ip) and not ip.startswith("127.")}
+
+    def rank(ip):
+        a, b = (int(x) for x in ip.split(".")[:2])
+        return (0 if a == 100 and 64 <= b <= 127 else 1, ip)
+    return sorted(ips, key=rank)
+
+
+def remote_warm(url, key, system):
+    """Попросить удалённый HDContainer заранее поднять Claude (ошибки не важны)."""
+    try:
+        h = {"Content-Type": "application/json"}
+        if key:
+            h["Authorization"] = "Bearer " + key
+        _http_json(url.rstrip("/") + "/hdc/warm", json.dumps({"system": system}).encode("utf-8"),
+                   h, timeout=5)
+    except Exception:
+        pass

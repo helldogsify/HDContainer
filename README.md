@@ -65,6 +65,8 @@ Everything is set up in **tray → Voice input**:
 
 API keys are stored encrypted with Windows DPAPI under your user account.
 
+**One Claude Code for all your PCs.** On the computer that has Claude Code, turn on *Voice input → Share Claude Code with other computers*. On your other computers, choose *OpenAI‑compatible → HDContainer on another PC* and paste the address and key it shows. Those computers then need neither Claude Code nor an API key. The shared endpoint is OpenAI‑compatible, accepts only private networks (Tailscale, LAN) and requires the key. It keeps a Claude process warmed up, and the other PC asks it to warm up as soon as you start talking.
+
 ## Install
 
 1. Download **[HDContainer-Setup.exe](https://github.com/helldogsify/HDContainer/releases/latest)**.

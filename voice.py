@@ -58,6 +58,18 @@ VSTR = {
     "sec_hotkey": {"en": "Hotkey", "ru": "Горячая клавиша", "es": "Atajo", "pt": "Atalho", "de": "Hotkey", "fr": "Raccourci", "zh": "快捷键"},
     "change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
     "press_combo": {"en": "Press the new key combination,\nor press and release a single key like Right Ctrl…\nEsc — cancel", "ru": "Нажми новое сочетание клавиш\nили нажми и отпусти одну клавишу, например правый Ctrl…\nEsc — отмена", "es": "Pulsa la nueva combinación\no pulsa y suelta una sola tecla, como Ctrl derecho…\nEsc — cancelar", "pt": "Pressione a nova combinação\nou pressione e solte uma tecla, como Ctrl direito…\nEsc — cancelar", "de": "Drücke die neue Tastenkombination\noder drücke und löse eine einzelne Taste wie Strg rechts…\nEsc — Abbrechen", "fr": "Appuie sur la nouvelle combinaison\nou appuie et relâche une seule touche, comme Ctrl droit…\nÉchap — annuler", "zh": "请按下新的组合键，\n或按下并松开单个键（如右 Ctrl）…\nEsc — 取消"},
+    "sec_share": {"en": "Share Claude Code with other computers", "ru": "Поделиться Claude Code с другими компьютерами", "es": "Compartir Claude Code con otros equipos", "pt": "Compartilhar o Claude Code com outros computadores", "de": "Claude Code mit anderen Computern teilen", "fr": "Partager Claude Code avec d’autres ordinateurs", "zh": "与其他电脑共享 Claude Code"},
+    "share_desc": {"en": "This PC processes voice text for your other computers with its Claude Code, so they need no Claude Code or API key. On the other PC choose “OpenAI-compatible → HDContainer on another PC” and paste the address and key below. Works best over Tailscale or a home network.", "ru": "Этот ПК обрабатывает текст голосового ввода для других ваших компьютеров своим Claude Code — там не нужны ни Claude Code, ни API-ключ. На другом ПК выбери «OpenAI-совместимые → HDContainer on another PC» и вставь адрес и ключ отсюда. Лучше всего — через Tailscale или домашнюю сеть.", "es": "Este PC procesa el texto de voz de tus otros equipos con su Claude Code; allí no hace falta Claude Code ni clave API. En el otro PC elige «Compatible con OpenAI → HDContainer on another PC» y pega la dirección y la clave de abajo. Mejor por Tailscale o red doméstica.", "pt": "Este PC processa o texto de voz dos seus outros computadores com o Claude Code dele; lá não é preciso Claude Code nem chave de API. No outro PC escolha “Compatível com OpenAI → HDContainer on another PC” e cole o endereço e a chave abaixo. Melhor via Tailscale ou rede doméstica.", "de": "Dieser PC verarbeitet den Sprachtext deiner anderen Computer mit seinem Claude Code – dort brauchst du weder Claude Code noch API-Schlüssel. Wähle auf dem anderen PC „OpenAI-kompatibel → HDContainer on another PC“ und füge Adresse und Schlüssel von unten ein. Am besten über Tailscale oder das Heimnetz.", "fr": "Ce PC traite le texte vocal de tes autres ordinateurs avec son Claude Code : pas besoin de Claude Code ni de clé API là-bas. Sur l’autre PC, choisis « Compatible OpenAI → HDContainer on another PC » et colle l’adresse et la clé ci-dessous. Idéal via Tailscale ou le réseau domestique.", "zh": "这台电脑用自己的 Claude Code 为你的其他电脑处理语音文本，那些电脑无需安装 Claude Code 或 API 密钥。在另一台电脑上选择“兼容 OpenAI → HDContainer on another PC”，并粘贴下面的地址和密钥。最好通过 Tailscale 或家庭网络使用。"},
+    "share_enable": {"en": "Accept requests from other computers", "ru": "Принимать запросы с других компьютеров", "es": "Aceptar solicitudes de otros equipos", "pt": "Aceitar pedidos de outros computadores", "de": "Anfragen von anderen Computern annehmen", "fr": "Accepter les requêtes d’autres ordinateurs", "zh": "接受其他电脑的请求"},
+    "share_on": {"en": "Listening on port %d", "ru": "Слушаю порт %d", "es": "Escuchando en el puerto %d", "pt": "Escutando na porta %d", "de": "Lausche auf Port %d", "fr": "À l’écoute sur le port %d", "zh": "正在监听端口 %d"},
+    "share_err": {"en": "Can’t open port %d: %s", "ru": "Не удалось открыть порт %d: %s", "es": "No se pudo abrir el puerto %d: %s", "pt": "Não foi possível abrir a porta %d: %s", "de": "Port %d kann nicht geöffnet werden: %s", "fr": "Impossible d’ouvrir le port %d : %s", "zh": "无法打开端口 %d：%s"},
+    "share_port": {"en": "Port", "ru": "Порт", "es": "Puerto", "pt": "Porta", "de": "Port", "fr": "Port", "zh": "端口"},
+    "share_addr": {"en": "Address for the other PC", "ru": "Адрес для другого ПК", "es": "Dirección para el otro PC", "pt": "Endereço para o outro PC", "de": "Adresse für den anderen PC", "fr": "Adresse pour l’autre PC", "zh": "供另一台电脑使用的地址"},
+    "share_key": {"en": "Key", "ru": "Ключ", "es": "Clave", "pt": "Chave", "de": "Schlüssel", "fr": "Clé", "zh": "密钥"},
+    "share_newkey": {"en": "New key", "ru": "Новый ключ", "es": "Nueva clave", "pt": "Nova chave", "de": "Neuer Schlüssel", "fr": "Nouvelle clé", "zh": "新密钥"},
+    "copy": {"en": "Copy", "ru": "Копировать", "es": "Copiar", "pt": "Copiar", "de": "Kopieren", "fr": "Copier", "zh": "复制"},
+    "copied": {"en": "Copied", "ru": "Скопировано", "es": "Copiado", "pt": "Copiado", "de": "Kopiert", "fr": "Copié", "zh": "已复制"},
+    "share_client": {"en": "Paste the address and key shown in Voice input → “Share Claude Code” on the PC that has Claude Code.", "ru": "Вставь адрес и ключ из раздела «Поделиться Claude Code» в голосовом вводе на том ПК, где есть Claude Code.", "es": "Pega la dirección y la clave de Entrada por voz → «Compartir Claude Code» del PC que tiene Claude Code.", "pt": "Cole o endereço e a chave de Entrada por voz → “Compartilhar o Claude Code” do PC que tem o Claude Code.", "de": "Füge Adresse und Schlüssel aus Spracheingabe → „Claude Code teilen“ des PCs mit Claude Code ein.", "fr": "Colle l’adresse et la clé de Saisie vocale → « Partager Claude Code » du PC qui a Claude Code.", "zh": "粘贴装有 Claude Code 的那台电脑上“语音输入 → 共享 Claude Code”中显示的地址和密钥。"},
     "hk_single_note": {"en": "Hold it and talk. Pressed together with another key it works as usual (e.g. Ctrl+C) and no recording starts.", "ru": "Держишь — идёт запись. Нажатая вместе с другой клавишей работает как обычно (например, Ctrl+C), запись не начинается.", "es": "Mantenla pulsada y habla. Junto con otra tecla funciona como siempre (p. ej. Ctrl+C) y no graba.", "pt": "Segure e fale. Junto com outra tecla funciona normalmente (ex.: Ctrl+C) e não grava.", "de": "Gedrückt halten und sprechen. Zusammen mit einer anderen Taste wirkt sie wie gewohnt (z. B. Strg+C), es wird nicht aufgenommen.", "fr": "Maintiens-la et parle. Avec une autre touche elle fonctionne normalement (ex. Ctrl+C), sans enregistrement.", "zh": "按住即录音。与其他键一起按时照常工作（例如 Ctrl+C），不会开始录音。"},
     "hk_busy": {"en": "This combination is already used by another program", "ru": "Это сочетание уже занято другой программой", "es": "Otra aplicación ya usa esta combinación", "pt": "Outro programa já usa esta combinação", "de": "Diese Kombination wird bereits von einem anderen Programm verwendet", "fr": "Cette combinaison est déjà utilisée par un autre programme", "zh": "该组合键已被其他程序占用"},
     "mode_hold": {"en": "Hold to talk", "ru": "Удерживать и говорить", "es": "Mantener para hablar", "pt": "Segurar para falar", "de": "Halten zum Sprechen", "fr": "Maintenir pour parler", "zh": "按住说话"},
@@ -146,8 +158,9 @@ DEFAULTS = {
     "oa_model": "gpt-4.1-mini",
     "cleanup": True, "autopaste": True, "restore_clip": True,
     "p_dict": "", "p_edit": "",
+    "share_enabled": False, "share_port": 8765, "share_token": "",
 }
-SECRET_KEYS = {"stt_key", "an_key", "oa_key"}
+SECRET_KEYS = {"stt_key", "an_key", "oa_key", "share_token"}
 
 # ---------------------------------------------------------------------------
 #  Палитра состояний индикатора
@@ -298,6 +311,8 @@ class Overlay:
         self.clickable = False
         self._ticking = False
         self._bars = [0.0] * 5
+        self._glow = 0.0
+        self._dc = None                 # DC + DIB переиспользуем между кадрами
         self.s = _dpi_scale()
         self.W, self.H = int(self.W0 * self.s), int(self.H0 * self.s)
         self.f_title = _font(["seguisb.ttf", "segoeuib.ttf", "arialbd.ttf"], int(13 * self.s))
@@ -329,7 +344,8 @@ class Overlay:
     def _pos(self):
         rc = wintypes.RECT()
         u32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rc), 0)
-        return rc.right - self.W + int(14 * self.s), rc.bottom - self.H + int(18 * self.s)
+        # целиком внутри рабочей области: окно поверх панели задач та перерисовывает — мерцание
+        return rc.right - self.W, rc.bottom - self.H
 
     def _set_click(self, on):
         self.clickable = on
@@ -370,6 +386,7 @@ class Overlay:
         self.hide_at = time.time() + delay
 
     def destroy(self):
+        self._free_dc()
         if self.hwnd:
             u32.DestroyWindow(self.hwnd)
             self.hwnd = None
@@ -392,9 +409,12 @@ class Overlay:
         now = time.time()
         if self.hide_at and now >= self.hide_at:
             self.target_alpha = 0.0
-        step = 1 / 5.0 if self.target_alpha > self.alpha else 1 / 8.0
-        self.alpha = min(1.0, self.alpha + step) if self.target_alpha > self.alpha \
-            else max(0.0, self.alpha - step)
+        # плавное появление/исчезновение. ВАЖНО: при alpha == target не трогаем —
+        # иначе 1.0 -> 0.875 -> 1.0 … каждый кадр, и индикатор мерцает
+        if self.alpha < self.target_alpha:
+            self.alpha = min(self.target_alpha, self.alpha + 1 / 5.0)
+        elif self.alpha > self.target_alpha:
+            self.alpha = max(self.target_alpha, self.alpha - 1 / 8.0)
         if self.alpha <= 0.0 and self.target_alpha == 0.0:
             u32.ShowWindow(self.hwnd, SW_HIDE)
             self.rec = None
@@ -413,16 +433,18 @@ class Overlay:
         img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         R = int(self.ORB * s)
         cx, cy = W - int(66 * s), H // 2
-        lvl = 0.0
-        if self.state == "listen" and self.rec is not None:
-            lvl = self.rec.level
+        raw = self.rec.level if (self.state == "listen" and self.rec is not None) else 0.0
+        # свечение реагирует на голос плавно (шум микрофона не должен его дёргать)
+        k = 0.25 if raw > self._glow else 0.08
+        self._glow += (raw - self._glow) * k
+        lvl = self._glow
         # --- свечение ---
-        pulse = 0.5 + 0.5 * math.sin(t * 3.2)
-        gr = int(R + (6 + 12 * lvl + 3 * pulse) * s)
+        pulse = 0.5 + 0.5 * math.sin(t * 2.4)
+        gr = int(R + (7 + 9 * lvl + 2 * pulse) * s)
         box = 2 * (R + int(34 * s))       # с запасом: размытие не должно упираться в край
         glow = Image.new("RGBA", (box, box), (0, 0, 0, 0))
         gd = ImageDraw.Draw(glow)
-        ga = int(70 + 110 * lvl + 30 * pulse)
+        ga = int(95 + 70 * lvl + 20 * pulse)
         m = box // 2
         gd.ellipse((m - gr, m - gr, m + gr, m + gr), fill=c1 + (ga,))
         glow = glow.filter(ImageFilter.GaussianBlur(int(9 * s)))
@@ -536,27 +558,36 @@ class Overlay:
         prem = img.convert("RGBa")                              # premultiplied alpha
         r, g, b, _ = prem.split()
         data = Image.merge("RGBA", (b, g, r, a)).tobytes()      # BGRA для DIB
-        bmi = BITMAPINFOHEADER()
-        bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
-        bmi.biWidth, bmi.biHeight = W, -H
-        bmi.biPlanes, bmi.biBitCount = 1, 32
+        if self._dc is None or self._dc[3] != (W, H):
+            self._free_dc()
+            bmi = BITMAPINFOHEADER()
+            bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            bmi.biWidth, bmi.biHeight = W, -H
+            bmi.biPlanes, bmi.biBitCount = 1, 32
+            mdc = g32.CreateCompatibleDC(None)
+            bits = ctypes.c_void_p()
+            hbm = g32.CreateDIBSection(mdc, ctypes.byref(bmi), 0, ctypes.byref(bits), None, 0)
+            old = g32.SelectObject(mdc, hbm)
+            self._dc = (mdc, hbm, old, (W, H), bits)
+        mdc, _hbm, _old, _sz, bits = self._dc
+        ctypes.memmove(bits, data, len(data))
+        x, y = self._pos()
+        blend = BLENDFUNCTION(0, 0, int(round(255 * self.alpha)), 1)
         sdc = u32.GetDC(None)
-        mdc = g32.CreateCompatibleDC(sdc)
-        bits = ctypes.c_void_p()
-        hbm = g32.CreateDIBSection(mdc, ctypes.byref(bmi), 0, ctypes.byref(bits), None, 0)
-        old = g32.SelectObject(mdc, hbm)
         try:
-            ctypes.memmove(bits, data, len(data))
-            x, y = self._pos()
-            blend = BLENDFUNCTION(0, 0, int(255 * self.alpha), 1)
             u32.UpdateLayeredWindow(self.hwnd, sdc, ctypes.byref(wintypes.POINT(x, y)),
                                     ctypes.byref(SIZE(W, H)), mdc, ctypes.byref(wintypes.POINT(0, 0)),
                                     0, ctypes.byref(blend), ULW_ALPHA)
         finally:
+            u32.ReleaseDC(None, sdc)
+
+    def _free_dc(self):
+        if self._dc:
+            mdc, hbm, old, _sz, _bits = self._dc
             g32.SelectObject(mdc, old)
             g32.DeleteObject(hbm)
             g32.DeleteDC(mdc)
-            u32.ReleaseDC(None, sdc)
+            self._dc = None
 
     # ---- запасной вариант без Pillow: простая плашка tk ----
     def _show_fallback(self, state, title, sub, clickable):
@@ -628,6 +659,8 @@ class VoiceController:
         self.hook = vs.KeyHook(log)
         self.hook.start()
         self.register_hotkey()
+        self.share = None
+        self.apply_share()
         self.root.after(20, self._hook_loop)
         self.root.after(60000, self._idle_tick)
 
@@ -769,6 +802,8 @@ class VoiceController:
                                          spf, os.path.join(ve.scratch_dir(), "cwd"), self.log)
                 if not s.cancelled:
                     s.runner.start()
+            elif self.get("llm") == "openai" and self.get("oa_preset") == "hdcontainer":
+                ve.remote_warm(self.get("oa_url"), self.get("oa_key"), self._system_prompt())
             if self.get("stt") == "local":
                 self.whisper.ensure_server(self.get("w_model"), self.get("lang"))
         except Exception as ex:
@@ -990,6 +1025,24 @@ class VoiceController:
         vs.clip_set_text(text)
         return "copied"
 
+    # ---- «Поделиться Claude Code» (сервер для других ПК) ----
+    def apply_share(self):
+        if self.share:
+            self.share.stop()
+            self.share = None
+        if not self.get("share_enabled"):
+            return
+        if not self.get("share_token"):
+            self.set("share_token", ve.new_token())
+        pool = ve.WarmPool(lambda: ve.find_claude(self.get("cc_path")), lambda: self.get("cc_model"),
+                           self.log)
+        try:
+            port = int(self.get("share_port"))
+        except (TypeError, ValueError):
+            port = DEFAULTS["share_port"]
+        self.share = ve.ShareServer(pool, self.get("share_token"), port, self.log)
+        self.share.start()
+
     def _idle_tick(self):
         try:
             self.whisper.idle_check()
@@ -1000,6 +1053,8 @@ class VoiceController:
     def shutdown(self):
         try:
             self.hook.stop()
+            if self.share:
+                self.share.stop()
             if self.sess and self.sess.runner:
                 self.sess.runner.cancel()
             self.whisper.stop()
@@ -1156,6 +1211,44 @@ class VoiceController:
         pop.after(200, lambda: pop.winfo_exists() and pop.bind("<FocusOut>", lambda e: pop.destroy()))
         pop.bind("<Escape>", lambda e: pop.destroy())
 
+    def _copy_row(self, label, value, extra=None, indent=24):
+        row = tk.Frame(self._body, bg=self.c_sf)
+        row.pack(fill="x", padx=(self.PAD + indent, self.PAD), pady=3)
+        tk.Label(row, text=label, bg=self.c_sf, fg=self.c_dim, font=("Segoe UI", 9)).pack(anchor="w")
+        line = tk.Frame(row, bg=self.c_sf)
+        line.pack(fill="x")
+        ent = tk.Entry(line, font=("Consolas", 10), bg=self.c_bg, fg=self.c_tx, relief="flat",
+                       readonlybackground=self.c_bg, highlightthickness=1,
+                       highlightbackground=self.c_bd)
+        ent.insert(0, value)
+        ent.configure(state="readonly")
+        ent.pack(side="left", fill="x", expand=True, ipady=4)
+
+        def copy():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(value)
+            btn.configure(text=V("copied"))
+            self.root.after(1200, lambda: btn.winfo_exists() and btn.configure(text=V("copy")))
+        btn = self.app._ghost_btn(line, V("copy"), copy)
+        btn.pack(side="left", padx=(8, 0))
+        if extra:
+            lk = tk.Label(line, text=extra[0], bg=self.c_sf, fg=self.c_ac, font=("Segoe UI", 9),
+                          cursor="hand2")
+            lk.pack(side="left", padx=(10, 0))
+            lk.bind("<Button-1>", lambda e: extra[1]())
+
+    def _port_changed(self):
+        try:
+            port = int(str(self.get("share_port")).strip())
+            if not 1 <= port <= 65535:
+                raise ValueError
+        except (TypeError, ValueError):
+            port = DEFAULTS["share_port"]
+        self.set("share_port", port)
+        if self.share is None or self.share.port != port:
+            self.apply_share()
+            self._rebuild()
+
     def _btn_row(self, indent=24):
         row = tk.Frame(self._body, bg=self.c_sf)
         row.pack(fill="x", padx=(self.PAD + indent, self.PAD), pady=(6, 2))
@@ -1267,8 +1360,13 @@ class VoiceController:
                 p = next(x for x in ve.LLM_PRESETS if x[0] == v)
                 if p[2]:
                     self.set("oa_url", p[2])
+                elif self.get("oa_url") in [x[2] for x in ve.LLM_PRESETS if x[2]]:
+                    self.set("oa_url", "")        # адрес другого сервиса тут не подходит
+                if p[2] or p[3]:
                     self.set("oa_model", p[3])
             self._dropdown(V("preset"), presets, "oa_preset", on_pick=on_llm_preset)
+            if self.get("oa_preset") == "hdcontainer":
+                self._note(b, V("share_client")).pack_configure(padx=(self.PAD + 24, self.PAD))
             self._entry(V("url"), "oa_url")
             self._entry(V("key"), "oa_key", secret=True)
             self._entry(V("model"), "oa_model")
@@ -1277,6 +1375,31 @@ class VoiceController:
                        wraplength=400, anchor="w")
         a._ghost_btn(row, V("test"), lambda: self._test_llm(res)).pack(side="left")
         res.pack(side="left", padx=10, fill="x")
+
+        # сервер для других ПК
+        self._h(V("sec_share"))
+        self._note(b, V("share_desc"), pady=(0, 6))
+
+        def toggle_share(v):
+            self.apply_share()
+            self._rebuild()
+        self._check(V("share_enable"), "share_enabled", toggle_share)
+        if self.get("share_enabled"):
+            port = self.get("share_port")
+            if self.share and self.share.httpd:
+                self._note(b, "● " + V("share_on", int(port)), fg="#34d399").pack_configure(
+                    padx=(self.PAD + 30, self.PAD))
+            elif self.share and self.share.error:
+                self._note(b, V("share_err", int(port), self.share.error), fg=self.c_err).pack_configure(
+                    padx=(self.PAD + 30, self.PAD))
+            for ip in ve.local_addresses()[:3]:
+                self._copy_row(V("share_addr"), "http://%s:%s/v1" % (ip, port))
+            self._copy_row(V("share_key"), self.get("share_token"),
+                           extra=(V("share_newkey"), lambda: (self.set("share_token", ve.new_token()),
+                                                              self.apply_share(), self._rebuild())))
+            pe = self._entry(V("share_port"), "share_port")
+            pe.bind("<FocusOut>", lambda e: self._port_changed())
+            pe.bind("<Return>", lambda e: self._port_changed())
 
         # поведение
         self._h(V("sec_behavior"))
