@@ -21,6 +21,7 @@ import glob
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -106,6 +107,31 @@ def clean_transcript(text):
     key = re.sub(r"[^\w ]+", "", t.lower()).strip()
     if not key or key in _HALLUCINATIONS:
         return ""
+    return dedupe_repeats(t)
+
+
+def _norm(x):
+    return re.sub(r"[^\w]+", "", x.lower())
+
+
+def dedupe_repeats(t):
+    """Whisper с урезанным audio_ctx иногда «зацикливается» на короткой фразе:
+    «На завтрак сладкий чай. На завтрак сладкий чай.» — подряд идущие
+    одинаковые предложения (и текст из N одинаковых кусков) схлопываем."""
+    parts = re.findall(r"[^.!?…]+[.!?…]*\s*", t)
+    out = []
+    for p in parts:
+        if out and _norm(p) and _norm(p) == _norm(out[-1]):
+            continue
+        out.append(p)
+    t = "".join(out).strip()
+    n = _norm(t)
+    for k in (2, 3, 4, 5, 6, 7, 8):             # «X X X» без точек между повторами
+        if n and len(n) % k == 0 and n == n[: len(n) // k] * k:
+            words = t.split()
+            if len(words) % k == 0:
+                t = " ".join(words[: len(words) // k])
+            break
     return t
 
 
@@ -143,6 +169,20 @@ def _download(url, dst, progress=None, base=0, total=0):
     return size
 
 
+def default_threads():
+    # замер на i3-1215U (8 потоков): 4 -> 3,1 с, 6 -> 2,4 с, 8 -> 2,1 с на короткой фразе
+    return max(2, min(8, os.cpu_count() or 4))
+
+
+def audio_ctx_for(duration):
+    """Размер аудио-контекста энкодера под длину записи (1500 = полные 30 с).
+    Запас +64 кадра (~1,3 с), для записей длиннее ~28 с — полный контекст."""
+    if not duration or duration <= 0:
+        return 0
+    ctx = int(math.ceil(duration / 30.0 * 1500)) + 64
+    return 0 if ctx >= 1500 else ctx
+
+
 class WhisperLocal:
     IDLE_STOP = 20 * 60          # выгрузить модель из памяти после 20 мин простоя
 
@@ -157,6 +197,8 @@ class WhisperLocal:
         self.last_used = 0.0
         self._lock = threading.Lock()
         self.installing = False
+        self.keep = False            # держать модель в памяти (не выгружать по простою)
+        self.threads = 0             # 0 — выбрать автоматически
 
     # ---- установка ----
     def server_exe(self):
@@ -227,7 +269,7 @@ class WhisperLocal:
             s.bind(("127.0.0.1", 0))
             self.port = s.getsockname()[1]
             s.close()
-            threads = max(2, min(8, (os.cpu_count() or 4) // 2))
+            threads = self.threads or default_threads()
             # путь к модели — ОТНОСИТЕЛЬНЫЙ от рабочей папки сервера: whisper.cpp открывает
             # файл «узкой» кодировкой, и путь с кириллицей (C:\Users\Руслан Родин\…)
             # превращается в «������» -> модель не найдена -> abort (0xC0000409)
@@ -259,9 +301,13 @@ class WhisperLocal:
                     time.sleep(0.25)
             raise VoiceError("whisper-server start timeout")
 
-    def transcribe(self, wav, name, lang, prompt=""):
+    def transcribe(self, wav, name, lang, prompt="", duration=0.0):
         self.ensure_server(name, lang)
         fields = {"temperature": "0.0", "response_format": "json"}
+        ctx = audio_ctx_for(duration)
+        if ctx:
+            # Whisper всегда кодирует окно 30 с; для короткой фразы считаем только её длину
+            fields["audio_ctx"] = str(ctx)
         if lang and lang != "auto":
             fields["language"] = lang
         if prompt:
@@ -275,6 +321,8 @@ class WhisperLocal:
         return (j.get("text") if isinstance(j, dict) else "") or ""
 
     def idle_check(self):
+        if self.keep:
+            return
         if self.alive() and time.time() - self.last_used > self.IDLE_STOP:
             self.log("whisper-server idle -> stop")
             self.stop()

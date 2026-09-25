@@ -67,6 +67,12 @@ VSTR = {
     "pan_remote": {"en": "Connection to the other computer", "ru": "Подключение к другому компьютеру", "es": "Conexión con el otro equipo", "pt": "Conexão com o outro computador", "de": "Verbindung zum anderen Computer", "fr": "Connexion à l’autre ordinateur", "zh": "连接到另一台电脑"},
     "pan_oai": {"en": "OpenAI-compatible service", "ru": "OpenAI-совместимый сервис", "es": "Servicio compatible con OpenAI", "pt": "Serviço compatível com OpenAI", "de": "OpenAI-kompatibler Dienst", "fr": "Service compatible OpenAI", "zh": "兼容 OpenAI 的服务"},
     "share_panel": {"en": "Give these to the other computer", "ru": "Это нужно ввести на другом компьютере", "es": "Introduce esto en el otro equipo", "pt": "Informe isto no outro computador", "de": "Dies auf dem anderen Computer eingeben", "fr": "À saisir sur l’autre ordinateur", "zh": "在另一台电脑上填写以下信息"},
+    "w_fast": {"en": "Fast mode for short phrases", "ru": "Быстрый режим для коротких фраз", "es": "Modo rápido para frases cortas", "pt": "Modo rápido para frases curtas", "de": "Schnellmodus für kurze Sätze", "fr": "Mode rapide pour les phrases courtes", "zh": "短句快速模式"},
+    "w_fast_note": {"en": "Whisper processes only the length of what you said instead of a full 30-second window, and silence at the edges is cut off.", "ru": "Whisper обрабатывает только длину сказанного, а не всё 30-секундное окно; тишина по краям отрезается.", "es": "Whisper procesa solo la duración de lo dicho en lugar de una ventana de 30 s, y se recorta el silencio de los bordes.", "pt": "O Whisper processa só a duração do que foi dito, e não uma janela de 30 s; o silêncio nas bordas é cortado.", "de": "Whisper verarbeitet nur die Länge des Gesagten statt eines 30-Sekunden-Fensters; Stille am Rand wird abgeschnitten.", "fr": "Whisper ne traite que la durée de ce qui est dit au lieu d’une fenêtre de 30 s ; le silence aux bords est coupé.", "zh": "Whisper 只处理实际说话的时长，而不是整个 30 秒窗口；首尾静音会被裁掉。"},
+    "w_keep": {"en": "Keep the model loaded", "ru": "Держать модель в памяти", "es": "Mantener el modelo cargado", "pt": "Manter o modelo carregado", "de": "Modell geladen halten", "fr": "Garder le modèle chargé", "zh": "保持模型常驻内存"},
+    "w_keep_note": {"en": "No loading delay on the first phrase; uses about 0.5 GB of RAM while HDContainer runs.", "ru": "Первая фраза без задержки на загрузку; занимает ~0,5 ГБ ОЗУ, пока работает HDContainer.", "es": "Sin espera de carga en la primera frase; usa ~0,5 GB de RAM mientras HDContainer funciona.", "pt": "Sem espera de carregamento na primeira frase; usa ~0,5 GB de RAM enquanto o HDContainer roda.", "de": "Keine Ladeverzögerung beim ersten Satz; belegt ~0,5 GB RAM, solange HDContainer läuft.", "fr": "Pas d’attente de chargement à la première phrase ; utilise ~0,5 Go de RAM tant que HDContainer tourne.", "zh": "第一句无需等待加载；HDContainer 运行期间约占 0.5 GB 内存。"},
+    "w_threads": {"en": "CPU threads", "ru": "Потоки процессора", "es": "Hilos de CPU", "pt": "Threads da CPU", "de": "CPU-Threads", "fr": "Threads CPU", "zh": "CPU 线程数"},
+    "w_thr_auto": {"en": "Auto (%d)", "ru": "Авто (%d)", "es": "Auto (%d)", "pt": "Auto (%d)", "de": "Auto (%d)", "fr": "Auto (%d)", "zh": "自动（%d）"},
     "share_pending": {"en": "Press Save to start sharing.", "ru": "Нажми «Сохранить», чтобы включить.", "es": "Pulsa Guardar para activarlo.", "pt": "Clique em Salvar para ativar.", "de": "Zum Aktivieren auf Speichern klicken.", "fr": "Clique sur Enregistrer pour l’activer.", "zh": "点击“保存”以启用。"},
     "share_none": {"en": "Claude Code isn’t installed on this PC, so there is nothing to share. Turn this off here and choose “Claude on another computer” above.", "ru": "На этом ПК нет Claude Code — делиться нечем. Выключи это здесь и выбери выше «Claude на другом компьютере».", "es": "Este PC no tiene Claude Code, no hay nada que compartir. Desactívalo aquí y elige arriba «Claude en otro equipo».", "pt": "Este PC não tem o Claude Code, não há o que compartilhar. Desative aqui e escolha acima “Claude em outro computador”.", "de": "Auf diesem PC ist kein Claude Code installiert – nichts zu teilen. Schalte es hier aus und wähle oben „Claude auf einem anderen Computer“.", "fr": "Claude Code n’est pas installé sur ce PC : rien à partager. Désactive-le ici et choisis plus haut « Claude sur un autre ordinateur ».", "zh": "本机未安装 Claude Code，无可共享。请在此关闭，并在上方选择“另一台电脑上的 Claude”。"},
     "o_need_model": {"en": "Speech model isn’t downloaded yet", "ru": "Модель распознавания ещё не скачана", "es": "El modelo de voz aún no está descargado", "pt": "O modelo de fala ainda não foi baixado", "de": "Das Sprachmodell ist noch nicht heruntergeladen", "fr": "Le modèle vocal n’est pas encore téléchargé", "zh": "语音模型尚未下载"},
@@ -170,6 +176,7 @@ DEFAULTS = {
     "oa_preset": "openai", "oa_url": "https://api.openai.com/v1", "oa_key": "",
     "oa_model": "gpt-4.1-mini",
     "cleanup": True, "autopaste": True, "restore_clip": True,
+    "w_fast": True, "w_keep": True, "w_threads": 0,
     "p_dict": "", "p_edit": "",
     "share_enabled": False, "share_port": 8765, "share_token": "",
     "rm_url": "", "rm_key": "",
@@ -680,6 +687,7 @@ class VoiceController:
         self.apply_share()
         self.root.after(20, self._hook_loop)
         self.root.after(60000, self._idle_tick)
+        self.root.after(4000, self._apply_whisper)
 
     # ---- настройки ----
     def get(self, k):
@@ -718,8 +726,9 @@ class VoiceController:
         if any(old.get(k) != new.get(k) for k in
                ("share_enabled", "share_port", "share_token", "cc_path", "cc_model")):
             self.apply_share()
-        if any(old.get(k) != new.get(k) for k in ("w_model", "lang")):
+        if any(old.get(k) != new.get(k) for k in ("w_model", "lang", "w_threads", "stt")):
             self.whisper.stop()
+        self._apply_whisper()
         self.log("voice settings saved")
 
     # ---- горячая клавиша (низкоуровневый хук, см. voice_sys.KeyHook) ----
@@ -947,10 +956,11 @@ class VoiceController:
     def _system_prompt(self):
         return ve.system_prompt(self.get("p_dict").strip() or None, self.get("p_edit").strip() or None)
 
-    def _stt(self, wav):
+    def _stt(self, wav, duration=0.0):
         lang = self.get("lang")
         if self.get("stt") == "local":
-            return self.whisper.transcribe(wav, self.get("w_model"), lang, self.get("stt_prompt"))
+            return self.whisper.transcribe(wav, self.get("w_model"), lang, self.get("stt_prompt"),
+                                           duration if self.get("w_fast") else 0.0)
         return ve.cloud_transcribe(wav, self.get("stt_url"), self.get("stt_key"), self.get("stt_model"),
                                    lang, self.get("stt_prompt"))
 
@@ -997,7 +1007,7 @@ class VoiceController:
         t0 = time.time()
         try:
             wav = s.rec.wav_bytes()
-            text = ve.clean_transcript(self._stt(wav))
+            text = ve.clean_transcript(self._stt(wav, getattr(s.rec, "sent_duration", 0.0)))
             t_stt = time.time() - t0
             self.log("voice: stt %.1fs -> %r" % (t_stt, text[:120]))
             if not text:
@@ -1072,9 +1082,11 @@ class VoiceController:
             time.sleep(0.04)
             vs.send_combo([vs.VK_CONTROL], vs.VK_V)
             if restore and snap is not None:
-                time.sleep(0.8)                    # дать приложению забрать текст
-                if vs.clip_seq() == seq:
-                    vs.clip_restore(snap)
+                def put_back():
+                    time.sleep(0.8)                # дать приложению забрать текст
+                    if vs.clip_seq() == seq:       # никто не менял буфер за это время
+                        vs.clip_restore(snap)
+                threading.Thread(target=put_back, daemon=True).start()
             return "pasted"
         vs.clip_set_text(text)
         return "copied"
@@ -1113,6 +1125,23 @@ class VoiceController:
             port = DEFAULTS["share_port"]
         self.share = ve.ShareServer(pool, self.get("share_token"), port, self.log)
         self.share.start()
+
+    # ---- Whisper: держать модель в памяти, число потоков ----
+    def _apply_whisper(self):
+        self.whisper.keep = bool(self.get("w_keep"))
+        try:
+            self.whisper.threads = int(self.get("w_threads") or 0)
+        except (TypeError, ValueError):
+            self.whisper.threads = 0
+        if (self.whisper.keep and self.get("enabled") and self.get("stt") == "local"
+                and not self.whisper.alive() and self.whisper.is_installed(self.get("w_model"))):
+            threading.Thread(target=self._warm_whisper, daemon=True).start()
+
+    def _warm_whisper(self):
+        try:
+            self.whisper.ensure_server(self.get("w_model"), self.get("lang"))
+        except Exception as ex:
+            self.log("whisper keep-warm: %r" % ex)
 
     def _idle_tick(self):
         try:
@@ -1245,6 +1274,25 @@ class VoiceController:
     def _panel(self, title):
         """Карточка с настройками выбранного варианта — видно, к чему они относятся."""
         return self._PanelCtx(self, title)
+
+    def _pcheck(self, text, key, note=None):
+        """Галочка внутри текущего контейнера (карточки)."""
+        row = tk.Frame(self._p, bg=self._pbg)
+        row.pack(fill="x", padx=self._px(), pady=(4, 0))
+        chk, st, draw = self.app._make_check(row, bool(self.get(key)),
+                                             lambda v: self.set(key, bool(v)), bg=self._pbg)
+        chk.pack(side="left", anchor="n")
+        lb = tk.Label(row, text=text, bg=self._pbg, fg=self.c_tx, font=("Segoe UI", 10), cursor="hand2",
+                      justify="left", wraplength=440, anchor="w")
+        lb.pack(side="left", fill="x", padx=(8, 0))
+
+        def toggle(_e=None):
+            st["v"] = not st["v"]
+            draw()
+            self.set(key, st["v"])
+        lb.bind("<Button-1>", toggle)
+        if note:
+            self._note(note, pady=(0, 4), indent=28)
 
     def _entry(self, label, key, secret=False, on_change=None):
         row = tk.Frame(self._p, bg=self._pbg)
@@ -1423,6 +1471,11 @@ class VoiceController:
                 a._accent_btn(row, V("download"), lambda: self._download(m)).pack(side="right")
                 if self.dl and self.dl.get("err") and self.dl.get("model") == m:
                     self._note(V("test_fail", self.dl["err"]), fg=self.c_err)
+            self._pcheck(V("w_fast"), "w_fast", V("w_fast_note"))
+            self._pcheck(V("w_keep"), "w_keep", V("w_keep_note"))
+            thr = [(0, V("w_thr_auto", ve.default_threads()))] + [(n, str(n)) for n in (2, 4, 6, 8, 12, 16)
+                                                                 if n <= (os.cpu_count() or 8)]
+            self._dropdown(V("w_threads"), thr, "w_threads")
             self._entry(V("vocab"), "stt_prompt")
 
         def stt_cloud():

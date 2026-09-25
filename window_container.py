@@ -65,7 +65,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.3.4"
+VERSION = "1.3.5"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"

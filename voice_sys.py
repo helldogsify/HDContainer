@@ -491,6 +491,8 @@ class Recorder:
         self.levels = deque([0.0] * 48, maxlen=48)
         self.peak_rms = 0.0
         self.chunks = []
+        self.chunk_rms = []
+        self.sent_duration = 0.0
         self.error = None
         self._stop = threading.Event()
         self._opened = threading.Event()
@@ -505,12 +507,13 @@ class Recorder:
     def _consume(self, data):
         if not data:
             return
-        self.chunks.append(data)
         a = array.array("h")
         a.frombytes(data[: len(data) // 2 * 2])
         if not a:
             return
         rms = math.sqrt(sum(x * x for x in a) / len(a)) / 32768.0
+        self.chunks.append(data)
+        self.chunk_rms.append(rms)
         self.peak_rms = max(self.peak_rms, rms)
         db = 20 * math.log10(rms + 1e-9)
         lvl = max(0.0, min(1.0, (db + 52) / 40))
@@ -570,13 +573,29 @@ class Recorder:
     def duration(self):
         return sum(len(c) for c in self.chunks) / float(self.RATE * 2)
 
-    def wav_bytes(self):
+    def speech_span(self, pad=0.25):
+        """(start, end) индексы чанков с речью: тишину в начале и в конце
+        отрезаем (с запасом pad секунд) — Whisper-у меньше работы."""
+        n = len(self.chunks)
+        if not n:
+            return 0, 0
+        thr = max(0.004, self.peak_rms * 0.12)
+        loud = [i for i, r in enumerate(self.chunk_rms) if r >= thr]
+        if not loud:
+            return 0, n
+        padn = int(pad / (self.CHUNK / 2.0 / self.RATE))
+        return max(0, loud[0] - padn), min(n, loud[-1] + 1 + padn)
+
+    def wav_bytes(self, trim=True):
+        a, b = self.speech_span() if trim else (0, len(self.chunks))
+        data = b"".join(self.chunks[a:b])
+        self.sent_duration = len(data) / float(self.RATE * 2)
         bio = io.BytesIO()
         w = wave.open(bio, "wb")
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(self.RATE)
-        w.writeframes(b"".join(self.chunks))
+        w.writeframes(data)
         w.close()
         return bio.getvalue()
 
