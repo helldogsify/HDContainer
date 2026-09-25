@@ -67,11 +67,12 @@ VSTR = {
     "pan_remote": {"en": "Connection to the other computer", "ru": "Подключение к другому компьютеру", "es": "Conexión con el otro equipo", "pt": "Conexão com o outro computador", "de": "Verbindung zum anderen Computer", "fr": "Connexion à l’autre ordinateur", "zh": "连接到另一台电脑"},
     "pan_oai": {"en": "OpenAI-compatible service", "ru": "OpenAI-совместимый сервис", "es": "Servicio compatible con OpenAI", "pt": "Serviço compatível com OpenAI", "de": "OpenAI-kompatibler Dienst", "fr": "Service compatible OpenAI", "zh": "兼容 OpenAI 的服务"},
     "share_panel": {"en": "Give these to the other computer", "ru": "Это нужно ввести на другом компьютере", "es": "Introduce esto en el otro equipo", "pt": "Informe isto no outro computador", "de": "Dies auf dem anderen Computer eingeben", "fr": "À saisir sur l’autre ordinateur", "zh": "在另一台电脑上填写以下信息"},
+    "share_pending": {"en": "Press Save to start sharing.", "ru": "Нажми «Сохранить», чтобы включить.", "es": "Pulsa Guardar para activarlo.", "pt": "Clique em Salvar para ativar.", "de": "Zum Aktivieren auf Speichern klicken.", "fr": "Clique sur Enregistrer pour l’activer.", "zh": "点击“保存”以启用。"},
     "share_none": {"en": "Claude Code isn’t installed on this PC, so there is nothing to share. Turn this off here and choose “Claude on another computer” above.", "ru": "На этом ПК нет Claude Code — делиться нечем. Выключи это здесь и выбери выше «Claude на другом компьютере».", "es": "Este PC no tiene Claude Code, no hay nada que compartir. Desactívalo aquí y elige arriba «Claude en otro equipo».", "pt": "Este PC não tem o Claude Code, não há o que compartilhar. Desative aqui e escolha acima “Claude em outro computador”.", "de": "Auf diesem PC ist kein Claude Code installiert – nichts zu teilen. Schalte es hier aus und wähle oben „Claude auf einem anderen Computer“.", "fr": "Claude Code n’est pas installé sur ce PC : rien à partager. Désactive-le ici et choisis plus haut « Claude sur un autre ordinateur ».", "zh": "本机未安装 Claude Code，无可共享。请在此关闭，并在上方选择“另一台电脑上的 Claude”。"},
     "o_need_model": {"en": "Speech model isn’t downloaded yet", "ru": "Модель распознавания ещё не скачана", "es": "El modelo de voz aún no está descargado", "pt": "O modelo de fala ainda não foi baixado", "de": "Das Sprachmodell ist noch nicht heruntergeladen", "fr": "Le modèle vocal n’est pas encore téléchargé", "zh": "语音模型尚未下载"},
     "o_need_llm": {"en": "Text processing isn’t set up", "ru": "Не настроена обработка текста", "es": "El procesamiento de texto no está configurado", "pt": "O processamento de texto não está configurado", "de": "Textverarbeitung ist nicht eingerichtet", "fr": "Le traitement du texte n’est pas configuré", "zh": "尚未设置文本处理"},
     "sec_share": {"en": "Share Claude Code with other computers", "ru": "Поделиться Claude Code с другими компьютерами", "es": "Compartir Claude Code con otros equipos", "pt": "Compartilhar o Claude Code com outros computadores", "de": "Claude Code mit anderen Computern teilen", "fr": "Partager Claude Code avec d’autres ordinateurs", "zh": "与其他电脑共享 Claude Code"},
-    "share_desc": {"en": "This PC processes voice text for your other computers with its Claude Code, so they need no Claude Code or API key. On the other PC choose “OpenAI-compatible → HDContainer on another PC” and paste the address and key below. Works best over Tailscale or a home network.", "ru": "Этот ПК обрабатывает текст голосового ввода для других ваших компьютеров своим Claude Code — там не нужны ни Claude Code, ни API-ключ. На другом ПК выбери «OpenAI-совместимые → HDContainer on another PC» и вставь адрес и ключ отсюда. Лучше всего — через Tailscale или домашнюю сеть.", "es": "Este PC procesa el texto de voz de tus otros equipos con su Claude Code; allí no hace falta Claude Code ni clave API. En el otro PC elige «Compatible con OpenAI → HDContainer on another PC» y pega la dirección y la clave de abajo. Mejor por Tailscale o red doméstica.", "pt": "Este PC processa o texto de voz dos seus outros computadores com o Claude Code dele; lá não é preciso Claude Code nem chave de API. No outro PC escolha “Compatível com OpenAI → HDContainer on another PC” e cole o endereço e a chave abaixo. Melhor via Tailscale ou rede doméstica.", "de": "Dieser PC verarbeitet den Sprachtext deiner anderen Computer mit seinem Claude Code – dort brauchst du weder Claude Code noch API-Schlüssel. Wähle auf dem anderen PC „OpenAI-kompatibel → HDContainer on another PC“ und füge Adresse und Schlüssel von unten ein. Am besten über Tailscale oder das Heimnetz.", "fr": "Ce PC traite le texte vocal de tes autres ordinateurs avec son Claude Code : pas besoin de Claude Code ni de clé API là-bas. Sur l’autre PC, choisis « Compatible OpenAI → HDContainer on another PC » et colle l’adresse et la clé ci-dessous. Idéal via Tailscale ou le réseau domestique.", "zh": "这台电脑用自己的 Claude Code 为你的其他电脑处理语音文本，那些电脑无需安装 Claude Code 或 API 密钥。在另一台电脑上选择“兼容 OpenAI → HDContainer on another PC”，并粘贴下面的地址和密钥。最好通过 Tailscale 或家庭网络使用。"},
+    "share_desc": {"en": "This PC processes voice text for your other computers with its Claude Code, so they need neither Claude Code nor an API key. On the other PC choose “Claude on another computer” and paste the address and key shown here. Works over Tailscale or a home network.", "ru": "Этот ПК обрабатывает текст голосового ввода для других ваших компьютеров своим Claude Code — там не нужны ни Claude Code, ни API-ключ. На другом ПК выбери «Claude на другом компьютере» и вставь адрес и ключ отсюда. Работает через Tailscale или домашнюю сеть.", "es": "Este PC procesa el texto de voz de tus otros equipos con su Claude Code; allí no hace falta Claude Code ni clave API. En el otro PC elige «Claude en otro equipo» y pega la dirección y la clave de aquí. Funciona por Tailscale o red doméstica.", "pt": "Este PC processa o texto de voz dos seus outros computadores com o Claude Code dele; lá não é preciso Claude Code nem chave de API. No outro PC escolha “Claude em outro computador” e cole o endereço e a chave daqui. Funciona via Tailscale ou rede doméstica.", "de": "Dieser PC verarbeitet den Sprachtext deiner anderen Computer mit seinem Claude Code – dort brauchst du weder Claude Code noch API-Schlüssel. Wähle auf dem anderen PC „Claude auf einem anderen Computer“ und füge Adresse und Schlüssel von hier ein. Funktioniert über Tailscale oder das Heimnetz.", "fr": "Ce PC traite le texte vocal de tes autres ordinateurs avec son Claude Code : pas besoin de Claude Code ni de clé API là-bas. Sur l’autre PC, choisis « Claude sur un autre ordinateur » et colle l’adresse et la clé d’ici. Fonctionne via Tailscale ou le réseau domestique.", "zh": "这台电脑用自己的 Claude Code 为你的其他电脑处理语音文本，那些电脑无需 Claude Code 或 API 密钥。在另一台电脑上选择“另一台电脑上的 Claude”，并粘贴这里的地址和密钥。可通过 Tailscale 或家庭网络使用。"},
     "share_enable": {"en": "Accept requests from other computers", "ru": "Принимать запросы с других компьютеров", "es": "Aceptar solicitudes de otros equipos", "pt": "Aceitar pedidos de outros computadores", "de": "Anfragen von anderen Computern annehmen", "fr": "Accepter les requêtes d’autres ordinateurs", "zh": "接受其他电脑的请求"},
     "share_on": {"en": "Listening on port %d", "ru": "Слушаю порт %d", "es": "Escuchando en el puerto %d", "pt": "Escutando na porta %d", "de": "Lausche auf Port %d", "fr": "À l’écoute sur le port %d", "zh": "正在监听端口 %d"},
     "share_err": {"en": "Can’t open port %d: %s", "ru": "Не удалось открыть порт %d: %s", "es": "No se pudo abrir el puerto %d: %s", "pt": "Não foi possível abrir a porta %d: %s", "de": "Port %d kann nicht geöffnet werden: %s", "fr": "Impossible d’ouvrir le port %d : %s", "zh": "无法打开端口 %d：%s"},
@@ -116,7 +117,7 @@ VSTR = {
     "model_empty_default": {"en": "Model (empty — Claude Code default)", "ru": "Модель (пусто — по умолчанию Claude Code)", "es": "Modelo (vacío — el de Claude Code)", "pt": "Modelo (vazio — padrão do Claude Code)", "de": "Modell (leer — Standard von Claude Code)", "fr": "Modèle (vide — celui de Claude Code)", "zh": "模型（留空则用 Claude Code 默认）"},
     "test": {"en": "Test", "ru": "Проверить", "es": "Probar", "pt": "Testar", "de": "Testen", "fr": "Tester", "zh": "测试"},
     "testing": {"en": "Testing…", "ru": "Проверяю…", "es": "Probando…", "pt": "Testando…", "de": "Teste…", "fr": "Test en cours…", "zh": "测试中…"},
-    "test_ok": {"en": "Works (%.1f s): %s", "ru": "Работает (%.1f с): %s", "es": "Funciona (%.1f s): %s", "pt": "Funciona (%.1f s): %s", "de": "Funktioniert (%.1f s): %s", "fr": "Ça marche (%.1f s) : %s", "zh": "正常（%.1f 秒）：%s"},
+    "test_ok": {"en": "✓ Connection works — answered in %.1f s. Example of the clean-up:", "ru": "✓ Связь есть — ответ за %.1f с. Пример обработки:", "es": "✓ La conexión funciona: respuesta en %.1f s. Ejemplo:", "pt": "✓ A conexão funciona — resposta em %.1f s. Exemplo:", "de": "✓ Verbindung steht — Antwort in %.1f s. Beispiel:", "fr": "✓ La connexion fonctionne — réponse en %.1f s. Exemple :", "zh": "✓ 连接正常——%.1f 秒内响应。处理示例："},
     "test_fail": {"en": "Error: %s", "ru": "Ошибка: %s", "es": "Error: %s", "pt": "Erro: %s", "de": "Fehler: %s", "fr": "Erreur : %s", "zh": "错误：%s"},
     "test_phrase": {"en": "so um this is like a quick connection test i guess", "ru": "ну короче это типа проверка связи эээ наверное", "es": "pues eh esto es como una prueba de conexión creo", "pt": "então tipo isso é um teste de conexão eu acho", "de": "also ähm das ist so ein verbindungstest glaube ich", "fr": "alors euh c'est genre un test de connexion je crois", "zh": "嗯那个这个就是一个连接测试吧"},
     "sec_behavior": {"en": "Behavior", "ru": "Поведение", "es": "Comportamiento", "pt": "Comportamento", "de": "Verhalten", "fr": "Comportement", "zh": "行为"},
@@ -653,6 +654,7 @@ class VoiceController:
     def __init__(self, app, get_lang, log, local_dir):
         global LANG_GET
         LANG_GET = get_lang
+        self.draft = None               # черновик настроек, пока открыто окно (см. begin_edit)
         self.app = app
         self.root = app.root
         self.log = log
@@ -681,14 +683,44 @@ class VoiceController:
 
     # ---- настройки ----
     def get(self, k):
-        v = self.app.settings.get("voice", {}).get(k, DEFAULTS[k])
+        src = self.draft if self.draft is not None else self.app.settings.get("voice", {})
+        v = src.get(k, DEFAULTS[k])
         return vs.unprotect(v) if k in SECRET_KEYS else v
 
     def set(self, k, v, save=True):
+        v = vs.protect(v) if (k in SECRET_KEYS and v) else v
+        if self.draft is not None:            # окно настроек открыто — только черновик
+            self.draft[k] = v
+            return
         d = self.app.settings.setdefault("voice", {})
-        d[k] = vs.protect(v) if (k in SECRET_KEYS and v) else v
+        d[k] = v
         if save:
             self.app._set_setting("voice", d)
+
+    # ---- черновик: правки из окна применяются только по «Сохранить» ----
+    def begin_edit(self):
+        self.draft = dict(self.app.settings.get("voice", {}))
+
+    def discard(self):
+        self.draft = None
+        self.win = None
+        self.hook.capture = False
+
+    def commit(self):
+        new, self.draft = self.draft, None
+        self.win = None
+        self.hook.capture = False
+        if new is None:
+            return
+        old = dict(self.app.settings.get("voice", {}))
+        self.app._set_setting("voice", new)
+        self.register_hotkey()
+        if any(old.get(k) != new.get(k) for k in
+               ("share_enabled", "share_port", "share_token", "cc_path", "cc_model")):
+            self.apply_share()
+        if any(old.get(k) != new.get(k) for k in ("w_model", "lang")):
+            self.whisper.stop()
+        self.log("voice settings saved")
 
     # ---- горячая клавиша (низкоуровневый хук, см. voice_sys.KeyHook) ----
     ARM_DELAY = 0.2         # одиночный модификатор: запись стартует, если держат дольше
@@ -1105,25 +1137,18 @@ class VoiceController:
     #  Окно настроек
     # =======================================================================
     def open_settings(self):
-        if self.win:
-            try:
-                self.win.destroy()
-            except Exception:
-                pass
-        a = self.app
-        from_colors = __import__("__main__")
-        C = lambda n, d: getattr(from_colors, n, d)
+        self.app._open_settings("voice")
+
+    def build_into(self, parent, win):
+        """Нарисовать вкладку «Голосовой ввод» внутри общего окна настроек."""
+        main = __import__("__main__")
+        C = lambda n, d: getattr(main, n, d)
         self.c_bg, self.c_sf, self.c_sf2 = C("COL_BG", "#1b1b1d"), C("COL_SURFACE", "#232427"), C("COL_SURFACE2", "#2d2e31")
         self.c_bd, self.c_hv, self.c_ac = C("COL_BORDER", "#2a2b2c"), C("COL_HOVER", "#303236"), C("COL_ACCENT", "#4c8bf5")
         self.c_tx, self.c_dim, self.c_err = C("COL_TEXT", "#e6e8ea"), C("COL_TEXT_DIM", "#9aa0a6"), C("COL_DANGER", "#ff453a")
-        win = a._dialog(V("title"), 600, 720)
-        win.resizable(False, True)
         self.win = win
-        win.protocol("WM_DELETE_WINDOW", self._close_settings)
-        outer = tk.Frame(win, bg=self.c_sf)
-        outer.pack(fill="both", expand=True)
-        cv = tk.Canvas(outer, bg=self.c_sf, highlightthickness=0, bd=0)
-        sb = a._dark_scrollbar(outer, cv)
+        cv = tk.Canvas(parent, bg=self.c_sf, highlightthickness=0, bd=0)
+        sb = self.app._dark_scrollbar(parent, cv)
         sb.pack(side="right", fill="y")
         cv.pack(side="left", fill="both", expand=True)
         body = tk.Frame(cv, bg=self.c_sf)
@@ -1132,20 +1157,8 @@ class VoiceController:
         cv.bind("<Configure>", lambda e: cv.itemconfigure(wid, width=e.width))
         win.bind("<MouseWheel>", lambda e: cv.yview_scroll(int(-e.delta / 120) * 3, "units"))
         self._cv, self._body = cv, body
-        bottom = tk.Frame(win, bg=self.c_sf)
-        bottom.pack(fill="x", side="bottom")
-        a._accent_btn(bottom, V("close"), self._close_settings).pack(side="right", padx=20, pady=12)
         self._build()
         self._dl_poll()
-
-    def _close_settings(self):
-        self.app._set_setting("voice", self.app.settings.get("voice", {}))
-        self.register_hotkey()
-        try:
-            self.win.destroy()
-        except Exception:
-            pass
-        self.win = None
 
     def _rebuild(self):
         y = self._cv.yview()[0]
@@ -1327,9 +1340,7 @@ class VoiceController:
         except (TypeError, ValueError):
             port = DEFAULTS["share_port"]
         self.set("share_port", port)
-        if self.share is None or self.share.port != port:
-            self.apply_share()
-            self._rebuild()
+        self._rebuild()
 
     def _btn_row(self):
         row = tk.Frame(self._p, bg=self._pbg)
@@ -1366,10 +1377,8 @@ class VoiceController:
     def _build(self):
         b, a = self._body, self.app
         self._p, self._pbg = b, self.c_sf
-        tk.Label(b, text=V("title"), bg=self.c_sf, fg=self.c_tx, font=("Segoe UI Semibold", 14)).pack(
-            anchor="w", padx=self.PAD, pady=(18, 6))
-        self._note(V("intro"), pady=(0, 6))
-        self._check(V("enable"), "enabled", lambda v: self.register_hotkey())
+        self._note(V("intro"), pady=(16, 6))
+        self._check(V("enable"), "enabled")
 
         # горячая клавиша
         self._h(V("sec_hotkey"))
@@ -1377,7 +1386,7 @@ class VoiceController:
         tk.Label(row, text=vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")), bg=self.c_sf2,
                  fg=self.c_tx, font=("Consolas", 11), padx=12, pady=5).pack(side="left")
         a._ghost_btn(row, V("change"), self._capture_hotkey).pack(side="left", padx=10)
-        if self.hook.modifier_only:
+        if self.get("hk_mods") == 0 and self.get("hk_vk") in vs.SIDED_MODIFIERS:
             self._note(V("hk_single_note"), pady=(4, 2))
         self._radio([("hold", V("mode_hold")), ("toggle", V("mode_toggle"))], "mode")
 
@@ -1393,8 +1402,8 @@ class VoiceController:
         def stt_local():
             models = [("base", V("m_base")), ("small", V("m_small")),
                       ("large-v3-turbo-q5_0", V("m_turbo"))]
-            self._dropdown(V("model"), models, "w_model", on_pick=lambda v: self.whisper.stop())
-            self._dropdown(V("lang"), langs, "lang", on_pick=lambda v: self.whisper.stop())
+            self._dropdown(V("model"), models, "w_model")
+            self._dropdown(V("lang"), langs, "lang")
             m = self.get("w_model")
             row = self._btn_row()
             if self.dl and self.dl.get("model") == m and not self.dl.get("finished"):
@@ -1485,14 +1494,16 @@ class VoiceController:
             self._note(V("share_desc"), pady=(0, 6))
 
             def toggle_share(v):
-                self.apply_share()
                 self._rebuild()
             self._check(V("share_enable"), "share_enabled", toggle_share)
             if self.get("share_enabled"):
                 with self._panel(V("share_panel")):
                     port = self.get("share_port")
-                    if self.share and self.share.httpd:
+                    running = self.share and self.share.httpd and self.share.port == int(port)
+                    if running and self.share.token == self.get("share_token"):
                         self._note("● " + V("share_on", int(port)), fg="#34d399")
+                    elif ve.find_claude(self.get("cc_path")) and not (self.share and self.share.error):
+                        self._note(V("share_pending"), fg=self.c_ac)
                     elif self.share and self.share.error:
                         self._note(V("share_err", int(port), self.share.error), fg=self.c_err)
                     elif not ve.find_claude(self.get("cc_path")):
@@ -1501,7 +1512,7 @@ class VoiceController:
                         self._copy_row(V("share_addr"), "http://%s:%s/v1" % (ip, port))
                     self._copy_row(V("share_key"), self.get("share_token"),
                                    extra=(V("share_newkey"), lambda: (self.set("share_token", ve.new_token()),
-                                                                      self.apply_share(), self._rebuild())))
+                                                                      self._rebuild())))
                     pe = self._entry(V("share_port"), "share_port")
                     pe.bind("<FocusOut>", lambda e: self._port_changed())
                     pe.bind("<Return>", lambda e: self._port_changed())
@@ -1541,7 +1552,6 @@ class VoiceController:
         if ev[0] == "captured":
             self.set("hk_mods", ev[1])
             self.set("hk_vk", ev[2])
-            self.register_hotkey()
         dlg, self._capture_dlg = self._capture_dlg, None
         if dlg:
             try:
@@ -1570,7 +1580,10 @@ class VoiceController:
         self._rebuild()
 
     def _dl_poll(self):
-        if not self.win:
+        try:
+            if not self.win or not self.win.winfo_exists():
+                return
+        except Exception:
             return
         try:
             if self.dl and not self.dl.get("shown_done"):
@@ -1601,7 +1614,7 @@ class VoiceController:
             t0 = time.time()
             try:
                 out, _ = ve.split_answer(self._llm(ve.user_message(V("test_phrase"))))
-                msg = V("test_ok", time.time() - t0, out[:120])
+                msg = "%s\n«%s» → «%s»" % (V("test_ok", time.time() - t0), V("test_phrase"), out[:160])
             except Exception as ex:
                 msg = "!" + V("test_fail", str(ex)[:200])
             self._post("test", cb=done_cb, text=msg)

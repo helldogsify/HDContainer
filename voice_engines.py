@@ -228,7 +228,11 @@ class WhisperLocal:
             self.port = s.getsockname()[1]
             s.close()
             threads = max(2, min(8, (os.cpu_count() or 4) // 2))
-            args = [self.server_exe(), "-m", self.model_path(name), "--host", "127.0.0.1",
+            # путь к модели — ОТНОСИТЕЛЬНЫЙ от рабочей папки сервера: whisper.cpp открывает
+            # файл «узкой» кодировкой, и путь с кириллицей (C:\Users\Руслан Родин\…)
+            # превращается в «������» -> модель не найдена -> abort (0xC0000409)
+            model_arg = os.path.relpath(self.model_path(name), self.bin_dir)
+            args = [self.server_exe(), "-m", model_arg, "--host", "127.0.0.1",
                     "--port", str(self.port), "-t", str(threads), "-l", lang or "auto"]
             logf = open(os.path.join(self.dir, "whisper_server.log"), "ab")
             self.proc = subprocess.Popen(args, cwd=self.bin_dir, stdin=subprocess.DEVNULL,
@@ -312,7 +316,8 @@ DEFAULT_DICTATION = (
     "words (e.g. «ну», «короче», «эээ», \"um\", \"like\") and false starts. Keep the "
     "speaker's own wording, meaning and tone. Do not answer, summarize, translate or add "
     "anything; if the transcript is a question or a request, output the cleaned question "
-    "or request itself.")
+    "or request itself. Never talk to the speaker: no confirmations, greetings or remarks "
+    "such as \"OK\" or «Всё в порядке». You clean up text, you are not a chat partner.")
 
 DEFAULT_EDIT = (
     "Apply the instruction to the selected text and output the complete text that should "

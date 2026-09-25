@@ -65,7 +65,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.3.3"
+VERSION = "1.3.4"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -226,6 +226,11 @@ FONT_SM    = ("Segoe UI", 9)
 FONT_TITLE = ("Segoe UI Semibold", 10)
 FONT_H     = ("Segoe UI Semibold", 14)
 
+# значки меню — из системного шрифта значков Windows 10/11 (есть везде, в отличие
+# от ⏻/⚙ в обычных шрифтах, которые на части систем рисуются пустым прямоугольником)
+ICON_FONT = "Segoe MDL2 Assets"
+ICON_ADD, ICON_SETTINGS, ICON_POWER = "\uE710", "\uE713", "\uE7E8"
+
 # ---------------------------------------------------------------------------
 # Настройки + язык (i18n)
 # ---------------------------------------------------------------------------
@@ -332,6 +337,7 @@ STRINGS = {
     "lay_grid": {"en": "Grid", "ru": "Сетка", "es": "Cuadrícula", "pt": "Grade", "de": "Raster", "fr": "Grille", "zh": "网格"},
     "lay_master": {"en": "Master + stack", "ru": "Главное + стек", "es": "Principal + pila", "pt": "Principal + pilha", "de": "Haupt + Stapel", "fr": "Principal + pile", "zh": "主 + 堆叠"},
     "edit_container": {"en": "Edit container", "ru": "Изменить контейнер", "es": "Editar contenedor", "pt": "Editar contêiner", "de": "Container bearbeiten", "fr": "Modifier le conteneur", "zh": "编辑容器"},
+    "tab_general": {"en": "General", "ru": "Общие", "es": "General", "pt": "Geral", "de": "Allgemein", "fr": "Général", "zh": "常规"},
     "save": {"en": "Save", "ru": "Сохранить", "es": "Guardar", "pt": "Salvar", "de": "Speichern", "fr": "Enregistrer", "zh": "保存"},
     "lbl_name": {"en": "Name", "ru": "Имя", "es": "Nombre", "pt": "Nome", "de": "Name", "fr": "Nom", "zh": "名称"},
     "lbl_icon": {"en": "Icon", "ru": "Иконка", "es": "Icono", "pt": "Ícone", "de": "Symbol", "fr": "Icône", "zh": "图标"},
@@ -1644,14 +1650,11 @@ class TrayApp:
             self._popup_container_row(frame, c, W, close)
         if self.containers:
             tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
-        self._popup_action_row(frame, "＋", T("create_container"), W,
+        self._popup_action_row(frame, ICON_ADD, T("create_container"), W,
                                lambda: act(self._create_container))
-        if self.voice is not None:
-            self._popup_action_row(frame, "🎙", voice.V("menu"), W,
-                                   lambda: act(self.voice.open_settings))
-        self._popup_action_row(frame, "⚙", T("settings"), W,
+        self._popup_action_row(frame, ICON_SETTINGS, T("settings"), W,
                                lambda: act(self._open_settings))
-        self._popup_action_row(frame, "⏻", T("quit"), W,
+        self._popup_action_row(frame, ICON_POWER, T("quit"), W,
                                lambda: act(self._quit))
 
         win.update_idletasks()
@@ -1709,7 +1712,7 @@ class TrayApp:
         row.pack(fill="x")
         row.pack_propagate(False)
         g = tk.Label(row, text=glyph, bg=COL_SURFACE, fg=COL_TEXT_DIM,
-                     font=("Segoe UI Symbol", 12), width=2, cursor="hand2")
+                     font=(ICON_FONT, 11), width=2, cursor="hand2")
         g.pack(side="left", padx=(14, 8))
         t = tk.Label(row, text=text, bg=COL_SURFACE, fg=COL_TEXT, font=FONT,
                      anchor="w", cursor="hand2")
@@ -3395,40 +3398,84 @@ class TrayApp:
             "<FocusOut>", lambda e: win.destroy()))
 
     def _reopen_settings(self):
-        if getattr(self, "_settings_win", None):
-            try:
-                self._settings_win.destroy()
-            except Exception:
-                pass
-            self._settings_win = None
-        self._open_settings()
+        # смена языка: перерисовать окно, НЕ теряя несохранённых правок
+        self._open_settings(self._settings_tab)
 
-    def _open_settings(self):
-        if getattr(self, "_settings_win", None):
+    def _open_settings(self, tab=None):
+        """Единое окно настроек: вкладки «Общие» и «Голосовой ввод», внизу
+        «Сохранить» / «Отмена». Правки копятся в черновике и применяются
+        только по «Сохранить»; крестик и «Отмена» их отбрасывают."""
+        old = getattr(self, "_settings_win", None)
+        self._settings_win = None
+        if old:
             try:
-                self._settings_win.destroy()
+                old.destroy()
             except Exception:
                 pass
-        win = self._dialog(T("settings_title"), 470, 530)
+        if tab not in ("general", "voice") or (tab == "voice" and self.voice is None):
+            tab = getattr(self, "_settings_tab", None) or "general"
+            if tab == "voice" and self.voice is None:
+                tab = "general"
+        self._settings_tab = tab
+        if getattr(self, "_gen_draft", None) is None:
+            self._gen_draft = {"autostart": autostart_enabled(),
+                               "autoupdate": self.settings.get("autoupdate", True)}
+        if self.voice is not None and self.voice.draft is None:
+            self.voice.begin_edit()
+
+        win = self._dialog(T("settings_title"), 640, 780)
+        win.resizable(False, True)
         self._settings_win = win
+        win.protocol("WM_DELETE_WINDOW", self._settings_cancel)
+        win.bind("<Escape>", lambda e: self._settings_cancel())
         pad = 24
-        tk.Label(win, text=T("settings_title"), bg=COL_SURFACE, fg=COL_TEXT,
-                 font=FONT_H).pack(anchor="w", padx=pad, pady=(18, 12))
-        self._setting_check(win, T("run_with_windows"), autostart_enabled(),
-                            lambda v: set_autostart(v), pad)
-        self._setting_check(win, T("auto_update"),
-                            self.settings.get("autoupdate", True),
-                            lambda v: self._set_setting("autoupdate", v), pad)
+
+        # вкладки
+        bar = tk.Frame(win, bg=COL_SURFACE)
+        bar.pack(fill="x", padx=pad, pady=(16, 0))
+        tabs = [("general", T("tab_general"))]
+        if self.voice is not None:
+            tabs.append(("voice", voice.V("menu")))
+        for key, label in tabs:
+            cell = tk.Frame(bar, bg=COL_SURFACE)
+            cell.pack(side="left", padx=(0, 22))
+            on = key == tab
+            lb = tk.Label(cell, text=label, bg=COL_SURFACE, fg=COL_TEXT if on else COL_TEXT_DIM,
+                          font=("Segoe UI Semibold", 12), cursor="hand2", pady=6)
+            lb.pack()
+            tk.Frame(cell, bg=COL_ACCENT if on else COL_SURFACE, height=2).pack(fill="x")
+            if not on:
+                lb.bind("<Button-1>", lambda e, k=key: self._open_settings(k))
+        tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=pad)
+
+        # низ: Сохранить / Отмена
+        bottom = tk.Frame(win, bg=COL_SURFACE)
+        bottom.pack(side="bottom", fill="x")
+        tk.Frame(bottom, bg=COL_BORDER, height=1).pack(fill="x")
+        brow = tk.Frame(bottom, bg=COL_SURFACE)
+        brow.pack(fill="x", padx=20, pady=12)
+        self._accent_btn(brow, T("save"), self._settings_save).pack(side="right")
+        self._ghost_btn(brow, T("cancel"), self._settings_cancel).pack(side="right", padx=(0, 8))
+
+        body = tk.Frame(win, bg=COL_SURFACE)
+        body.pack(fill="both", expand=True)
+        if tab == "voice":
+            self.voice.build_into(body, win)
+        else:
+            self._build_general(body, pad)
+
+    def _build_general(self, win, pad):
+        tk.Frame(win, bg=COL_SURFACE, height=10).pack()
+        d = self._gen_draft
+        self._setting_check(win, T("run_with_windows"), d["autostart"],
+                            lambda v: d.__setitem__("autostart", bool(v)), pad)
+        self._setting_check(win, T("auto_update"), d["autoupdate"],
+                            lambda v: d.__setitem__("autoupdate", bool(v)), pad)
         self._setting_lang(win, pad)
         upd = tk.Label(win, text=T("check_update"), bg=COL_SURFACE, fg=COL_ACCENT,
                        font=FONT_SM, cursor="hand2")
         upd.pack(anchor="w", padx=pad, pady=(10, 4))
         upd.bind("<Button-1>", lambda e: self._check_update_bg(True))
-        if self.voice is not None:
-            vl = tk.Label(win, text="🎙  " + voice.V("menu") + "…", bg=COL_SURFACE,
-                          fg=COL_ACCENT, font=FONT_SM, cursor="hand2")
-            vl.pack(anchor="w", padx=pad, pady=(2, 4))
-            vl.bind("<Button-1>", lambda e: self.voice.open_settings())
 
         tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=pad, pady=14)
 
@@ -3456,6 +3503,33 @@ class TrayApp:
             self.root.after(1200, lambda: cbtn.configure(text=T("copy")))
         cbtn = self._accent_btn(drow, T("copy"), copy_addr)
         cbtn.pack(side="left", padx=(8, 0))
+
+    def _settings_close_win(self):
+        win, self._settings_win = getattr(self, "_settings_win", None), None
+        if win:
+            try:
+                win.destroy()
+            except Exception:
+                pass
+        self._gen_draft = None
+
+    def _settings_save(self):
+        d = getattr(self, "_gen_draft", None) or {}
+        try:
+            if "autostart" in d and d["autostart"] != autostart_enabled():
+                set_autostart(d["autostart"])
+            if "autoupdate" in d:
+                self._set_setting("autoupdate", d["autoupdate"])
+            if self.voice is not None:
+                self.voice.commit()
+        except Exception:
+            log("settings save failed:\n" + traceback.format_exc())
+        self._settings_close_win()
+
+    def _settings_cancel(self):
+        if self.voice is not None:
+            self.voice.discard()
+        self._settings_close_win()
 
     def _info(self, title, prompt):
         win = self._dialog(title, 460, 200)
