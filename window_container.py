@@ -65,7 +65,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.3.11"
+VERSION = "1.3.12"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -318,6 +318,9 @@ STRINGS = {
     "credits": {"en": "Vibe-coded by hdk with Claude Code.\nFree for everyone.", "ru": "Завайбкодил hdk с помощью Claude Code.\nБесплатно для всех.", "es": "Hecho con flow por hdk con Claude Code.\nGratis para todos.", "pt": "Feito no flow por hdk com Claude Code.\nGrátis para todos.", "de": "Vibe-coded von hdk mit Claude Code.\nKostenlos für alle.", "fr": "Vibe-codé par hdk avec Claude Code.\nGratuit pour tous.", "zh": "由 hdk 借助 Claude Code 随性编写。\n对所有人免费。"},
     "donate_label": {"en": "Tip the author — %s:", "ru": "Поблагодарить автора — %s:", "es": "Apoyar al autor — %s:", "pt": "Agradecer ao autor — %s:", "de": "Den Autor unterstützen — %s:", "fr": "Soutenir l’auteur — %s :", "zh": "打赏作者 — %s："},
     "copy": {"en": "Copy", "ru": "Копировать", "es": "Copiar", "pt": "Copiar", "de": "Kopieren", "fr": "Copier", "zh": "复制"},
+    "cut": {"en": "Cut", "ru": "Вырезать", "es": "Cortar", "pt": "Recortar", "de": "Ausschneiden", "fr": "Couper", "zh": "剪切"},
+    "paste": {"en": "Paste", "ru": "Вставить", "es": "Pegar", "pt": "Colar", "de": "Einfügen", "fr": "Coller", "zh": "粘贴"},
+    "select_all": {"en": "Select all", "ru": "Выделить всё", "es": "Seleccionar todo", "pt": "Selecionar tudo", "de": "Alles auswählen", "fr": "Tout sélectionner", "zh": "全选"},
     "copied": {"en": "Copied", "ru": "Скопировано", "es": "Copiado", "pt": "Copiado", "de": "Kopiert", "fr": "Copié", "zh": "已复制"},
     "version_label": {"en": "Version %s", "ru": "Версия %s", "es": "Versión %s", "pt": "Versão %s", "de": "Version %s", "fr": "Version %s", "zh": "版本 %s"},
     "update_title": {"en": "Update", "ru": "Обновление", "es": "Actualización", "pt": "Atualização", "de": "Update", "fr": "Mise à jour", "zh": "更新"},
@@ -359,6 +362,41 @@ def T(key, *args):
     s = STRINGS.get(key, {})
     txt = s.get(LANG) or s.get("en") or key
     return (txt % args) if args else txt
+
+
+# Tk привязывает Ctrl+C/V/X/A к латинским keysym: в русской раскладке приходит
+# Ctrl+«м» и вставка молчит. Ловим по коду клавиши (на Windows keycode = VK),
+# плюс меню по правой кнопке. Один раз на весь root — для всех Entry и Text.
+_EDIT_VK = {0x43: "<<Copy>>", 0x56: "<<Paste>>", 0x58: "<<Cut>>", 0x41: "<<SelectAll>>"}
+
+
+def install_edit_keys(root):
+    def on_key(e):
+        ev = _EDIT_VK.get(e.keycode)
+        if ev is None or e.state & 0x20000:     # 0x20000 = Alt: AltGr-символы не трогаем
+            return None
+        e.widget.event_generate(ev)
+        return "break"
+
+    def on_menu(e):
+        w = e.widget
+        ro = str(w.cget("state")) in ("readonly", "disabled")
+        w.focus_set()
+        m = tk.Menu(root, tearoff=0)
+        for key, ev, off in (("cut", "<<Cut>>", ro), ("copy", "<<Copy>>", False),
+                             ("paste", "<<Paste>>", ro)):
+            m.add_command(label=T(key), command=lambda ev=ev: w.event_generate(ev),
+                          state="disabled" if off else "normal")
+        m.add_separator()
+        m.add_command(label=T("select_all"), command=lambda: w.event_generate("<<SelectAll>>"))
+        try:
+            m.tk_popup(e.x_root, e.y_root)
+        finally:
+            m.grab_release()
+
+    for cls in ("Entry", "Text"):
+        root.bind_class(cls, "<Control-KeyPress>", on_key)
+        root.bind_class(cls, "<Button-3>", on_menu)
 
 
 def detect_lang():
@@ -1430,6 +1468,7 @@ class TrayApp:
         self.root.withdraw()
         self.root.title(IPC_TITLE)
         self.root.report_callback_exception = self._tk_exc
+        install_edit_keys(self.root)
         self.root.update_idletasks()
         self.msg_hwnd = user32.GetAncestor(self.root.winfo_id(), GA_ROOT)
 

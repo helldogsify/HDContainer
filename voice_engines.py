@@ -271,7 +271,7 @@ class WhisperLocal:
             s.close()
             threads = self.threads or default_threads()
             # путь к модели — ОТНОСИТЕЛЬНЫЙ от рабочей папки сервера: whisper.cpp открывает
-            # файл «узкой» кодировкой, и путь с кириллицей (C:\Users\Руслан Родин\…)
+            # файл «узкой» кодировкой, и путь с кириллицей (C:\Users\Иван Петров\…)
             # превращается в «������» -> модель не найдена -> abort (0xC0000409)
             model_arg = os.path.relpath(self.model_path(name), self.bin_dir)
             args = [self.server_exe(), "-m", model_arg, "--host", "127.0.0.1",
@@ -855,7 +855,7 @@ def local_addresses():
 
 
 def remote_base(addr, port=8765):
-    """«100.112.15.42», «host:8765», «http://host:8765/v1» -> http://host:port/v1"""
+    """«100.101.102.103», «host:8765», «http://host:8765/v1» -> http://host:port/v1"""
     a = (addr or "").strip().rstrip("/")
     if not a:
         return ""
