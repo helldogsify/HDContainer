@@ -65,7 +65,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.3.13"
+VERSION = "1.3.14"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1445,7 +1445,7 @@ def send_copydata(hwnd, text):
 # ---------------------------------------------------------------------------
 class Managed:
     __slots__ = ("hwnd", "title", "o_owner", "o_style", "o_exstyle", "o_rect",
-                 "sig", "min_detached", "group_hidden")
+                 "sig", "min_detached", "group_hidden", "was_max", "last_rect")
 
     def __init__(self, hwnd, title):
         self.hwnd = hwnd
@@ -1457,6 +1457,8 @@ class Managed:
         self.sig = None
         self.min_detached = False
         self.group_hidden = False
+        self.was_max = False          # последнее видимое состояние: «на весь экран»
+        self.last_rect = None         # ...и обычная рамка (если не на весь экран)
 
 
 # ---------------------------------------------------------------------------
@@ -3281,12 +3283,29 @@ class TrayApp:
     #  Быстрый тик: вернуть свёрнутые в одиночку окна + дожать позицию
     # ===================================================================
     def _show_group(self, c):
-        # вернуть окна, спрятанные при сворачивании группы
+        # вернуть окна, спрятанные при сворачивании группы — В ТОМ ЖЕ виде, что
+        # были: Windows при сворачивании контейнера (кнопка таскбара, Win+D)
+        # нередко сворачивает и сами окна, а простой показ возвращал их
+        # свёрнутыми/в обычном размере вместо «на весь экран»
         for h in list(c.members):
             m = c.members.get(h)
-            if m and m.group_hidden and user32.IsWindow(h):
+            if not (m and m.group_hidden and user32.IsWindow(h)):
+                continue
+            m.group_hidden = False
+            if m.was_max:
                 user32.ShowWindow(h, SW_SHOWNA)
-                m.group_hidden = False
+                if not user32.IsZoomed(h):
+                    user32.ShowWindow(h, SW_MAXIMIZE)
+            elif user32.IsIconic(h):
+                user32.ShowWindow(h, SW_SHOWNOACTIVATE)    # к обычной рамке
+            else:
+                user32.ShowWindow(h, SW_SHOWNA)
+            if not m.was_max and m.last_rect and not user32.IsIconic(h):
+                st = window_state(h)
+                if st and st[0] != m.last_rect:
+                    l, t, w, hh = m.last_rect
+                    user32.SetWindowPos(h, None, l, t, w, hh,
+                                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER)
 
     def _bring_up(self, c):
         host = c.host_hwnd
@@ -3295,11 +3314,17 @@ class TrayApp:
         if user32.GetForegroundWindow() != host:
             return                            # фокус уже ушёл сам — не перехватываем
         self._show_group(c)
-        target = c.last_fg if c.last_fg in c.members else 0
+        last = c.last_fg if c.last_fg in c.members and user32.IsWindow(c.last_fg) else 0
+        target = last
         if not target or user32.IsIconic(target) or not user32.IsWindowVisible(target):
             # верхнее по Z видимое окно контейнера
             target = next((h for h, _t in self._enum_windows()
                            if h in c.members and not user32.IsIconic(h)), 0)
+        if not target and last and user32.IsIconic(last):
+            # все окна свёрнуты (таскбар мог свернуть само окно, а не контейнер):
+            # разворачиваем последнее — SW_RESTORE вернёт и «на весь экран»
+            user32.ShowWindow(last, SW_RESTORE)
+            target = last
         if target:
             user32.SetForegroundWindow(target)
 
@@ -3375,6 +3400,12 @@ class TrayApp:
                     if not m or not user32.IsWindow(h):
                         continue
                     iconic = bool(user32.IsIconic(h))
+                    if not iconic and user32.IsWindowVisible(h):
+                        st = window_state(h)
+                        if st:
+                            m.was_max = st[1]
+                            if not st[1]:
+                                m.last_rect = st[0]
                     # свёрнутое в одиночку окно временно ОТВЯЗЫВАЕМ -> своя кнопка
                     # в таскбаре, его можно развернуть; развернул — вернулось в контейнер
                     if iconic and not m.min_detached:
