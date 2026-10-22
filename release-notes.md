@@ -1,2 +1,2 @@
-- A window that was full screen stays full screen when you minimize the container and bring it back (it used to come back small). Other windows return to the same size and place.
-- If the taskbar minimized the window itself rather than the container, clicking the container brings that window back as it was.
+- The minimize button of a full-screen window inside a container works again (the window used to pop right back).
+- Minimizing the last visible window minimizes the whole container; clicking the container in the taskbar brings the window back full screen if it was full screen.

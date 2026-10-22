@@ -65,7 +65,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.3.14"
+VERSION = "1.3.15"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -494,6 +494,7 @@ SW_MINIMIZE = 6
 SW_SHOWNA = 8
 SW_RESTORE = 9
 SW_MAXIMIZE = 3
+SW_SHOWMINNOACTIVE = 7
 
 HWND_TOP = 0
 SPI_GETWORKAREA = 0x0030
@@ -1778,8 +1779,9 @@ class TrayApp:
         # сразу отдаём настоящему окну контейнера. Иначе активным остаётся
         # невидимый хост — клавиатура «в никуда», а таскбар путается в том,
         # открыт контейнер или свёрнут, и вместо переключения показывает превью
-        if msg == WM_ACTIVATE and (wparam & 0xFFFF) != WA_INACTIVE \
-                and not (wparam >> 16) & 0xFFFF:
+        # (флаг «ещё свёрнут» не проверяем: при развороте из таскбара активация
+        # приходит, пока хост свёрнут; _bring_up сам проверит IsIconic позже)
+        if msg == WM_ACTIVATE and (wparam & 0xFFFF) != WA_INACTIVE:
             c = next((x for x in self.containers if x.host_hwnd == hwnd), None)
             if c:
                 self._defer(lambda c=c: self._bring_up(c))
@@ -3293,9 +3295,12 @@ class TrayApp:
                 continue
             m.group_hidden = False
             if m.was_max:
-                user32.ShowWindow(h, SW_SHOWNA)
-                if not user32.IsZoomed(h):
+                # свёрнутое окно сразу разворачиваем на весь экран (а не «показываем
+                # свёрнутым, потом разворачиваем»)
+                if user32.IsIconic(h) or not user32.IsZoomed(h):
                     user32.ShowWindow(h, SW_MAXIMIZE)
+                else:
+                    user32.ShowWindow(h, SW_SHOWNA)
             elif user32.IsIconic(h):
                 user32.ShowWindow(h, SW_SHOWNOACTIVATE)    # к обычной рамке
             else:
@@ -3314,17 +3319,14 @@ class TrayApp:
         if user32.GetForegroundWindow() != host:
             return                            # фокус уже ушёл сам — не перехватываем
         self._show_group(c)
-        last = c.last_fg if c.last_fg in c.members and user32.IsWindow(c.last_fg) else 0
-        target = last
+        # НЕ разворачиваем свёрнутые окна: хост активируется и тогда, когда
+        # пользователь сам свернул окно кнопкой «_» (Windows отдаёт фокус
+        # владельцу) — развернув его, мы не давали окну свернуться
+        target = c.last_fg if c.last_fg in c.members else 0
         if not target or user32.IsIconic(target) or not user32.IsWindowVisible(target):
             # верхнее по Z видимое окно контейнера
             target = next((h for h, _t in self._enum_windows()
                            if h in c.members and not user32.IsIconic(h)), 0)
-        if not target and last and user32.IsIconic(last):
-            # все окна свёрнуты (таскбар мог свернуть само окно, а не контейнер):
-            # разворачиваем последнее — SW_RESTORE вернёт и «на весь экран»
-            user32.ShowWindow(last, SW_RESTORE)
-            target = last
         if target:
             user32.SetForegroundWindow(target)
 
@@ -3391,7 +3393,10 @@ class TrayApp:
                             m.group_hidden = True
                     continue
                 self._refresh_snap(c)
-                self._show_group(c)              # группа развёрнута — вернуть окна
+                if user32.GetForegroundWindow() == c.host_hwnd:
+                    self._bring_up(c)            # фокус на невидимом хосте -> в окно
+                else:
+                    self._show_group(c)          # группа развёрнута — вернуть окна
                 fg = user32.GetForegroundWindow()
                 if fg in c.members:
                     c.last_fg = fg
@@ -3407,8 +3412,21 @@ class TrayApp:
                             if not st[1]:
                                 m.last_rect = st[0]
                     # свёрнутое в одиночку окно временно ОТВЯЗЫВАЕМ -> своя кнопка
-                    # в таскбаре, его можно развернуть; развернул — вернулось в контейнер
+                    # в таскбаре, его можно развернуть; развернул — вернулось в контейнер.
+                    # Но если свернули ПОСЛЕДНЕЕ видимое окно — сворачиваем весь
+                    # контейнер: окно прячем вместе с группой, и кнопка контейнера
+                    # вернёт его как было (на весь экран — значит на весь экран)
                     if iconic and not m.min_detached:
+                        others = any(
+                            o is not m and not o.min_detached and not o.group_hidden
+                            and user32.IsWindow(o.hwnd) and user32.IsWindowVisible(o.hwnd)
+                            and not user32.IsIconic(o.hwnd)
+                            for o in c.members.values())
+                        if not others:
+                            user32.ShowWindow(h, SW_HIDE)
+                            m.group_hidden = True
+                            user32.ShowWindow(c.host_hwnd, SW_SHOWMINNOACTIVE)
+                            continue
                         set_owner(h, m.o_owner or 0)
                         m.min_detached = True
                     elif not iconic and m.min_detached:
