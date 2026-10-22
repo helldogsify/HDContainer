@@ -534,6 +534,8 @@ MF_GRAYED = 0x0001
 MF_CHECKED = 0x0008
 WM_SYSCOMMAND = 0x0112
 WM_DWMSENDICONICTHUMBNAIL = 0x0323
+WM_ACTIVATE = 0x0006
+WA_INACTIVE = 0
 IDM_EDIT = 0x9000          # своя команда меню окна «Редактировать контейнер»
 TPM_LEFTALIGN = 0x0000
 TPM_RIGHTBUTTON = 0x0002
@@ -1474,6 +1476,7 @@ class Container:
         self.hicon = 0                    # сгенерированный HICON (кэш)
         self.snap = None                  # (hbitmap, w, h) — снимок окон для превью
         self.snap_t = 0.0
+        self.last_fg = 0                  # окно контейнера, где работали последним
 
     # --- сериализация ---
     def to_dict(self):
@@ -1769,6 +1772,16 @@ class TrayApp:
                     self._defer(lambda c=c: self._edit_container(c))
                     break
             return 0
+        # хост активирован (клик по кнопке в таскбаре, Alt+Tab, разворот): фокус
+        # сразу отдаём настоящему окну контейнера. Иначе активным остаётся
+        # невидимый хост — клавиатура «в никуда», а таскбар путается в том,
+        # открыт контейнер или свёрнут, и вместо переключения показывает превью
+        if msg == WM_ACTIVATE and (wparam & 0xFFFF) != WA_INACTIVE \
+                and not (wparam >> 16) & 0xFFFF:
+            c = next((x for x in self.containers if x.host_hwnd == hwnd), None)
+            if c:
+                self._defer(lambda c=c: self._bring_up(c))
+            return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
         # таскбар просит превью: отдаём снимок окон контейнера (без tkinter —
         # только GDI/DWM, это можно прямо в оконной процедуре)
         if msg == WM_DWMSENDICONICTHUMBNAIL and dwmapi:
@@ -3267,6 +3280,29 @@ class TrayApp:
     # ===================================================================
     #  Быстрый тик: вернуть свёрнутые в одиночку окна + дожать позицию
     # ===================================================================
+    def _show_group(self, c):
+        # вернуть окна, спрятанные при сворачивании группы
+        for h in list(c.members):
+            m = c.members.get(h)
+            if m and m.group_hidden and user32.IsWindow(h):
+                user32.ShowWindow(h, SW_SHOWNA)
+                m.group_hidden = False
+
+    def _bring_up(self, c):
+        host = c.host_hwnd
+        if not c.active or not host or user32.IsIconic(host):
+            return
+        if user32.GetForegroundWindow() != host:
+            return                            # фокус уже ушёл сам — не перехватываем
+        self._show_group(c)
+        target = c.last_fg if c.last_fg in c.members else 0
+        if not target or user32.IsIconic(target) or not user32.IsWindowVisible(target):
+            # верхнее по Z видимое окно контейнера
+            target = next((h for h, _t in self._enum_windows()
+                           if h in c.members and not user32.IsIconic(h)), 0)
+        if target:
+            user32.SetForegroundWindow(target)
+
     def _drop_snap(self, c):
         if c.snap:
             gdi32.DeleteObject(c.snap[0])
@@ -3330,13 +3366,14 @@ class TrayApp:
                             m.group_hidden = True
                     continue
                 self._refresh_snap(c)
+                self._show_group(c)              # группа развёрнута — вернуть окна
+                fg = user32.GetForegroundWindow()
+                if fg in c.members:
+                    c.last_fg = fg
                 for h in list(c.members):
                     m = c.members.get(h)
                     if not m or not user32.IsWindow(h):
                         continue
-                    if m.group_hidden:           # группа развёрнута — вернуть окна
-                        user32.ShowWindow(h, SW_SHOWNA)
-                        m.group_hidden = False
                     iconic = bool(user32.IsIconic(h))
                     # свёрнутое в одиночку окно временно ОТВЯЗЫВАЕМ -> своя кнопка
                     # в таскбаре, его можно развернуть; развернул — вернулось в контейнер
