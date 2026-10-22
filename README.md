@@ -75,7 +75,9 @@ API keys are stored encrypted with Windows DPAPI under your user account.
 2. Run it — installs per‑user, **no admin rights**.
 3. Launch **HDContainer**; it sits in the system tray. Right‑click it to start.
 
-It quietly checks GitHub for new versions and can update itself (toggle in **Settings**). Prefer no installer? Grab the portable **HDContainer.exe** from the same release.
+It quietly checks GitHub for new versions and can update itself (toggle in **Settings**); the downloaded installer is checked against the SHA‑256 digest GitHub publishes for the release before it runs. Prefer no installer? Grab the portable **HDContainer.exe** from the same release — a portable copy only tells you about new versions and opens the release page, it doesn't install anything on its own.
+
+The executables aren't code‑signed yet, so on first run Windows SmartScreen may show "Windows protected your PC" — choose **More info → Run anyway**.
 
 Available in English, Русский, Español, Português, Deutsch, Français and 中文 (auto‑detected, switchable in Settings).
 

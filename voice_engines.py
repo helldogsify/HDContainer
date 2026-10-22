@@ -20,6 +20,7 @@
 import glob
 import hashlib
 import hmac
+import http.client
 import json
 import math
 import os
@@ -66,13 +67,31 @@ def _multipart(fields, files):
     return b"".join(out), "multipart/form-data; boundary=" + b
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    # запрос с ключом не переходит по редиректам: стандартный обработчик уносил
+    # Authorization/x-api-key на любой другой хост и даже на http://
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_opener_noredirect = urllib.request.build_opener(_NoRedirect)
+_MAX_RESPONSE = 32 * 1024 * 1024
+
+
 def _http_json(url, body=None, headers=None, timeout=120, method=None):
     h = _ua()
     h.update(headers or {})
     req = urllib.request.Request(url, data=body, headers=h, method=method)
+    secret = any(k.lower() in ("authorization", "x-api-key") for k in h)
+    opener = _opener_noredirect.open if secret else urllib.request.urlopen
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8", "replace"))
+        with opener(req, timeout=timeout) as r:
+            raw = r.read(_MAX_RESPONSE)
+        try:
+            return json.loads(raw.decode("utf-8", "replace"))
+        except ValueError:
+            # страница captive-портала / текстовая ошибка прокси вместо JSON
+            raise VoiceError("not JSON: %s" % raw[:80].decode("utf-8", "replace").strip())
     except urllib.error.HTTPError as e:
         try:
             detail = e.read().decode("utf-8", "replace")
@@ -86,6 +105,8 @@ def _http_json(url, body=None, headers=None, timeout=120, method=None):
         raise VoiceError("%s" % (e.reason,))
     except socket.timeout:
         raise VoiceError("timeout")
+    except (http.client.HTTPException, ConnectionError, OSError) as e:
+        raise VoiceError("connection: %s" % (e,))
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +282,7 @@ class WhisperLocal:
         """Поднять whisper-server с нужной моделью. Можно звать заранее (прогрев)."""
         with self._lock:
             if self.alive() and self.model == name and self.lang == lang:
+                self.last_used = time.time()   # иначе idle_check мог убить сервер прямо под запросом
                 return True
             self.stop()
             if not self.is_installed(name):
@@ -323,9 +345,10 @@ class WhisperLocal:
     def idle_check(self):
         if self.keep:
             return
-        if self.alive() and time.time() - self.last_used > self.IDLE_STOP:
-            self.log("whisper-server idle -> stop")
-            self.stop()
+        with self._lock:
+            if self.alive() and time.time() - self.last_used > self.IDLE_STOP:
+                self.log("whisper-server idle -> stop")
+                self.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +478,9 @@ def find_claude(custom=""):
     if custom:
         cands.append(custom)
     w = shutil.which("claude")
-    if w:
+    # на Windows which() ищет и в ТЕКУЩЕЙ папке: подложенный туда claude.cmd
+    # запускался бы при каждой диктовке (приложение стартует из любой папки)
+    if w and os.path.dirname(os.path.abspath(w)).lower() != os.getcwd().lower():
         cands.append(w)
     home = os.path.expanduser("~")
     cands += [os.path.join(home, ".local", "bin", "claude.exe"),
@@ -491,15 +516,21 @@ class ClaudeCode:
     def start(self):
         if not self.exe:
             raise VoiceError("claude_missing")
+        # --strict-mcp-config без --mcp-config: не поднимать MCP-серверы из
+        # ~/.claude.json (их запускал бы каждый запрос, в т.ч. с другого ПК)
         args = [self.exe, "-p", "--input-format", "stream-json", "--output-format",
                 "stream-json", "--verbose", "--tools", "", "--system-prompt-file", self.spf,
-                "--no-session-persistence", "--setting-sources", "", "--effort", "low"]
+                "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
+                "--effort", "low"]
         if self.model:
             args += ["--model", self.model]
         os.makedirs(self.cwd, exist_ok=True)
-        self.proc = subprocess.Popen(args, cwd=self.cwd, stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     creationflags=CREATE_NO_WINDOW)
+        try:
+            self.proc = subprocess.Popen(args, cwd=self.cwd, stdin=subprocess.PIPE,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         creationflags=CREATE_NO_WINDOW)
+        except OSError as ex:
+            raise VoiceError("claude: %s" % ex)
         vs.adopt_process(self.proc)
         threading.Thread(target=self._drain_err, daemon=True).start()
 
@@ -738,20 +769,32 @@ class ShareServer:
                 self.end_headers()
                 self.wfile.write(body)
 
+            timeout = 30              # медленный/зависший клиент не держит поток вечно
+
+            def version_string(self):
+                return "HDContainer"  # не раскрывать версию Python неавторизованным
+
             def _authed(self):
                 if not is_private_ip(self.client_address[0]):
                     # ключ идёт открытым текстом по HTTP — в интернет не выставляемся
+                    srv.log("share: refused non-private %s" % self.client_address[0])
                     self._send(403, {"error": {"message": "only private networks (Tailscale, LAN)"}})
                     return False
                 got =(self.headers.get("Authorization") or "").replace("Bearer ", "", 1).strip()
                 if srv.token and hmac.compare_digest(got.encode(), srv.token.encode()):
                     return True
+                srv.log("share: bad key from %s" % self.client_address[0])
                 self._send(401, {"error": {"message": "bad or missing API key"}})
                 return False
 
             def _json(self):
                 n = int(self.headers.get("Content-Length") or 0)
-                return json.loads(self.rfile.read(n).decode("utf-8") or "{}") if n else {}
+                if n < 0 or n > MAX_SHARE_BODY:
+                    raise ValueError("body too large")   # иначе читали бы в память сколько скажут
+                d = json.loads(self.rfile.read(n).decode("utf-8") or "{}") if n else {}
+                if not isinstance(d, dict):
+                    raise ValueError("not an object")
+                return d
 
             def do_GET(self):
                 if not self._authed():
@@ -769,7 +812,8 @@ class ShareServer:
                 except ValueError:
                     return self._send(400, {"error": {"message": "invalid JSON"}})
                 path = self.path.rstrip("/")
-                msgs = data.get("messages") or []
+                msgs = [m for m in (data.get("messages") or []) if isinstance(m, dict)] \
+                    if isinstance(data.get("messages"), list) else []
                 system = "\n\n".join(_msg_text(m.get("content")) for m in msgs
                                      if m.get("role") == "system")
                 if path.endswith("/hdc/warm"):
@@ -799,6 +843,10 @@ class ShareServer:
                                  "message": {"role": "assistant", "content": text}}]})
 
         class Server(ThreadingHTTPServer):
+            # без SO_REUSEADDR: на Windows он позволял другому процессу занять
+            # тот же порт и перехватывать запросы (с ключом) вместо нас
+            allow_reuse_address = False
+
             def handle_error(self, request, client_address):
                 pass                  # клиент оборвал keep-alive и т.п.; в exe без консоли stderr нет
 
@@ -822,6 +870,9 @@ class ShareServer:
                 pass
             self.httpd = None
         self.pool.close()
+
+
+MAX_SHARE_BODY = 2 * 1024 * 1024
 
 
 def new_token():

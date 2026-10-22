@@ -38,6 +38,8 @@
 import os
 import sys
 import json
+import re
+import hashlib
 import time
 import tempfile
 import shutil
@@ -65,7 +67,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.3.15"
+VERSION = "1.4.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -87,9 +89,17 @@ ole32 = ctypes.WinDLL("ole32", use_last_error=True)
 version = ctypes.WinDLL("version", use_last_error=True)   # имена программ из exe
 
 
+def _app_exe():
+    # путь к НАШЕМУ exe: у собранного приложения — sys.executable (argv[0] может
+    # быть относительным/из PATH, и тогда автозапуск/ярлык/сторож били мимо)
+    if getattr(sys, "frozen", False):
+        return os.path.abspath(sys.executable)
+    return os.path.abspath(sys.argv[0])
+
+
 def _exe_dir():
     try:
-        d = os.path.dirname(os.path.abspath(sys.argv[0]))
+        d = os.path.dirname(_app_exe())
         if os.path.isdir(d):
             return d
     except Exception:
@@ -137,7 +147,9 @@ def _migrate_data():
     # в стабильную папку — чтобы апдейт не «терял» контейнеры
     if os.path.exists(_STORE):
         return
-    cands = [_EXE_DIR, r"C:\Users\Public\WC",
+    # Public\WC (старое место) больше не читаем: папка доступна на запись всем
+    # пользователям ПК, подложенный туда json запускал бы чужие exe от нашего имени
+    cands = [_EXE_DIR,
              os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "HDContainer")]
     best, best_key = None, (0, -1.0)   # выбираем по (число контейнеров, mtime)
     for d in cands:
@@ -148,7 +160,8 @@ def _migrate_data():
             if not os.path.exists(p):
                 continue
             try:
-                n = len(json.load(open(p, "r", encoding="utf-8")))
+                with open(p, "r", encoding="utf-8") as f:
+                    n = len(json.load(f))
             except Exception:
                 n = 0
             key = (n, os.path.getmtime(p))
@@ -176,6 +189,24 @@ def _migrate_data():
 
 
 _migrate_data()
+
+
+def _trim_log():
+    # лог только дописывался и рос без предела (месяцы работы = десятки МБ в
+    # roaming-профиле): при старте оставляем хвост ~512 КБ, если вырос больше 2 МБ
+    try:
+        if os.path.getsize(_LOG) > 2 * 1024 * 1024:
+            with open(_LOG, "rb") as f:
+                f.seek(-512 * 1024, os.SEEK_END)
+                tail = f.read()
+            tail = tail[tail.find(b"\n") + 1:]
+            with open(_LOG, "wb") as f:
+                f.write(b"[... older log trimmed ...]\n" + tail)
+    except Exception:
+        pass
+
+
+_trim_log()
 
 
 def log(msg):
@@ -237,20 +268,34 @@ ICON_ADD, ICON_SETTINGS, ICON_POWER = "\uE710", "\uE713", "\uE7E8"
 _SETTINGS = os.path.join(_DIR, "HDContainer_settings.json")
 
 
+def write_json_atomic(path, obj):
+    # сначала во временный файл, потом подмена: обрыв записи (краш, выключение
+    # питания) не оставит пустой/обрезанный файл вместо настроек или контейнеров
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False)
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except Exception:
+            pass
+    os.replace(tmp, path)
+
+
 def load_settings():
     try:
         with open(_SETTINGS, "r", encoding="utf-8") as f:
-            return json.load(f)
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
     except Exception:
         return {}
 
 
 def save_settings(d):
     try:
-        with open(_SETTINGS, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False)
-    except Exception:
-        pass
+        write_json_atomic(_SETTINGS, d)
+    except Exception as ex:
+        log("save_settings failed: %r" % ex)
 
 
 LANG = "en"
@@ -425,36 +470,53 @@ def enable_dark_menus():
 
 def version_tuple(v):
     out = []
-    for part in str(v).split("."):
+    for part in str(v).lstrip("vV").split("."):
         num = "".join(ch for ch in part if ch.isdigit())
         out.append(int(num) if num else 0)
     return tuple(out)
 
 
+def is_release_version(v):
+    # только «чистые» номера: 1.4.0-beta1 раньше разбирался как 1.4.1 и
+    # предлагался как обновление поверх финальной 1.4.0
+    return bool(re.fullmatch(r"\d+(\.\d+)*", str(v).lstrip("vV")))
+
+
+SETUP_ASSET = "HDContainer-Setup.exe"
+
+
 def fetch_latest_release():
-    """(tag, setup_asset_url) последнего релиза GitHub или (None, None)."""
+    """(tag, setup_url, sha256) последнего релиза GitHub или (None, None, None).
+    Берём ТОЛЬКО установщик с точным именем: раньше при неполном релизе
+    подхватывался любой .exe (напр. портативный) и «ставился» как установщик."""
     try:
         req = urllib.request.Request(
             "https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO,
             headers={"User-Agent": "HDContainer", "Accept": "application/vnd.github+json"})
         with urllib.request.urlopen(req, timeout=12) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            data = json.loads(resp.read(4 * 1024 * 1024).decode("utf-8"))
         tag = (data.get("tag_name") or "").lstrip("vV")
-        url = None
         for a in data.get("assets", []):
-            name = (a.get("name") or "").lower()
-            if name.endswith("setup.exe"):
-                url = a.get("browser_download_url")
-                break
-        if url is None:
-            for a in data.get("assets", []):
-                if (a.get("name") or "").lower().endswith(".exe"):
-                    url = a.get("browser_download_url")
-                    break
-        return tag, url
+            if (a.get("name") or "").lower() == SETUP_ASSET.lower():
+                digest = str(a.get("digest") or "")
+                sha = digest[7:].lower() if digest.startswith("sha256:") else None
+                return tag, a.get("browser_download_url"), sha
+        return tag, None, None
     except Exception as ex:
         log("update check failed: %r" % ex)
-        return None, None
+        return None, None, None
+
+
+def is_installed_copy():
+    # запущены из папки установки (рядом лежит деинсталлятор Inno)? Портативный
+    # exe тихо «обновлять» установщиком нельзя — он поставит вторую копию
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        return any(f.lower().startswith("unins") and f.lower().endswith(".exe")
+                   for f in os.listdir(_EXE_DIR))
+    except Exception:
+        return False
 
 # ---------------------------------------------------------------------------
 # Win32 константы
@@ -518,6 +580,8 @@ WM_RBUTTONUP = 0x0205
 WM_CONTEXTMENU = 0x007B
 WM_APP = 0x8000
 WM_TRAY = WM_APP + 1
+MONITOR_DEFAULTTONEAREST = 2
+ERROR_ALREADY_EXISTS = 183
 
 ICON_SMALL = 0
 ICON_BIG = 1
@@ -694,6 +758,13 @@ _decl(user32.TrackPopupMenu, BOOL,
 _decl(user32.GetCursorPos, BOOL, [ctypes.POINTER(POINT)])
 _decl(user32.EnumWindows, BOOL, [WNDPROC, LPARAM])
 _decl(user32.FindWindowW, HWND, [LPCWSTR, LPCWSTR])
+_decl(user32.RegisterWindowMessageW, UINT, [LPCWSTR])
+# Explorer перезапустился (краш/обновление оболочки) -> иконки трея стёрты,
+# шелл шлёт это сообщение всем окнам верхнего уровня: добавляем иконку заново
+WM_TASKBARCREATED = user32.RegisterWindowMessageW("TaskbarCreated")
+_decl(user32.DestroyIcon, BOOL, [HICON])
+_decl(user32.MonitorFromRect, HANDLE, [ctypes.POINTER(wintypes.RECT), DWORD])
+_decl(kernel32.CreateMutexW, HANDLE, [ctypes.c_void_p, BOOL, LPCWSTR])
 
 _decl(kernel32.GetModuleHandleW, HINSTANCE, [LPCWSTR])
 _decl(kernel32.GetUserDefaultUILanguage, wintypes.WORD, [])
@@ -974,6 +1045,40 @@ def work_area():
     r = wintypes.RECT()
     user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(r), 0)
     return r.left, r.top, r.right - r.left, r.bottom - r.top
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", DWORD), ("rcMonitor", wintypes.RECT),
+                ("rcWork", wintypes.RECT), ("dwFlags", DWORD)]
+
+
+_decl(user32.GetMonitorInfoW, BOOL, [HANDLE, ctypes.POINTER(MONITORINFO)])
+
+
+def clamp_to_screen(rect):
+    """Сдвинуть сохранённую рамку [l,t,w,h] на ближайший монитор, если она
+    оказалась за экраном (окно запомнили на отключённом/втором мониторе).
+    Размер не меняем: лишь двигаем так, чтобы окно целиком было в рабочей
+    области ближайшего монитора (или насколько влезает)."""
+    try:
+        l, t, w, h = [int(v) for v in rect]
+        rc = wintypes.RECT(l, t, l + w, t + h)
+        mon = user32.MonitorFromRect(ctypes.byref(rc), MONITOR_DEFAULTTONEAREST)
+        mi = MONITORINFO()
+        mi.cbSize = ctypes.sizeof(MONITORINFO)
+        if not mon or not user32.GetMonitorInfoW(mon, ctypes.byref(mi)):
+            return rect
+        wa = mi.rcWork
+        # видимая часть: хотя бы 120x60 точек заголовка должны быть на экране
+        vis_w = min(l + w, wa.right) - max(l, wa.left)
+        vis_h = min(t + h, wa.bottom) - max(t, wa.top)
+        if vis_w >= 120 and vis_h >= 60 and t >= wa.top - 8:
+            return rect
+        nl = min(max(l, wa.left), max(wa.left, wa.right - w))
+        nt = min(max(t, wa.top), max(wa.top, wa.bottom - h))
+        return [nl, nt, w, h]
+    except Exception:
+        return rect
 
 
 def _layout_rects(kind, n):
@@ -1363,7 +1468,7 @@ def autostart_enabled():
 
 def set_autostart(on):
     try:
-        exe = os.path.abspath(sys.argv[0])
+        exe = _app_exe()
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as k:
             if on:
                 winreg.SetValueEx(k, _RUN_NAME, 0, winreg.REG_SZ, '"%s"' % exe)
@@ -1569,7 +1674,7 @@ class Container:
         if place_rect and len(place_rect) == 4 and not (maximize and zoomed):
             if zoomed:
                 user32.ShowWindow(hwnd, SW_RESTORE)
-            l, t, w, hh = place_rect
+            l, t, w, hh = clamp_to_screen(place_rect)
             # обычная рамка задаёт и монитор, на котором окно развернётся
             user32.SetWindowPos(hwnd, HWND_TOP, int(l), int(t), int(w), int(hh),
                                 SWP_NOACTIVATE | SWP_NOOWNERZORDER)
@@ -1725,6 +1830,9 @@ class TrayApp:
             if low in (WM_LBUTTONUP, WM_RBUTTONUP, WM_CONTEXTMENU):
                 self._defer(self._show_menu)
             return 0
+        if msg == WM_TASKBARCREATED:
+            self._defer(self._add_tray)
+            return 0
         if msg == WM_HOTKEY and self.voice is not None:
             try:
                 self.voice.on_hotkey(wparam)
@@ -1734,7 +1842,11 @@ class TrayApp:
         if msg == WM_COPYDATA:
             try:
                 cds = COPYDATASTRUCT.from_address(int(lparam))
-                name = ctypes.wstring_at(cds.lpData) if cds.lpData else ""
+                # читаем ровно cbData байт: wstring_at без длины искал NUL за
+                # пределами буфера чужого процесса (любое окно может нам прислать)
+                n = min(int(cds.cbData), 4096) // 2
+                name = ctypes.wstring_at(cds.lpData, n).split("\0", 1)[0] \
+                    if cds.lpData and n > 0 else ""
                 if name:
                     self._defer(lambda n=name: self._activate_by_name(n))
             except Exception as ex:
@@ -2184,11 +2296,26 @@ class TrayApp:
         else:
             self._activate(c)
 
+    def _free_icon(self, c):
+        # сгенерированный/загруженный HICON контейнера освобождаем (раньше каждая
+        # смена цвета/аватара теряла иконку 256px навсегда в долгоживущем процессе).
+        # Звать ПОСЛЕ того, как хост получил новую иконку (WM_SETICON)
+        old = c.hicon
+        c.hicon = 0
+        if old and old != self.hicon:
+            try:
+                user32.DestroyIcon(old)
+            except Exception:
+                pass
+
     def _reset_look(self, c):
         c.icon = None
         c.color = None
+        old = c.hicon
         c.hicon = 0
         self._apply_host_icon(c)
+        if old and old != self.hicon:
+            user32.DestroyIcon(old)
         self._save()
         self._update_tray()
 
@@ -2244,15 +2371,40 @@ class TrayApp:
 
     def _check_update_bg(self, verbose):
         def worker():
-            tag, url = fetch_latest_release()
-            if tag and url and version_tuple(tag) > version_tuple(VERSION):
-                self._pending_update = (tag, url)
+            tag, url, sha = fetch_latest_release()
+            newer = (tag and url and is_release_version(tag)
+                     and version_tuple(tag) > version_tuple(VERSION))
+            if newer and (verbose or self.settings.get("skip_update") != tag):
+                self._pending_update = (tag, url, sha, verbose)
             elif verbose:
-                self._pending_update = ("__uptodate__", None)
+                self._pending_update = ("__uptodate__", None, None, True)
         threading.Thread(target=worker, daemon=True).start()
 
-    def _do_update(self, url):
-        # окно прогресса + загрузка в фоне (UI не зависает) + ретраи на флоду сети
+    def _handle_pending_update(self, upd):
+        tag, url, sha, verbose = upd
+        if tag == "__uptodate__":
+            self._info(T("update_title"), T("up_to_date"))
+            return
+        if not self._ask_yesno(T("update_title"), T("update_available", tag)):
+            if not verbose:
+                # «Нет» = пропустить ЭТУ версию, а не спрашивать каждые 3 часа
+                self._set_setting("skip_update", tag)
+            return
+        if is_installed_copy():
+            self._do_update(url, sha)
+        else:
+            # портативная копия: тихая установка поставила бы вторую копию
+            # в Programs и не тронула бы этот exe — открываем страницу релиза
+            try:
+                webbrowser.open(GITHUB_URL + "/releases/latest")
+            except Exception:
+                pass
+
+    def _do_update(self, url, sha=None):
+        # окно прогресса + загрузка в фоне (UI не зависает) + ретраи на флоду сети.
+        # Скачанное сверяем с SHA-256 из API релиза: без этого любой подменённый
+        # файл (прокси с «доверенным» корневым сертификатом, ошибка сервера,
+        # обрыв на границе блока) запускался бы тихо с /VERYSILENT.
         win = self._dialog(T("update_title"), 440, 184)
         status = tk.Label(win, text=T("updating"), bg=COL_SURFACE, fg=COL_TEXT,
                           font=FONT, justify="left", wraplength=400)
@@ -2310,39 +2462,55 @@ class TrayApp:
                 self._update_fallback()
 
         def worker():
-            dst = os.path.join(tempfile.gettempdir(), "HDContainer-Setup.exe")
+            # UI трогаем ТОЛЬКО через _defer (очередь, которую разбирает таймер tk):
+            # root.after из чужого потока — та же ошибка, что и в нативных колбэках
+            if not sha:
+                log("do_update: release has no sha256 digest -> manual")
+                self._defer(fail)
+                return
+            fd, dst = tempfile.mkstemp(prefix="HDContainer-Setup-", suffix=".exe")
+            os.close(fd)
             err = None
             for attempt in range(3):
                 try:
                     ctx = ssl.create_default_context()
                     req = urllib.request.Request(
                         url, headers={"User-Agent": "HDContainer-Updater/%s" % VERSION})
+                    h = hashlib.sha256()
                     with urllib.request.urlopen(req, timeout=90, context=ctx) as r:
                         total = int(r.getheader("Content-Length") or 0)
                         if total <= 0:
-                            self.root.after(0, lambda: marquee(0.0))
-                        got = 0
+                            self._defer(lambda: marquee(0.0))
+                        got, shown = 0, -1
                         with open(dst, "wb") as f:
                             while True:
                                 chunk = r.read(65536)
                                 if not chunk:
                                     break
                                 f.write(chunk)
+                                h.update(chunk)
                                 got += len(chunk)
-                                if total > 0:
-                                    self.root.after(0, set_bar, got / total)
+                                if total > 0 and got * 100 // total != shown:
+                                    shown = got * 100 // total
+                                    self._defer(lambda fr=got / total: set_bar(fr))
                     with open(dst, "rb") as f:
                         head = f.read(2)
                     if os.path.getsize(dst) < 1000000 or head != b"MZ":
                         raise IOError("bad download (size=%d)" % os.path.getsize(dst))
-                    self.root.after(0, lambda: succeed(dst))
+                    if h.hexdigest() != sha:
+                        raise IOError("sha256 mismatch: got %s want %s" % (h.hexdigest(), sha))
+                    self._defer(lambda: succeed(dst))
                     return
                 except Exception as ex:
                     err = ex
                     log("do_update attempt %d failed: %r" % (attempt + 1, ex))
                     time.sleep(2)
             log("do_update gave up: %r" % err)
-            self.root.after(0, fail)
+            try:
+                os.remove(dst)
+            except Exception:
+                pass
+            self._defer(fail)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2376,8 +2544,9 @@ class TrayApp:
             'Chr(34) & "%s" & Chr(34), 0, True\r\n'     # 0 = скрытое окно, True = ждать
             'sh.Run "schtasks /Delete /TN %s /F", 0, True\r\n'
             'On Error Resume Next\r\n'
+            'CreateObject("Scripting.FileSystemObject").DeleteFile "%s"\r\n'
             'CreateObject("Scripting.FileSystemObject").DeleteFile WScript.ScriptFullName\r\n'
-            % (dst, logf, task)
+            % (dst, logf, task, dst)
         )
         try:
             with open(vbs, "w", encoding="utf-16") as f:   # wscript читает UTF-16 (BOM)
@@ -3127,6 +3296,7 @@ class TrayApp:
                 else:
                     c.icon = None
             c.color = color_state["v"]
+            old_icon = c.hicon
             c.hicon = 0
             if c not in self.containers:
                 self.containers.append(c)
@@ -3145,6 +3315,8 @@ class TrayApp:
                 self._set_current(c)
             c.layout = draft["layout"]          # запомнить ВИД раскладки
             self._apply_host_icon(c)
+            if old_icon and old_icon != self.hicon:
+                user32.DestroyIcon(old_icon)
             self._save()
             self._update_tray()
             kind = c.layout
@@ -3211,7 +3383,7 @@ class TrayApp:
         win.bind("<Escape>", lambda e: close())
 
     def _create_shortcut(self, c):
-        exe = os.path.abspath(sys.argv[0])
+        exe = _app_exe()
         # ярлык получает ТУ ЖЕ иконку, что и контейнер: свой аватар, либо
         # перекрашенное в цвет метки дефолтное лого, либо общее лого
         icon = self._container_icon_file(c)
@@ -3253,6 +3425,7 @@ class TrayApp:
             self._deactivate(c)
         if c in self.containers:
             self.containers.remove(c)
+        self._free_icon(c)
         if self.current is c:
             self.current = next((x for x in self.containers if x.active), None)
         self._save()
@@ -3374,7 +3547,7 @@ class TrayApp:
     def _queue_reassert(self, hwnd, sig):
         rect = sig.get("rect")
         if hwnd and rect and len(rect) == 4:
-            self._reassert.append({"hwnd": hwnd, "rect": list(rect),
+            self._reassert.append({"hwnd": hwnd, "rect": clamp_to_screen(list(rect)),
                                    "max": bool(sig.get("max")), "n": 4})
 
     def _watch(self):
@@ -3460,11 +3633,9 @@ class TrayApp:
         if self._pending_update:
             upd = self._pending_update
             self._pending_update = None
-            tag, url = upd
-            if tag == "__uptodate__":
-                self._info(T("update_title"), T("up_to_date"))
-            elif url and self._ask_yesno(T("update_title"), T("update_available", tag)):
-                self._do_update(url)
+            # модальный диалог — отдельным таймером, чтобы не останавливать
+            # сам опрос (чистку закрытых окон, подхват запущенных приложений)
+            self.root.after(0, lambda: self._handle_pending_update(upd))
 
         changed = False
         for c in self.containers:
@@ -3522,22 +3693,39 @@ class TrayApp:
 
     def _save_containers(self):
         try:
-            with open(_STORE, "w", encoding="utf-8") as f:
-                json.dump([c.to_dict() for c in self.containers], f, ensure_ascii=False)
+            write_json_atomic(_STORE, [c.to_dict() for c in self.containers])
         except Exception as ex:
             log("save_containers failed: %r" % ex)
 
     def _load_containers(self):
+        if not os.path.exists(_STORE):
+            return
         try:
-            if not os.path.exists(_STORE):
-                return
             with open(_STORE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            for d in data:
-                self.containers.append(Container.from_dict(d))
-            log("loaded %d containers" % len(self.containers))
+            if not isinstance(data, list):
+                raise ValueError("store is not a list")
         except Exception as ex:
+            # файл не читается: НЕ даём следующему _save() затереть его пустым
+            # списком — откладываем копию, пользователь сможет восстановить вручную
             log("load_containers failed: %r" % ex)
+            try:
+                shutil.copy2(_STORE, _STORE + ".broken")
+            except Exception:
+                pass
+            return
+        for d in data:
+            try:
+                if not isinstance(d, dict):
+                    raise ValueError("entry is not an object")
+                c = Container.from_dict(d)
+                c.apps = [a for a in c.apps if isinstance(a, dict)]
+                self.containers.append(c)
+            except Exception as ex:
+                # одна битая запись раньше обрывала загрузку ВСЕХ последующих
+                # контейнеров, а ближайшее сохранение теряло их навсегда
+                log("load_containers: skipped bad entry %r: %r" % (str(d)[:80], ex))
+        log("loaded %d containers" % len(self.containers))
 
     # ===================================================================
     #  Страховка от потери окон (orphan recovery)
@@ -3571,7 +3759,7 @@ class TrayApp:
         # консоли -> при каждом старте никакого мелькающего cmd), vbs стартует
         # сторожа (HDContainer.exe --noconsole, тоже без окна). Имя задачи
         # фиксированное -> /Create /F перезаписывает прежнюю, задачи не копятся.
-        exe = os.path.abspath(sys.argv[0])
+        exe = _app_exe()
         vbs = os.path.join(tempfile.gettempdir(), "hdc_watchdog.vbs")
         task = "HDContainer_Watchdog"
         script = (
@@ -4020,6 +4208,26 @@ def _pid_alive(pid):
         kernel32.CloseHandle(snap)
 
 
+def _pids_of_exe(name):
+    """PID всех процессов с таким именем exe (Toolhelp, без доступа к процессам)."""
+    INVALID = ctypes.c_void_p(-1).value
+    out = []
+    snap = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)
+    if not snap or snap == INVALID:
+        return out
+    try:
+        pe = PROCESSENTRY32W()
+        pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        ok = kernel32.Process32FirstW(snap, ctypes.byref(pe))
+        while ok:
+            if pe.szExeFile.lower() == name.lower():
+                out.append(pe.th32ProcessID)
+            ok = kernel32.Process32NextW(snap, ctypes.byref(pe))
+    finally:
+        kernel32.CloseHandle(snap)
+    return out
+
+
 def _run_watchdog(args):
     """Процесс-сторож (запущен через Планировщик -> ВНЕ нашего job, переживает
     наш краш). Ждёт смерти основного процесса; если это был КРАШ (снимок не
@@ -4086,6 +4294,14 @@ def main():
                 if not user32.FindWindowW(None, IPC_TITLE):
                     break
                 time.sleep(0.25)
+        # подождать и сторожа (HDContainer.exe --watchdog): он ещё ~1-2с держит
+        # наш exe открытым, из-за чего деинсталлятор не мог удалить файл, а
+        # taskkill установщика убивал его раньше, чем он вернёт окна в норму
+        me = os.getpid()
+        for _ in range(24):
+            if not [p for p in _pids_of_exe(os.path.basename(_app_exe())) if p != me]:
+                break
+            time.sleep(0.25)
         return
 
     launch_name = _parse_launch(args)
@@ -4098,8 +4314,19 @@ def main():
     # именованный мьютекс держим всё время работы: по нему установщик (AppMutex)
     # понимает, что программа запущена, и закрывает её перед обновлением
     try:
-        kernel32.CreateMutexW(None, False,
-                              ctypes.c_wchar_p("HDContainer_singleton_mutex"))
+        kernel32.CreateMutexW(None, False, "HDContainer_singleton_mutex")
+        if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
+            # гонка двух запусков (автозапуск + ярлык при входе): оба прошли
+            # FindWindow до того, как первый создал окно -> второй уступает
+            log("second instance (mutex) -> exit")
+            for _ in range(40):
+                existing = user32.FindWindowW(None, IPC_TITLE)
+                if existing:
+                    if launch_name:
+                        send_copydata(existing, launch_name)
+                    return
+                time.sleep(0.25)
+            return
     except Exception:
         pass
     TrayApp(launch_name=launch_name).run()

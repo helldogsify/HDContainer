@@ -3,8 +3,31 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-Write-Host "==> Building HDContainer.exe with PyInstaller..."
-python -m PyInstaller --onefile --noconsole --name HDContainer --icon HDContainer.ico --clean -y window_container.py
+# version from installer.iss -> VERSIONINFO resource of the exe (Properties ->
+# Details in Explorer; AV/SmartScreen treat an exe without it as more suspicious)
+$ver = (Select-String -Path installer.iss -Pattern '#define MyAppVersion "([^"]+)"').Matches[0].Groups[1].Value
+$v4 = (($ver -split '\.') + @('0','0','0'))[0..3] -join ', '
+@"
+VSVersionInfo(
+  ffi=FixedFileInfo(filevers=($v4), prodvers=($v4), mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+  kids=[StringFileInfo([StringTable('040904B0', [
+    StringStruct('CompanyName', 'hdk'),
+    StringStruct('FileDescription', 'HDContainer'),
+    StringStruct('FileVersion', '$ver'),
+    StringStruct('InternalName', 'HDContainer'),
+    StringStruct('LegalCopyright', 'MIT License'),
+    StringStruct('OriginalFilename', 'HDContainer.exe'),
+    StringStruct('ProductName', 'HDContainer'),
+    StringStruct('ProductVersion', '$ver')])]),
+  VarFileInfo([VarStruct('Translation', [1033, 1200])])]
+)
+"@ | ForEach-Object { if (-not (Test-Path build)) { New-Item -ItemType Directory build | Out-Null }; Set-Content -Path build\version_info.txt -Value $_ -Encoding UTF8 }
+if (Test-Path dist) { Remove-Item -Recurse -Force dist }   # never package a stale exe
+
+Write-Host "==> Building HDContainer.exe $ver with PyInstaller..."
+python -m PyInstaller --onefile --noconsole --name HDContainer --icon HDContainer.ico `
+  --version-file build\version_info.txt --clean -y window_container.py
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path dist\HDContainer.exe)) { throw "PyInstaller failed" }
 
 $iscc = @(
   "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
@@ -15,6 +38,7 @@ $iscc = @(
 if ($iscc) {
   Write-Host "==> Building installer with Inno Setup..."
   & $iscc "installer.iss"
+  if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
   Write-Host "==> Done. See dist\HDContainer-Setup.exe and dist\HDContainer.exe"
 } else {
   Write-Host "Inno Setup (ISCC.exe) not found - built portable exe only (dist\HDContainer.exe)."
