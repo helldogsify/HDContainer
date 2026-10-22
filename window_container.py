@@ -65,7 +65,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.3.12"
+VERSION = "1.3.13"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -493,6 +493,7 @@ SW_SHOW = 5
 SW_MINIMIZE = 6
 SW_SHOWNA = 8
 SW_RESTORE = 9
+SW_MAXIMIZE = 3
 
 HWND_TOP = 0
 SPI_GETWORKAREA = 0x0030
@@ -532,6 +533,9 @@ MF_SEPARATOR = 0x0800
 MF_GRAYED = 0x0001
 MF_CHECKED = 0x0008
 WM_SYSCOMMAND = 0x0112
+WM_DWMSENDICONICTHUMBNAIL = 0x0323
+WM_ACTIVATE = 0x0006
+WA_INACTIVE = 0
 IDM_EDIT = 0x9000          # своя команда меню окна «Редактировать контейнер»
 TPM_LEFTALIGN = 0x0000
 TPM_RIGHTBUTTON = 0x0002
@@ -715,6 +719,8 @@ _decl(version.VerQueryValueW, BOOL,
        ctypes.POINTER(UINT)])
 
 _decl(user32.IsIconic, BOOL, [HWND])
+_decl(user32.IsZoomed, BOOL, [HWND])
+_decl(user32.FillRect, ctypes.c_int, [wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.HBRUSH])
 _decl(user32.GetDC, wintypes.HDC, [HWND])
 _decl(user32.ReleaseDC, ctypes.c_int, [HWND, wintypes.HDC])
 _decl(user32.PrintWindow, BOOL, [HWND, wintypes.HDC, UINT])
@@ -744,6 +750,8 @@ _decl(gdi32.GetDIBits, ctypes.c_int,
       [wintypes.HDC, wintypes.HBITMAP, UINT, UINT, ctypes.c_void_p,
        ctypes.POINTER(BITMAPINFO), UINT])
 _decl(gdi32.GetObjectW, ctypes.c_int, [wintypes.HGDIOBJ, ctypes.c_int, ctypes.c_void_p])
+_decl(gdi32.CreateSolidBrush, wintypes.HBRUSH, [DWORD])
+_decl(gdi32.GdiFlush, BOOL, [])
 
 _decl(shell32.SHGetPropertyStoreForWindow, ctypes.c_long,
       [HWND, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p)])
@@ -790,8 +798,16 @@ try:
     dwmapi = ctypes.WinDLL("dwmapi")
     _decl(dwmapi.DwmGetWindowAttribute, ctypes.c_long,
           [HWND, DWORD, ctypes.c_void_p, DWORD])
+    _decl(dwmapi.DwmSetWindowAttribute, ctypes.c_long,
+          [HWND, DWORD, ctypes.c_void_p, DWORD])
+    # своё превью свёрнутого контейнера в таскбаре (вместо серой полоски)
+    _decl(dwmapi.DwmSetIconicThumbnail, ctypes.c_long, [HWND, wintypes.HBITMAP, DWORD])
+    _decl(dwmapi.DwmInvalidateIconicBitmaps, ctypes.c_long, [HWND])
     DWMWA_CLOAKED = 14
     DWMWA_EXTENDED_FRAME_BOUNDS = 9
+    DWMWA_FORCE_ICONIC_REPRESENTATION = 7
+    DWMWA_HAS_ICONIC_BITMAP = 10
+    DWMWA_DISALLOW_PEEK = 11
 except Exception:
     dwmapi = None
 
@@ -1100,6 +1116,149 @@ def capture_thumb(hwnd, tw=260, th=150):
             pass
 
 
+def window_state(h):
+    """(rect, maximized) окна для запоминания или None, если рамку брать нельзя.
+    У свёрнутого окна GetWindowRect = (-32000,-32000,160,28) -> не берём вовсе;
+    у развёрнутого на весь экран рамка «максимальная» -> важен флаг, а не она."""
+    if not user32.IsWindow(h) or user32.IsIconic(h):
+        return None
+    r = get_rect(h)
+    if r.right - r.left <= 0 or r.bottom - r.top <= 0 or r.left <= -30000:
+        return None
+    return [r.left, r.top, r.right - r.left, r.bottom - r.top], bool(user32.IsZoomed(h))
+
+
+def _dib(w, h):
+    """32-битный top-down DIB: (hbitmap, указатель на пиксели BGRA)."""
+    bi = BITMAPINFO()
+    bi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+    bi.bmiHeader.biWidth = w
+    bi.bmiHeader.biHeight = -h
+    bi.bmiHeader.biPlanes = 1
+    bi.bmiHeader.biBitCount = 32
+    bi.bmiHeader.biCompression = BI_RGB
+    bits = ctypes.c_void_p()
+    hb = gdi32.CreateDIBSection(None, ctypes.byref(bi), DIB_RGB_COLORS,
+                                ctypes.byref(bits), None, 0)
+    return hb, bits.value
+
+
+def _opaque(bits, w, h):
+    # GDI не пишет альфу (остаётся 0), а DWM рисует превью с альфой -> без этого
+    # картинка в таскбаре прозрачная, то есть «пустая»
+    gdi32.GdiFlush()
+    buf = (ctypes.c_ubyte * (w * h * 4)).from_address(bits)
+    raw = bytearray(buf)
+    raw[3::4] = b"\xff" * (w * h)
+    ctypes.memmove(bits, bytes(raw), len(raw))
+
+
+def snapshot_group(hwnds, area, max_w=640):
+    """Снимок рабочего стола контейнера: окна hwnds (снизу вверх по Z) на своих
+    местах в области area=(x,y,w,h), уменьшенный до max_w по ширине.
+    Возвращает (hbitmap, w, h) или None. Свёрнутые/скрытые окна пропускаются."""
+    ax, ay, aw, ah = area
+    if aw <= 0 or ah <= 0:
+        return None
+    k = min(1.0, float(max_w) / aw)
+    cw, ch = max(1, int(aw * k)), max(1, int(ah * k))
+    scr = user32.GetDC(0)
+    dst = gdi32.CreateCompatibleDC(scr)
+    src = gdi32.CreateCompatibleDC(scr)
+    hb, _bits = _dib(cw, ch)
+    if not (scr and dst and src and hb):
+        for o, f in ((hb, gdi32.DeleteObject), (dst, gdi32.DeleteDC), (src, gdi32.DeleteDC)):
+            if o:
+                f(o)
+        if scr:
+            user32.ReleaseDC(0, scr)
+        return None
+    o_dst = gdi32.SelectObject(dst, hb)
+    got = 0
+    try:
+        rc = wintypes.RECT(0, 0, cw, ch)
+        br = gdi32.CreateSolidBrush(0x1d1b1b)          # COL_BG в BGR
+        user32.FillRect(dst, ctypes.byref(rc), br)
+        gdi32.DeleteObject(br)
+        gdi32.SetStretchBltMode(dst, HALFTONE)
+        for h in hwnds:
+            if not user32.IsWindow(h) or user32.IsIconic(h) \
+                    or not user32.IsWindowVisible(h):
+                continue
+            r = get_rect(h)
+            w, hh = r.right - r.left, r.bottom - r.top
+            if w <= 0 or hh <= 0 or w > 16384 or hh > 16384:
+                continue
+            li, ti, ri, bi = frame_insets(h)            # без невидимых бортов/тени
+            vw, vh = w - li - ri, hh - ti - bi
+            if vw <= 0 or vh <= 0:
+                continue
+            tmp = gdi32.CreateCompatibleBitmap(scr, w, hh)
+            if not tmp:
+                continue
+            o_src = gdi32.SelectObject(src, tmp)
+            try:
+                if user32.PrintWindow(h, src, PW_RENDERFULLCONTENT):
+                    gdi32.StretchBlt(dst, int((r.left + li - ax) * k), int((r.top + ti - ay) * k),
+                                     max(1, int(vw * k)), max(1, int(vh * k)),
+                                     src, li, ti, vw, vh, SRCCOPY)
+                    got += 1
+            finally:
+                gdi32.SelectObject(src, o_src)
+                gdi32.DeleteObject(tmp)
+    except Exception as ex:
+        log("snapshot failed: %r" % ex)
+    finally:
+        gdi32.SelectObject(dst, o_dst)
+        gdi32.DeleteDC(dst)
+        gdi32.DeleteDC(src)
+        user32.ReleaseDC(0, scr)
+    if not got:
+        gdi32.DeleteObject(hb)
+        return None
+    return hb, cw, ch
+
+
+def iconic_thumbnail(snap, hicon, max_w, max_h):
+    """Превью для таскбара в пределах max_w x max_h: снимок окон контейнера,
+    а если его нет — значок контейнера на фоне. hbitmap (непрозрачный) или 0."""
+    if snap:
+        _sb, sw, sh = snap
+        k = min(float(max_w) / sw, float(max_h) / sh)
+        w, h = max(1, int(sw * k)), max(1, int(sh * k))
+    else:
+        w, h = max_w, max(1, min(max_h, int(max_w * 9 / 16)))
+    hb, bits = _dib(w, h)
+    if not hb or not bits:
+        if hb:
+            gdi32.DeleteObject(hb)
+        return 0
+    dc = gdi32.CreateCompatibleDC(None)
+    o = gdi32.SelectObject(dc, hb)
+    try:
+        if snap:
+            src = gdi32.CreateCompatibleDC(None)
+            os_ = gdi32.SelectObject(src, snap[0])
+            gdi32.SetStretchBltMode(dc, HALFTONE)
+            gdi32.StretchBlt(dc, 0, 0, w, h, src, 0, 0, snap[1], snap[2], SRCCOPY)
+            gdi32.SelectObject(src, os_)
+            gdi32.DeleteDC(src)
+        else:
+            rc = wintypes.RECT(0, 0, w, h)
+            br = gdi32.CreateSolidBrush(0x1d1b1b)
+            user32.FillRect(dc, ctypes.byref(rc), br)
+            gdi32.DeleteObject(br)
+            if hicon:
+                s = max(16, min(w, h) * 2 // 3)
+                user32.DrawIconEx(dc, (w - s) // 2, (h - s) // 2, hicon, s, s,
+                                  0, None, DI_NORMAL)
+    finally:
+        gdi32.SelectObject(dc, o)
+        gdi32.DeleteDC(dc)
+    _opaque(bits, w, h)
+    return hb
+
+
 def recolor_icon(base_hicon, rgb):
     """Перекрасить «синюю» левую панель логотипа в заданный цвет (сохраняя тени/градиент).
     Белые панели и тёмная плитка не трогаются. HICON или 0."""
@@ -1307,7 +1466,7 @@ class Container:
     def __init__(self, name, title=None, apps=None, icon=None, color=None):
         self.name = name
         self.title = title or name
-        self.apps = list(apps or [])      # [{"exe","title","cls","rect"}]
+        self.apps = list(apps or [])      # [{"exe","title","cls","rect","max"}]
         self.icon = icon                  # путь к .ico контейнера (или None)
         self.color = color                # "#rrggbb" цветная метка (или None)
         self.layout = None                # вид раскладки (cols/rows/grid/master)
@@ -1315,6 +1474,9 @@ class Container:
         self.active = False
         self.host_hwnd = 0
         self.hicon = 0                    # сгенерированный HICON (кэш)
+        self.snap = None                  # (hbitmap, w, h) — снимок окон для превью
+        self.snap_t = 0.0
+        self.last_fg = 0                  # окно контейнера, где работали последним
 
     # --- сериализация ---
     def to_dict(self):
@@ -1335,41 +1497,62 @@ class Container:
                 return s
         return None
 
+    @staticmethod
+    def _store_state(sig, hwnd):
+        # «развёрнуто на весь экран» запоминаем флагом, а обычную рамку не
+        # перетираем максимальной -> после «Восстановить» окно вернётся к своему
+        # размеру; у свёрнутого окна ничего не берём (было бы -32000,-32000)
+        st = window_state(hwnd)
+        if st is None:
+            return False
+        rect, mx = st
+        changed = False
+        if (not mx or not sig.get("rect")) and sig.get("rect") != rect:
+            sig["rect"] = rect
+            changed = True
+        if bool(sig.get("max")) != mx:
+            sig["max"] = mx
+            changed = True
+        return changed
+
     def add_app_sig(self, hwnd):
         exe = exe_for_hwnd(hwnd)
         title = get_window_text(hwnd)
-        r = get_rect(hwnd)
-        rect = [r.left, r.top, r.right - r.left, r.bottom - r.top]
         sig = self._find_sig(exe, title)
         if sig is None:
-            sig = {"exe": exe, "title": title,
-                   "cls": get_class_name(hwnd), "rect": rect}
+            sig = {"exe": exe, "title": title, "cls": get_class_name(hwnd)}
             self.apps.append(sig)
-        else:
-            sig["rect"] = rect
+        self._store_state(sig, hwnd)
         return sig
 
     def sync_app_rects(self):
         # держим в подписях актуальные позиции живых окон ("последнее состояние").
-        # подпись привязана к окну (m.sig) -> смена заголовка не плодит дубли
+        # подпись привязана к окну (m.sig) -> смена заголовка не плодит дубли.
+        # True, если что-то поменялось (есть что сохранять)
+        changed = False
         for m in list(self.members.values()):
             if not user32.IsWindow(m.hwnd):
                 continue
-            r = get_rect(m.hwnd)
-            rect = [r.left, r.top, r.right - r.left, r.bottom - r.top]
             title = get_window_text(m.hwnd)
             if m.sig is not None:
-                m.sig["rect"] = rect
-                if title:
+                if self._store_state(m.sig, m.hwnd):
+                    changed = True
+                if title and m.sig.get("title") != title:
                     m.sig["title"] = title
+                    changed = True
             else:
                 m.sig = self.add_app_sig(m.hwnd)
+                changed = True
+        return changed
 
     # --- членство ---
-    def attach(self, hwnd, host_hwnd, place_rect=None):
+    def attach(self, hwnd, host_hwnd, place_rect=None, maximize=False):
         if not user32.IsWindow(hwnd) or hwnd in self.members:
             return False
-        user32.ShowWindow(hwnd, SW_RESTORE)
+        # разворачиваем только свёрнутое: SW_RESTORE у окна «на весь экран»
+        # сбрасывал его в обычный размер — контейнер «забывал» полный экран
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
         m = Managed(hwnd, get_window_text(hwnd))
         m.o_owner = user32.GetWindow(hwnd, GW_OWNER) or 0
         m.o_style = get_style(hwnd)
@@ -1379,11 +1562,15 @@ class Container:
         # сделать owned-окном хоста; toggle видимости форсирует пересчёт таскбара.
         user32.ShowWindow(hwnd, SW_HIDE)
         set_owner(hwnd, host_hwnd)
-        if place_rect and len(place_rect) == 4:
+        zoomed = bool(user32.IsZoomed(hwnd))
+        if place_rect and len(place_rect) == 4 and not (maximize and zoomed):
+            if zoomed:
+                user32.ShowWindow(hwnd, SW_RESTORE)
             l, t, w, hh = place_rect
+            # обычная рамка задаёт и монитор, на котором окно развернётся
             user32.SetWindowPos(hwnd, HWND_TOP, int(l), int(t), int(w), int(hh),
                                 SWP_NOACTIVATE | SWP_NOOWNERZORDER)
-        user32.ShowWindow(hwnd, SW_SHOW)
+        user32.ShowWindow(hwnd, SW_MAXIMIZE if maximize else SW_SHOW)
         user32.SetForegroundWindow(hwnd)
         self.members[hwnd] = m
         m.sig = self.add_app_sig(hwnd)
@@ -1584,6 +1771,30 @@ class TrayApp:
                 if c.host_hwnd == hwnd:
                     self._defer(lambda c=c: self._edit_container(c))
                     break
+            return 0
+        # хост активирован (клик по кнопке в таскбаре, Alt+Tab, разворот): фокус
+        # сразу отдаём настоящему окну контейнера. Иначе активным остаётся
+        # невидимый хост — клавиатура «в никуда», а таскбар путается в том,
+        # открыт контейнер или свёрнут, и вместо переключения показывает превью
+        if msg == WM_ACTIVATE and (wparam & 0xFFFF) != WA_INACTIVE \
+                and not (wparam >> 16) & 0xFFFF:
+            c = next((x for x in self.containers if x.host_hwnd == hwnd), None)
+            if c:
+                self._defer(lambda c=c: self._bring_up(c))
+            return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+        # таскбар просит превью: отдаём снимок окон контейнера (без tkinter —
+        # только GDI/DWM, это можно прямо в оконной процедуре)
+        if msg == WM_DWMSENDICONICTHUMBNAIL and dwmapi:
+            c = next((x for x in self.containers if x.host_hwnd == hwnd), None)
+            try:
+                hb = iconic_thumbnail(c.snap if c else None,
+                                      self._container_icon(c) if c else self.hicon,
+                                      (lparam >> 16) & 0xFFFF or 200, lparam & 0xFFFF or 120)
+                if hb:
+                    dwmapi.DwmSetIconicThumbnail(hwnd, hb, 0)
+                    gdi32.DeleteObject(hb)
+            except Exception as ex:
+                log("iconic thumbnail failed: %r" % ex)
             return 0
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
@@ -1843,6 +2054,19 @@ class TrayApp:
                             | SWP_NOACTIVATE | SWP_FRAMECHANGED)
         if app_id:
             set_app_id(hwnd, app_id)       # отдельная кнопка в таскбаре до показа
+        # Превью в таскбаре. Сам хост — прозрачное окно 1x1, и свёрнутым DWM
+        # рисовал его серой полоской 160px без содержимого (или не рисовал вовсе).
+        # Просим DWM брать НАШУ картинку (WM_DWMSENDICONICTHUMBNAIL), а «подглядывание»
+        # (Aero Peek) отключаем — показывать там всё равно нечего.
+        if dwmapi:
+            on = ctypes.c_int(1)
+            for attr in (DWMWA_FORCE_ICONIC_REPRESENTATION, DWMWA_HAS_ICONIC_BITMAP,
+                         DWMWA_DISALLOW_PEEK):
+                try:
+                    dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(on),
+                                                 ctypes.sizeof(on))
+                except Exception as ex:
+                    log("dwm attr %d failed: %r" % (attr, ex))
         ic = hicon or self.hicon
         if ic:
             user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, ic)
@@ -2202,9 +2426,9 @@ class TrayApp:
         used = set()
         for sig in list(c.apps):
             hw = self._find_match(sig, used)
-            if hw and c.attach(hw, host, sig.get("rect")):
+            if hw and c.attach(hw, host, sig.get("rect"), sig.get("max")):
                 used.add(hw)
-                self._queue_reassert(hw, sig.get("rect"))
+                self._queue_reassert(hw, sig)
             else:
                 self._launch(sig)
                 # дольше ждём «тяжёлые»/поздно стартующие приложения (~30с)
@@ -2288,6 +2512,8 @@ class TrayApp:
             pass
 
     def _deactivate(self, c):
+        c.sync_app_rects()           # запомнить размеры окон ДО отвязки
+        self._drop_snap(c)
         c.detach_all()
         self._safe_destroy_host(c.host_hwnd)
         c.host_hwnd = 0
@@ -3032,6 +3258,8 @@ class TrayApp:
         if getattr(self, "voice", None) is not None:
             self.voice.shutdown()          # снять хоткей, погасить whisper-server
         for c in self.containers:
+            if c.active:
+                c.sync_app_rects()   # запомнить размеры окон ДО отвязки
             c.detach_all()
             self._safe_destroy_host(c.host_hwnd)
             c.host_hwnd = 0
@@ -3052,9 +3280,75 @@ class TrayApp:
     # ===================================================================
     #  Быстрый тик: вернуть свёрнутые в одиночку окна + дожать позицию
     # ===================================================================
-    def _queue_reassert(self, hwnd, rect):
+    def _show_group(self, c):
+        # вернуть окна, спрятанные при сворачивании группы
+        for h in list(c.members):
+            m = c.members.get(h)
+            if m and m.group_hidden and user32.IsWindow(h):
+                user32.ShowWindow(h, SW_SHOWNA)
+                m.group_hidden = False
+
+    def _bring_up(self, c):
+        host = c.host_hwnd
+        if not c.active or not host or user32.IsIconic(host):
+            return
+        if user32.GetForegroundWindow() != host:
+            return                            # фокус уже ушёл сам — не перехватываем
+        self._show_group(c)
+        target = c.last_fg if c.last_fg in c.members else 0
+        if not target or user32.IsIconic(target) or not user32.IsWindowVisible(target):
+            # верхнее по Z видимое окно контейнера
+            target = next((h for h, _t in self._enum_windows()
+                           if h in c.members and not user32.IsIconic(h)), 0)
+        if target:
+            user32.SetForegroundWindow(target)
+
+    def _drop_snap(self, c):
+        if c.snap:
+            gdi32.DeleteObject(c.snap[0])
+        c.snap = None
+        c.snap_t = 0.0
+
+    def _refresh_snap(self, c):
+        # снимок окон для превью свёрнутого контейнера. Свёрнутые/спрятанные окна
+        # снять нельзя, поэтому снимаем, пока с контейнером работают (окно в фокусе),
+        # не чаще раза в 4с — к моменту сворачивания картинка уже свежая
+        now = time.time()
+        if now - c.snap_t < 4.0 or not dwmapi:
+            return
+        if user32.GetForegroundWindow() not in c.members:
+            return
+        c.snap_t = now
+        order = [h for h, _t in self._enum_windows() if h in c.members]
+        order.reverse()                       # снизу вверх: верхние рисуются последними
+        boxes = []
+        for h in order:
+            if user32.IsIconic(h) or not user32.IsWindowVisible(h):
+                continue
+            r = get_rect(h)
+            li, ti, ri, bi = frame_insets(h)
+            boxes.append((r.left + li, r.top + ti, r.right - ri, r.bottom - bi))
+        if not boxes:
+            return
+        vx, vy, vw, vh = virtual_screen()
+        l = max(vx, min(b[0] for b in boxes))
+        t = max(vy, min(b[1] for b in boxes))
+        rr = min(vx + vw, max(b[2] for b in boxes))
+        bb = min(vy + vh, max(b[3] for b in boxes))
+        snap = snapshot_group(order, (l, t, rr - l, bb - t))
+        if snap:
+            self._drop_snap(c)
+            c.snap, c.snap_t = snap, now
+            try:
+                dwmapi.DwmInvalidateIconicBitmaps(c.host_hwnd)
+            except Exception:
+                pass
+
+    def _queue_reassert(self, hwnd, sig):
+        rect = sig.get("rect")
         if hwnd and rect and len(rect) == 4:
-            self._reassert.append({"hwnd": hwnd, "rect": list(rect), "n": 4})
+            self._reassert.append({"hwnd": hwnd, "rect": list(rect),
+                                   "max": bool(sig.get("max")), "n": 4})
 
     def _watch(self):
         try:
@@ -3071,13 +3365,15 @@ class TrayApp:
                             user32.ShowWindow(h, SW_HIDE)
                             m.group_hidden = True
                     continue
+                self._refresh_snap(c)
+                self._show_group(c)              # группа развёрнута — вернуть окна
+                fg = user32.GetForegroundWindow()
+                if fg in c.members:
+                    c.last_fg = fg
                 for h in list(c.members):
                     m = c.members.get(h)
                     if not m or not user32.IsWindow(h):
                         continue
-                    if m.group_hidden:           # группа развёрнута — вернуть окна
-                        user32.ShowWindow(h, SW_SHOWNA)
-                        m.group_hidden = False
                     iconic = bool(user32.IsIconic(h))
                     # свёрнутое в одиночку окно временно ОТВЯЗЫВАЕМ -> своя кнопка
                     # в таскбаре, его можно развернуть; развернул — вернулось в контейнер
@@ -3092,9 +3388,14 @@ class TrayApp:
                 for e in self._reassert:
                     h = e["hwnd"]
                     if user32.IsWindow(h) and not user32.IsIconic(h):
-                        l, t, w, hh = e["rect"]
-                        user32.SetWindowPos(h, HWND_TOP, int(l), int(t), int(w), int(hh),
-                                            SWP_NOACTIVATE | SWP_NOOWNERZORDER)
+                        if e["max"]:
+                            # приложение при старте могло само сбросить «на весь экран»
+                            if not user32.IsZoomed(h):
+                                user32.ShowWindow(h, SW_MAXIMIZE)
+                        else:
+                            l, t, w, hh = e["rect"]
+                            user32.SetWindowPos(h, HWND_TOP, int(l), int(t), int(w), int(hh),
+                                                SWP_NOACTIVATE | SWP_NOOWNERZORDER)
                     e["n"] -= 1
                     if e["n"] > 0:
                         keep.append(e)
@@ -3130,8 +3431,9 @@ class TrayApp:
                     continue
                 used = self._all_member_hwnds()
                 hw = self._find_match(p["sig"], used)
-                if hw and c.attach(hw, c.host_hwnd, p["sig"].get("rect")):
-                    self._queue_reassert(hw, p["sig"].get("rect"))
+                if hw and c.attach(hw, c.host_hwnd, p["sig"].get("rect"),
+                                   p["sig"].get("max")):
+                    self._queue_reassert(hw, p["sig"])
                     changed = True
                     continue
                 p["left"] -= 1
@@ -3144,6 +3446,19 @@ class TrayApp:
         if changed:
             self._save()
             self._update_tray()
+        else:
+            # раз в ~5с запоминаем размеры/«на весь экран» открытых окон: раньше
+            # они сохранялись лишь при открытии контейнера, и при следующем
+            # запуске окна вставали в старый, «заранее заданный» размер
+            self._sync_tick = getattr(self, "_sync_tick", 0) + 1
+            if self._sync_tick >= 7 and not self._reassert:
+                self._sync_tick = 0
+                dirty = False
+                for c in self.containers:
+                    if c.active and c.host_hwnd and not user32.IsIconic(c.host_hwnd):
+                        dirty = c.sync_app_rects() or dirty
+                if dirty:
+                    self._save_containers()
         self.root.after(700, self._poll)
 
     # ===================================================================
