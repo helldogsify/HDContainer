@@ -39,6 +39,9 @@ except Exception:
 
 WM_HOTKEY = 0x0312
 HOTKEY_ID = 0xB0CE
+# клавиши, которые можно назначить горячими БЕЗ модификатора: F1-F24, Pause,
+# ScrollLock, PrtSc (объявлено вне класса: внутри него `set` — метод настроек)
+PLAIN_HOTKEYS_OK = frozenset(range(0x70, 0x88)) | {0x13, 0x91, 0x2C}
 
 # ---------------------------------------------------------------------------
 #  Строки (7 языков, как в основном приложении)
@@ -1637,15 +1640,13 @@ class VoiceController:
         dlg.protocol("WM_DELETE_WINDOW", closed)
         dlg.focus_force()
 
-    PLAIN_HOTKEYS_OK = set(range(0x70, 0x88)) | {0x13, 0x91, 0x2C}   # F1-F24, Pause, ScrollLock, PrtSc
-
     def _capture_done(self, ev):
         bad = False
         if ev[0] == "captured":
             mods, vk = ev[1], ev[2]
             # обычная клавиша без модификатора (Enter, пробел, буква) глоталась бы
             # ВО ВСЕЙ системе — разрешаем только сочетания, боковые модификаторы и F-клавиши
-            if mods == 0 and vk not in vs.SIDED_MODIFIERS and vk not in self.PLAIN_HOTKEYS_OK:
+            if mods == 0 and vk not in vs.SIDED_MODIFIERS and vk not in PLAIN_HOTKEYS_OK:
                 bad = True
             else:
                 self.set("hk_mods", mods)
