@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.3.15"
+#define MyAppVersion "1.4.0"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -40,8 +40,10 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [CustomMessages]
-en.AskRemoveData=Also delete your containers and settings?%n%nYes — remove everything. No — keep them for next time.
-ru.AskRemoveData=Удалить также ваши контейнеры и настройки?%n%nДа — удалить всё. Нет — сохранить для следующего раза.
+en.AskRemoveData=Also delete your containers, settings and the downloaded speech models?%n%nYes — remove everything. No — keep them for next time.
+ru.AskRemoveData=Удалить также ваши контейнеры, настройки и скачанные модели распознавания речи?%n%nДа — удалить всё. Нет — сохранить для следующего раза.
+en.LegacyMachineInstall=An older HDContainer (%1) is installed for all users in %2. This version installs for your user only and cannot update that copy. After Setup finishes, uninstall the old copy from Settings > Apps.
+ru.LegacyMachineInstall=Старая версия HDContainer (%1) установлена для всех пользователей в %2. Эта версия ставится только для вашего пользователя и не может обновить ту копию. После установки удалите старую через Параметры > Приложения.
 en.UpdateInfo=HDContainer %1 is already installed in %2. Setup will update it to version %3 in the same folder; the running copy will be closed automatically.
 ru.UpdateInfo=HDContainer %1 уже установлен в папке %2. Установщик обновит его до версии %3 в той же папке; запущенная копия будет закрыта автоматически.
 en.StartupTask=Start HDContainer when Windows starts
@@ -66,10 +68,6 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall
 
-[UninstallDelete]
-; скачанные модели Whisper (~0,5 ГБ) и временные файлы голосового ввода
-Type: filesandordirs; Name: "{localappdata}\HDContainer\whisper"
-
 [UninstallRun]
 ; корректно закрыть запущенный экземпляр перед удалением файлов
 Filename: "{app}\{#MyAppExe}"; Parameters: "--quit"; Flags: waituntilterminated runhidden; RunOnceId: "QuitApp"
@@ -79,6 +77,8 @@ var
   PrevPath: String;
   PrevVer: String;
   IsUpgrade: Boolean;
+  LegacyPath: String;
+  LegacyVer: String;
 
 // найти прежнюю установку по ключу деинсталляции Inno (AppId + _is1), HKCU/HKLM
 function FindPrev(): Boolean;
@@ -88,20 +88,29 @@ begin
   K := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B7E6B4C2-1A3D-4F58-9E2C-7A1D9F3C2E55}_is1';
   PrevPath := '';
   PrevVer := '';
+  // per-user (HKCU) — та установка, которую мы обновляем. Старые версии (1.0.4–1.1.3)
+  // могли ставиться «для всех» (HKLM): с PrivilegesRequired=lowest Inno её не видит
+  // и поставил бы вторую копию, обещая «обновить в той же папке» — предупреждаем.
   Result := RegQueryStringValue(HKCU, K, 'InstallLocation', PrevPath);
-  if not Result then
-    Result := RegQueryStringValue(HKLM, K, 'InstallLocation', PrevPath);
   if Result then
   begin
-    if not RegQueryStringValue(HKCU, K, 'DisplayVersion', PrevVer) then
-      RegQueryStringValue(HKLM, K, 'DisplayVersion', PrevVer);
+    RegQueryStringValue(HKCU, K, 'DisplayVersion', PrevVer);
     if PrevVer = '' then PrevVer := '?';
+  end;
+  LegacyPath := '';
+  if RegQueryStringValue(HKLM, K, 'InstallLocation', LegacyPath) then
+  begin
+    RegQueryStringValue(HKLM, K, 'DisplayVersion', LegacyVer);
+    if LegacyVer = '' then LegacyVer := '?';
   end;
 end;
 
 function InitializeSetup(): Boolean;
 begin
   IsUpgrade := FindPrev();
+  if (LegacyPath <> '') and (not WizardSilent) then
+    MsgBox(FmtMessage(CustomMessage('LegacyMachineInstall'), [LegacyVer, LegacyPath]),
+           mbInformation, MB_OK);
   Result := True;
 end;
 
@@ -122,6 +131,9 @@ begin
   if (PrevPath <> '') and FileExists(AddBackslash(PrevPath) + '{#MyAppExe}') then
     Exec(AddBackslash(PrevPath) + '{#MyAppExe}', '--quit', '', SW_HIDE,
          ewWaitUntilTerminated, rc);
+  if (LegacyPath <> '') and FileExists(AddBackslash(LegacyPath) + '{#MyAppExe}') then
+    Exec(AddBackslash(LegacyPath) + '{#MyAppExe}', '--quit', '', SW_HIDE,
+         ewWaitUntilTerminated, rc);
   if FileExists(ExpandConstant('{app}\{#MyAppExe}')) then
     Exec(ExpandConstant('{app}\{#MyAppExe}'), '--quit', '', SW_HIDE,
          ewWaitUntilTerminated, rc);
@@ -133,15 +145,23 @@ end;
 
 procedure CurUninstallStepChanged(CurStep: TUninstallStep);
 var
-  DataDir: String;
+  DataDir, LocalDir: String;
 begin
+  if CurStep = usUninstall then
+    // автозапуск, включённый из настроек программы (не задачей установщика):
+    // иначе после удаления при каждом входе Windows ругалась бы на отсутствующий exe
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'HDContainer');
   if CurStep = usPostUninstall then
   begin
     DataDir := ExpandConstant('{userappdata}\HDContainer');
-    if DirExists(DataDir) then
+    LocalDir := ExpandConstant('{localappdata}\HDContainer');   // модели Whisper (~0,5 ГБ), логи
+    if DirExists(DataDir) or DirExists(LocalDir) then
     begin
       if MsgBox(ExpandConstant('{cm:AskRemoveData}'), mbConfirmation, MB_YESNO) = IDYES then
+      begin
         DelTree(DataDir, True, True, True);
+        DelTree(LocalDir, True, True, True);
+      end;
     end;
   end;
 end;

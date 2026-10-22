@@ -57,6 +57,7 @@ VSTR = {
     "enable": {"en": "Enable voice input", "ru": "Включить голосовой ввод", "es": "Activar entrada por voz", "pt": "Ativar entrada por voz", "de": "Spracheingabe aktivieren", "fr": "Activer la saisie vocale", "zh": "启用语音输入"},
     "sec_hotkey": {"en": "Hotkey", "ru": "Горячая клавиша", "es": "Atajo", "pt": "Atalho", "de": "Hotkey", "fr": "Raccourci", "zh": "快捷键"},
     "change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
+    "hk_plain": {"en": "A plain key can't be the hotkey: it would stop working everywhere. Use a combination (Ctrl/Alt/Shift/Win + key), a single Alt/Ctrl/Shift/Win, or an F-key.", "ru": "Одиночная клавиша не может быть горячей: она перестала бы работать везде. Используйте сочетание (Ctrl/Alt/Shift/Win + клавиша), одиночный Alt/Ctrl/Shift/Win или F-клавишу.", "es": "Una tecla sola no puede ser el atajo: dejaría de funcionar en todas partes. Usa una combinación (Ctrl/Alt/Shift/Win + tecla), un Alt/Ctrl/Shift/Win solo o una tecla F.", "pt": "Uma tecla sozinha não pode ser o atalho: ela deixaria de funcionar em todo lugar. Use uma combinação (Ctrl/Alt/Shift/Win + tecla), um Alt/Ctrl/Shift/Win sozinho ou uma tecla F.", "de": "Eine einzelne Taste kann nicht die Hotkey sein: sie würde überall nicht mehr funktionieren. Nutze eine Kombination (Strg/Alt/Umschalt/Win + Taste), ein einzelnes Alt/Strg/Umschalt/Win oder eine F-Taste.", "fr": "Une touche seule ne peut pas être le raccourci : elle ne fonctionnerait plus nulle part. Utilise une combinaison (Ctrl/Alt/Maj/Win + touche), un Alt/Ctrl/Maj/Win seul ou une touche F.", "zh": "单个按键不能作为热键：它将在所有地方失效。请使用组合键（Ctrl/Alt/Shift/Win + 键）、单独的 Alt/Ctrl/Shift/Win 或 F 键。"},
     "press_combo": {"en": "Press a key or a combination\n\nEsc — cancel", "ru": "Нажми клавишу или сочетание\n\nEsc — отмена", "es": "Pulsa una tecla o combinación\n\nEsc — cancelar", "pt": "Pressione uma tecla ou combinação\n\nEsc — cancelar", "de": "Taste oder Kombination drücken\n\nEsc — Abbrechen", "fr": "Appuie sur une touche ou une combinaison\n\nÉchap — annuler", "zh": "按下一个键或组合键\n\nEsc — 取消"},
     "llm_remote": {"en": "Claude on another computer — via HDContainer on the PC that has Claude Code", "ru": "Claude на другом компьютере — через HDContainer на ПК, где есть Claude Code", "es": "Claude en otro equipo — a través de HDContainer en el PC que tiene Claude Code", "pt": "Claude em outro computador — via HDContainer no PC que tem o Claude Code", "de": "Claude auf einem anderen Computer — über HDContainer auf dem PC mit Claude Code", "fr": "Claude sur un autre ordinateur — via HDContainer sur le PC qui a Claude Code", "zh": "另一台电脑上的 Claude — 通过装有 Claude Code 的电脑上的 HDContainer"},
     "remote_hint": {"en": "On the PC with Claude Code open Voice input → “Share Claude Code with other computers”, turn it on, and copy the address and key here.", "ru": "На ПК с Claude Code открой «Голосовой ввод» → «Поделиться Claude Code с другими компьютерами», включи и скопируй сюда адрес и ключ.", "es": "En el PC con Claude Code abre Entrada por voz → «Compartir Claude Code con otros equipos», actívalo y copia aquí la dirección y la clave.", "pt": "No PC com o Claude Code abra Entrada por voz → “Compartilhar o Claude Code com outros computadores”, ative e copie aqui o endereço e a chave.", "de": "Öffne auf dem PC mit Claude Code Spracheingabe → „Claude Code mit anderen Computern teilen“, schalte es ein und kopiere Adresse und Schlüssel hierher.", "fr": "Sur le PC qui a Claude Code, ouvre Saisie vocale → « Partager Claude Code avec d’autres ordinateurs », active-le et copie ici l’adresse et la clé.", "zh": "在装有 Claude Code 的电脑上打开“语音输入 → 与其他电脑共享 Claude Code”，开启后把地址和密钥复制到这里。"},
@@ -893,7 +894,7 @@ class VoiceController:
         s = self.sess
         if self.state != "recording" or s is None:
             return
-        if self.get("mode") == "hold" and not vs.key_down(self.get("hk_vk")):
+        if self.get("mode") == "hold" and not self.hook.hotkey_held():
             s.lost_key = getattr(s, "lost_key", 0) + 1
             if s.lost_key > 10:               # отпускание не пришло (экран блокировки и т.п.)
                 self._stop_recording()
@@ -1029,7 +1030,7 @@ class VoiceController:
             wav = s.rec.wav_bytes()
             text = ve.clean_transcript(self._stt(wav, getattr(s.rec, "sent_duration", 0.0)))
             t_stt = time.time() - t0
-            self.log("voice: stt %.1fs -> %r" % (t_stt, text[:120]))
+            self.log("voice: stt %.1fs -> %d chars" % (t_stt, len(text)))   # сам текст в лог не пишем
             if not text:
                 if s.runner:
                     s.runner.cancel()
@@ -1093,6 +1094,10 @@ class VoiceController:
 
     def _deliver(self, s, text, editable):
         fg_now = vs.user32.GetForegroundWindow()
+        # в терминал многострочный текст не вставляем: каждая строка, кроме
+        # последней, тут же ВЫПОЛНЯЕТСЯ как команда — только в буфер
+        if "\n" in text.strip() and vs.class_name(fg_now) in CONSOLE_CLASSES:
+            editable = False
         if self.get("autopaste") and editable and fg_now == s.fg:
             restore = self.get("restore_clip")
             snap = vs.clip_snapshot() if restore else None
@@ -1100,7 +1105,12 @@ class VoiceController:
                 raise ve.VoiceError("clipboard busy")
             seq = vs.clip_seq()
             time.sleep(0.04)
-            vs.send_combo([vs.VK_CONTROL], vs.VK_V)
+            if not vs.send_combo([vs.VK_CONTROL], vs.VK_V):
+                # Ctrl+V не доставлен (окно с правами администратора — UIPI):
+                # текст остаётся в буфере, старое содержимое НЕ возвращаем
+                self.log("voice: SendInput rejected (elevated window?) -> copied")
+                vs.clip_set_text(text)
+                return "copied"
             if restore and snap is not None:
                 def put_back():
                     time.sleep(0.8)                # дать приложению забрать текст
@@ -1108,7 +1118,8 @@ class VoiceController:
                         vs.clip_restore(snap)
                 threading.Thread(target=put_back, daemon=True).start()
             return "pasted"
-        vs.clip_set_text(text)
+        if not vs.clip_set_text(text):
+            raise ve.VoiceError("clipboard busy")
         return "copied"
 
     def _migrate(self):
@@ -1400,14 +1411,19 @@ class VoiceController:
             lk.pack(side="left", padx=(10, 0))
             lk.bind("<Button-1>", lambda e: extra[1]())
 
-    def _port_changed(self):
+    def _port_value(self):
+        # поле порта пишет в черновик строку на каждое нажатие ("", "8", "87"…) —
+        # до нормализации по Enter/потере фокуса int() ронял отрисовку вкладки
         try:
             port = int(str(self.get("share_port")).strip())
             if not 1 <= port <= 65535:
                 raise ValueError
         except (TypeError, ValueError):
             port = DEFAULTS["share_port"]
-        self.set("share_port", port)
+        return port
+
+    def _port_changed(self):
+        self.set("share_port", self._port_value())
         self._rebuild()
 
     def _btn_row(self):
@@ -1571,7 +1587,7 @@ class VoiceController:
             self._check(V("share_enable"), "share_enabled", toggle_share)
             if self.get("share_enabled"):
                 with self._panel(V("share_panel")):
-                    port = self.get("share_port")
+                    port = self._port_value()
                     running = self.share and self.share.httpd and self.share.port == int(port)
                     if running and self.share.token == self.get("share_token"):
                         self._note("● " + V("share_on", int(port)), fg="#34d399")
@@ -1621,10 +1637,19 @@ class VoiceController:
         dlg.protocol("WM_DELETE_WINDOW", closed)
         dlg.focus_force()
 
+    PLAIN_HOTKEYS_OK = set(range(0x70, 0x88)) | {0x13, 0x91, 0x2C}   # F1-F24, Pause, ScrollLock, PrtSc
+
     def _capture_done(self, ev):
+        bad = False
         if ev[0] == "captured":
-            self.set("hk_mods", ev[1])
-            self.set("hk_vk", ev[2])
+            mods, vk = ev[1], ev[2]
+            # обычная клавиша без модификатора (Enter, пробел, буква) глоталась бы
+            # ВО ВСЕЙ системе — разрешаем только сочетания, боковые модификаторы и F-клавиши
+            if mods == 0 and vk not in vs.SIDED_MODIFIERS and vk not in self.PLAIN_HOTKEYS_OK:
+                bad = True
+            else:
+                self.set("hk_mods", mods)
+                self.set("hk_vk", vk)
         dlg, self._capture_dlg = self._capture_dlg, None
         if dlg:
             try:
@@ -1633,6 +1658,8 @@ class VoiceController:
                 pass
         if self.win:
             self._rebuild()
+        if bad:
+            self.app._info(V("sec_hotkey"), V("hk_plain"))
 
     def _download(self, model):
         if self.whisper.installing:

@@ -134,7 +134,9 @@ def wait_modifiers_released(timeout=1.2):
 def send_combo(mods, vk):
     """Нажать сочетание (mods — список VK модификаторов). Если физически ещё
     зажаты другие модификаторы — логически «отпускаем» их, чтобы Ctrl+V не
-    превратился в Ctrl+Shift+V."""
+    превратился в Ctrl+Shift+V. Возвращает True, если система приняла ВСЕ
+    события (SendInput молча отбрасывается, когда в фокусе окно с правами
+    администратора — UIPI)."""
     seq = []
     for m in MODIFIER_VKS:
         if key_down(m) and m not in mods:
@@ -146,7 +148,7 @@ def send_combo(mods, vk):
     for m in reversed(mods):
         seq.append(_key_input(m, True))
     arr = (INPUT * len(seq))(*seq)
-    return user32.SendInput(len(seq), arr, ctypes.sizeof(INPUT))
+    return user32.SendInput(len(seq), arr, ctypes.sizeof(INPUT)) == len(seq)
 
 
 _SIDE_NAMES = {0xA0: "Left Shift", 0xA1: "Right Shift", 0xA2: "Left Ctrl", 0xA3: "Right Ctrl",
@@ -288,6 +290,16 @@ class KeyHook:
     @property
     def modifier_only(self):
         return self.mods == 0 and self.vk in SIDED_MODIFIERS
+
+    def hotkey_held(self):
+        """Зажата ли горячая клавиша физически. Для обычной клавиши (F9, Ctrl+Space)
+        хук ГЛОТАЕТ её нажатие, и GetAsyncKeyState её не видит — поэтому смотрим
+        на собственный учёт нажатий; для одиночного модификатора (он не глотается)
+        дополнительно сверяемся с системой (отпускание могло потеряться на экране
+        блокировки)."""
+        if self.vk not in self._down:
+            return False
+        return key_down(self.vk) if self.modifier_only else True
 
     def start(self):
         ready = threading.Event()
