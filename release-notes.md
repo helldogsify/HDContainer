@@ -1,0 +1,3 @@
+- Containers remember the size of their windows, including full screen: a window that was maximized opens maximized again instead of in an old, odd size. Adding a maximized window to a container no longer shrinks it.
+- A minimized container shows a real preview in the taskbar (a snapshot of its windows) instead of a small empty gray box.
+- Clicking a minimized container in the taskbar brings it back right away, and keyboard focus goes to the window you were working in.
