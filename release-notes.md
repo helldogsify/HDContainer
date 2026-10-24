@@ -1,2 +1,1 @@
-- Fixes v1.4.0: voice input was missing entirely (no hotkey, no tab in Settings) because the voice module failed to load. If you are on 1.4.0, this update brings it back; your voice settings are untouched.
-- The release build now fails if any module of the app doesn't import, so this can't ship again.
+- **Dictation history.** Every result (and the recognized text when processing fails) is kept, so nothing is lost if it was pasted into the wrong place or overwritten in the clipboard. Open it from the tray menu or Settings → Voice input: search, copy any entry again (button or double-click), delete one or clear all. The last 200 entries are stored on this PC only; it can be turned off in Settings.

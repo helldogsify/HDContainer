@@ -67,7 +67,7 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -261,6 +261,7 @@ FONT_H     = ("Segoe UI Semibold", 14)
 # от ⏻/⚙ в обычных шрифтах, которые на части систем рисуются пустым прямоугольником)
 ICON_FONT = "Segoe MDL2 Assets"
 ICON_ADD, ICON_SETTINGS, ICON_POWER = "\uE710", "\uE713", "\uE7E8"
+ICON_HISTORY = "\uE81C"
 
 # ---------------------------------------------------------------------------
 # Настройки + язык (i18n)
@@ -2020,6 +2021,9 @@ class TrayApp:
                                lambda: act(self._create_container))
         self._popup_action_row(frame, ICON_SETTINGS, T("settings"), W,
                                lambda: act(self._open_settings))
+        if self.voice is not None:
+            self._popup_action_row(frame, ICON_HISTORY, voice.V("hist_menu"), W,
+                                   lambda: act(self.voice.open_history))
         self._popup_action_row(frame, ICON_POWER, T("quit"), W,
                                lambda: act(self._quit))
 
