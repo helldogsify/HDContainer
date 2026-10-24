@@ -18,6 +18,7 @@ voice_engines (Whisper, Claude Code / Anthropic API / OpenAI-совместим�
 """
 
 import ctypes
+import json
 import math
 import os
 import queue
@@ -61,6 +62,17 @@ VSTR = {
     "sec_hotkey": {"en": "Hotkey", "ru": "Горячая клавиша", "es": "Atajo", "pt": "Atalho", "de": "Hotkey", "fr": "Raccourci", "zh": "快捷键"},
     "change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
     "hk_plain": {"en": "A plain key can't be the hotkey: it would stop working everywhere. Use a combination (Ctrl/Alt/Shift/Win + key), a single Alt/Ctrl/Shift/Win, or an F-key.", "ru": "Одиночная клавиша не может быть горячей: она перестала бы работать везде. Используйте сочетание (Ctrl/Alt/Shift/Win + клавиша), одиночный Alt/Ctrl/Shift/Win или F-клавишу.", "es": "Una tecla sola no puede ser el atajo: dejaría de funcionar en todas partes. Usa una combinación (Ctrl/Alt/Shift/Win + tecla), un Alt/Ctrl/Shift/Win solo o una tecla F.", "pt": "Uma tecla sozinha não pode ser o atalho: ela deixaria de funcionar em todo lugar. Use uma combinação (Ctrl/Alt/Shift/Win + tecla), um Alt/Ctrl/Shift/Win sozinho ou uma tecla F.", "de": "Eine einzelne Taste kann nicht die Hotkey sein: sie würde überall nicht mehr funktionieren. Nutze eine Kombination (Strg/Alt/Umschalt/Win + Taste), ein einzelnes Alt/Strg/Umschalt/Win oder eine F-Taste.", "fr": "Une touche seule ne peut pas être le raccourci : elle ne fonctionnerait plus nulle part. Utilise une combinaison (Ctrl/Alt/Maj/Win + touche), un Alt/Ctrl/Maj/Win seul ou une touche F.", "zh": "单个按键不能作为热键：它将在所有地方失效。请使用组合键（Ctrl/Alt/Shift/Win + 键）、单独的 Alt/Ctrl/Shift/Win 或 F 键。"},
+    "hist_menu": {"en": "Dictation history", "ru": "История диктовок", "es": "Historial de dictados", "pt": "Histórico de ditados", "de": "Diktierverlauf", "fr": "Historique des dictées", "zh": "听写历史"},
+    "hist_empty": {"en": "No dictations yet.", "ru": "Диктовок пока нет.", "es": "Aún no hay dictados.", "pt": "Ainda não há ditados.", "de": "Noch keine Diktate.", "fr": "Aucune dictée pour l'instant.", "zh": "还没有听写记录。"},
+    "hist_nomatch": {"en": "Nothing matches.", "ru": "Ничего не найдено.", "es": "Sin coincidencias.", "pt": "Nada encontrado.", "de": "Keine Treffer.", "fr": "Aucun résultat.", "zh": "没有匹配项。"},
+    "hist_search": {"en": "Search…", "ru": "Поиск…", "es": "Buscar…", "pt": "Pesquisar…", "de": "Suchen…", "fr": "Rechercher…", "zh": "搜索…"},
+    "hist_clear": {"en": "Clear history", "ru": "Очистить историю", "es": "Borrar historial", "pt": "Limpar histórico", "de": "Verlauf löschen", "fr": "Effacer l'historique", "zh": "清空历史"},
+    "hist_clear_q": {"en": "Delete all saved dictations?", "ru": "Удалить все сохранённые диктовки?", "es": "¿Eliminar todos los dictados guardados?", "pt": "Excluir todos os ditados salvos?", "de": "Alle gespeicherten Diktate löschen?", "fr": "Supprimer toutes les dictées enregistrées ?", "zh": "删除所有已保存的听写记录？"},
+    "hist_keep": {"en": "Keep dictation history", "ru": "Сохранять историю диктовок", "es": "Guardar el historial de dictados", "pt": "Manter histórico de ditados", "de": "Diktierverlauf speichern", "fr": "Conserver l'historique des dictées", "zh": "保存听写历史"},
+    "hist_note": {"en": "The last %d results are kept on this PC only (%s), so a text that was pasted into the wrong place or lost from the clipboard can be copied again.", "ru": "Последние %d результатов хранятся только на этом ПК (%s): текст, который вставился не туда или пропал из буфера, можно скопировать снова.", "es": "Los últimos %d resultados se guardan solo en este PC (%s): un texto pegado en el lugar equivocado o perdido del portapapeles se puede copiar de nuevo.", "pt": "Os últimos %d resultados ficam apenas neste PC (%s): um texto colado no lugar errado ou perdido da área de transferência pode ser copiado de novo.", "de": "Die letzten %d Ergebnisse bleiben nur auf diesem PC (%s): ein falsch eingefügter oder aus der Zwischenablage verlorener Text lässt sich erneut kopieren.", "fr": "Les %d derniers résultats restent sur ce PC uniquement (%s) : un texte collé au mauvais endroit ou perdu du presse-papiers peut être copié à nouveau.", "zh": "最近 %d 条结果仅保存在本机（%s）：粘贴错位置或从剪贴板丢失的文本可以再次复制。"},
+    "hist_open": {"en": "Open history", "ru": "Открыть историю", "es": "Abrir historial", "pt": "Abrir histórico", "de": "Verlauf öffnen", "fr": "Ouvrir l'historique", "zh": "打开历史"},
+    "hist_raw": {"en": "Recognized text — processing failed", "ru": "Распознанный текст — обработка не удалась", "es": "Texto reconocido — el procesamiento falló", "pt": "Texto reconhecido — o processamento falhou", "de": "Erkannter Text — Verarbeitung fehlgeschlagen", "fr": "Texte reconnu — traitement échoué", "zh": "已识别文本 — 处理失败"},
+    "hist_raw_lbl": {"en": "as recognized:", "ru": "как распознано:", "es": "tal como se reconoció:", "pt": "como reconhecido:", "de": "wie erkannt:", "fr": "tel que reconnu :", "zh": "识别原文："},
     "press_combo": {"en": "Press a key or a combination\n\nEsc — cancel", "ru": "Нажми клавишу или сочетание\n\nEsc — отмена", "es": "Pulsa una tecla o combinación\n\nEsc — cancelar", "pt": "Pressione uma tecla ou combinação\n\nEsc — cancelar", "de": "Taste oder Kombination drücken\n\nEsc — Abbrechen", "fr": "Appuie sur une touche ou une combinaison\n\nÉchap — annuler", "zh": "按下一个键或组合键\n\nEsc — 取消"},
     "llm_remote": {"en": "Claude on another computer — via HDContainer on the PC that has Claude Code", "ru": "Claude на другом компьютере — через HDContainer на ПК, где есть Claude Code", "es": "Claude en otro equipo — a través de HDContainer en el PC que tiene Claude Code", "pt": "Claude em outro computador — via HDContainer no PC que tem o Claude Code", "de": "Claude auf einem anderen Computer — über HDContainer auf dem PC mit Claude Code", "fr": "Claude sur un autre ordinateur — via HDContainer sur le PC qui a Claude Code", "zh": "另一台电脑上的 Claude — 通过装有 Claude Code 的电脑上的 HDContainer"},
     "remote_hint": {"en": "On the PC with Claude Code open Voice input → “Share Claude Code with other computers”, turn it on, and copy the address and key here.", "ru": "На ПК с Claude Code открой «Голосовой ввод» → «Поделиться Claude Code с другими компьютерами», включи и скопируй сюда адрес и ключ.", "es": "En el PC con Claude Code abre Entrada por voz → «Compartir Claude Code con otros equipos», actívalo y copia aquí la dirección y la clave.", "pt": "No PC com o Claude Code abra Entrada por voz → “Compartilhar o Claude Code com outros computadores”, ative e copie aqui o endereço e a chave.", "de": "Öffne auf dem PC mit Claude Code Spracheingabe → „Claude Code mit anderen Computern teilen“, schalte es ein und kopiere Adresse und Schlüssel hierher.", "fr": "Sur le PC qui a Claude Code, ouvre Saisie vocale → « Partager Claude Code avec d’autres ordinateurs », active-le et copie ici l’adresse et la clé.", "zh": "在装有 Claude Code 的电脑上打开“语音输入 → 与其他电脑共享 Claude Code”，开启后把地址和密钥复制到这里。"},
@@ -184,7 +196,9 @@ DEFAULTS = {
     "p_dict": "", "p_edit": "",
     "share_enabled": False, "share_port": 8765, "share_token": "",
     "rm_url": "", "rm_key": "",
+    "history": True,
 }
+HISTORY_MAX = 200
 SECRET_KEYS = {"stt_key", "an_key", "oa_key", "share_token", "rm_key"}
 
 # ---------------------------------------------------------------------------
@@ -703,6 +717,10 @@ class VoiceController:
         self.hook = vs.KeyHook(log)
         self.hook.start()
         self.register_hotkey()
+        self.history_file = os.path.join(local_dir, "voice_history.json")
+        self._hist_lock = threading.Lock()
+        self.history = self._history_load()     # [{"t","text","how","raw"}], старые первыми
+        self.hist_win = None
         self.share = None
         self._p = self._pbg = None
         self._migrate()
@@ -967,6 +985,7 @@ class VoiceController:
                 self.sess = None
                 self.overlay.show(kw["state"], kw["title"], kw.get("sub", ""),
                                   clickable=kw.get("clickable", False))
+                self._history_refresh()
             elif kind == "test":
                 cb = kw.get("cb")
                 if cb:
@@ -1029,6 +1048,7 @@ class VoiceController:
 
     def _pipeline(self, s):
         t0 = time.time()
+        text = ""
         try:
             wav = s.rec.wav_bytes()
             text = ve.clean_transcript(self._stt(wav, getattr(s.rec, "sent_duration", 0.0)))
@@ -1078,18 +1098,23 @@ class VoiceController:
             how = self._deliver(s, result, bool(editable) and not answer)
             if answer:
                 how = "answer"
+            self._history_add(result, how, raw=text if text.strip() != result.strip() else "")
             title = {"pasted": V("o_pasted"), "copied": V("o_copied"), "answer": V("o_answer")}[how]
             self._post("final", state=how, title=warn or title, sub=result)
             self.log("voice: done %s in %.1fs" % (how, time.time() - s.t0))
         except ve.VoiceError as ex:
             msg = str(ex)
             self.log("voice error: %s" % msg)
+            if text:
+                self._history_add(text, "error")     # распознанное не теряем
             if msg in ("model_missing", "claude_missing"):
                 self._post("final", state="setup", title=V("o_setup"), sub=V("o_click"), clickable=True)
             else:
                 self._post("final", state="error", title=V("o_err"), sub=msg, clickable=True)
         except Exception as ex:
             self.log("voice pipeline crash:\n" + traceback.format_exc())
+            if text:
+                self._history_add(text, "error")
             self._post("final", state="error", title=V("o_err"), sub=repr(ex)[:120], clickable=True)
         finally:
             if s.runner:
@@ -1176,6 +1201,184 @@ class VoiceController:
             self.whisper.ensure_server(self.get("w_model"), self.get("lang"))
         except Exception as ex:
             self.log("whisper keep-warm: %r" % ex)
+
+    # =======================================================================
+    #  История диктовок: последние результаты, чтобы потерянный текст
+    #  (вставился не туда, затёрся в буфере) можно было скопировать снова
+    # =======================================================================
+    def _history_load(self):
+        try:
+            with open(self.history_file, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            return [e for e in d if isinstance(e, dict) and e.get("text")] if isinstance(d, list) else []
+        except Exception:
+            return []
+
+    def _history_save(self):
+        tmp = self.history_file + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self.history, f, ensure_ascii=False)
+            os.replace(tmp, self.history_file)
+        except Exception as ex:
+            self.log("voice history save: %r" % ex)
+
+    def _history_add(self, text, how, raw=""):
+        # зовётся из потока обработки — под замком; окно истории обновится само
+        if not self.get("history") or not (text or "").strip():
+            return
+        with self._hist_lock:
+            self.history.append({"t": time.time(), "text": text, "how": how, "raw": raw or ""})
+            del self.history[:-HISTORY_MAX]
+            self._history_save()
+        # окно истории обновит _pump при событии "final" (root.after из чужого
+        # потока звать нельзя)
+
+    def _history_delete(self, entry):
+        with self._hist_lock:
+            if entry in self.history:
+                self.history.remove(entry)
+            self._history_save()
+        self._history_refresh()
+
+    def _history_clear(self):
+        if not self.app._ask_yesno(V("hist_menu"), V("hist_clear_q")):
+            return
+        with self._hist_lock:
+            self.history = []
+            self._history_save()
+        self._history_refresh()
+
+    def _history_refresh(self):
+        w = self.hist_win
+        if w and w.winfo_exists():
+            try:
+                self._history_fill()
+            except Exception as ex:
+                self.log("voice history refresh: %r" % ex)
+
+    def open_history(self):
+        if self.hist_win and self.hist_win.winfo_exists():
+            self.hist_win.lift()
+            self.hist_win.focus_force()
+            return
+        main = __import__("__main__")
+        C = lambda n, d: getattr(main, n, d)
+        sf, sf2, bg = C("COL_SURFACE", "#232427"), C("COL_SURFACE2", "#2d2e31"), C("COL_BG", "#1b1b1d")
+        tx, dim, bd, ac = C("COL_TEXT", "#e6e8ea"), C("COL_TEXT_DIM", "#9aa0a6"), C("COL_BORDER", "#2a2b2c"), C("COL_ACCENT", "#4c8bf5")
+        win = self.app._dialog(V("hist_menu"), 600, 560)
+        win.resizable(True, True)
+        win.minsize(420, 320)
+        win.attributes("-topmost", False)
+        self.hist_win = win
+        self._hc = {"sf": sf, "sf2": sf2, "bg": bg, "tx": tx, "dim": dim, "bd": bd, "ac": ac}
+
+        top = tk.Frame(win, bg=sf)
+        top.pack(fill="x", padx=16, pady=(14, 6))
+        self._hist_q = tk.StringVar()
+        ent = tk.Entry(top, textvariable=self._hist_q, font=("Segoe UI", 10), bg=bg, fg=tx,
+                       insertbackground=tx, relief="flat", highlightthickness=1,
+                       highlightbackground=bd, highlightcolor=ac)
+        ent.pack(side="left", fill="x", expand=True, ipady=5)
+        ent.insert(0, V("hist_search"))
+        ent.configure(fg=dim)
+
+        def focus_in(_e):
+            if ent.get() == V("hist_search"):
+                ent.delete(0, "end")
+                ent.configure(fg=tx)
+
+        def focus_out(_e):
+            if not ent.get():
+                ent.insert(0, V("hist_search"))
+                ent.configure(fg=dim)
+        ent.bind("<FocusIn>", focus_in)
+        ent.bind("<FocusOut>", focus_out)
+        self._hist_q.trace_add("write", lambda *a: self._history_fill())
+        self.app._ghost_btn(top, V("hist_clear"), self._history_clear).pack(side="left", padx=(8, 0))
+
+        box = tk.Frame(win, bg=sf)
+        box.pack(fill="both", expand=True, padx=(16, 8), pady=(0, 12))
+        cv = tk.Canvas(box, bg=sf, highlightthickness=0, bd=0)
+        sb = self.app._dark_scrollbar(box, cv)
+        sb.pack(side="right", fill="y")
+        cv.pack(side="left", fill="both", expand=True)
+        body = tk.Frame(cv, bg=sf)
+        wid = cv.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.bind("<Configure>", lambda e: (cv.itemconfigure(wid, width=e.width), self._history_rewrap(e.width)))
+        win.bind("<MouseWheel>", lambda e: cv.yview_scroll(int(-e.delta / 120) * 3, "units"))
+        win.bind("<Escape>", lambda e: win.destroy())
+        self._hist_cv, self._hist_body = cv, body
+        self._hist_labels = []
+        self._history_fill()
+        win.focus_force()
+
+    def _history_rewrap(self, width):
+        for lb in self._hist_labels:
+            try:
+                lb.configure(wraplength=max(200, width - 150))
+            except Exception:
+                pass
+
+    def _history_fill(self):
+        body, c = self._hist_body, self._hc
+        for w in body.winfo_children():
+            w.destroy()
+        self._hist_labels = []
+        q = self._hist_q.get().strip().lower()
+        if q == V("hist_search").lower():
+            q = ""
+        with self._hist_lock:
+            items = list(reversed(self.history))
+        if q:
+            items = [e for e in items if q in (e.get("text", "") + " " + e.get("raw", "")).lower()]
+        if not items:
+            tk.Label(body, text=V("hist_empty") if not q else V("hist_nomatch"), bg=c["sf"],
+                     fg=c["dim"], font=("Segoe UI", 10)).pack(pady=40)
+            return
+        how_txt = {"pasted": V("o_pasted"), "copied": V("o_copied"), "answer": V("o_answer"),
+                   "error": V("hist_raw")}
+        wrap = max(200, self._hist_cv.winfo_width() - 150)
+        for e in items:
+            card = tk.Frame(body, bg=c["sf2"])
+            card.pack(fill="x", pady=(0, 8), padx=(0, 4))
+            head = tk.Frame(card, bg=c["sf2"])
+            head.pack(fill="x", padx=12, pady=(8, 2))
+            when = time.strftime("%d.%m %H:%M", time.localtime(e.get("t", 0)))
+            tk.Label(head, text=when + "   " + how_txt.get(e.get("how"), ""), bg=c["sf2"],
+                     fg=c["dim"], font=("Segoe UI", 9)).pack(side="left")
+            x = tk.Label(head, text="✕", bg=c["sf2"], fg=c["dim"], font=("Segoe UI", 10), cursor="hand2")
+            x.pack(side="right")
+            x.bind("<Button-1>", lambda _ev, e=e: self._history_delete(e))
+            cb = self.app._accent_btn(head, V("copy"), lambda e=e: self._history_copy(e["text"]))
+            cb.configure(padx=10, pady=3, font=("Segoe UI", 9))
+            cb.pack(side="right", padx=(0, 10))
+            full = e.get("text", "")
+            shown = full if len(full) <= 700 else full[:700].rstrip() + " …"
+            lb = tk.Label(card, text=shown, bg=c["sf2"], fg=c["tx"], font=("Segoe UI", 10),
+                          justify="left", anchor="w", wraplength=wrap, cursor="hand2")
+            lb.pack(fill="x", padx=12, pady=(0, 8 if not e.get("raw") else 2))
+            lb.bind("<Double-Button-1>", lambda _ev, t=full: self._history_copy(t))
+            self._hist_labels.append(lb)
+            if e.get("raw"):
+                raw = e["raw"]
+                rl = tk.Label(card, text=V("hist_raw_lbl") + " " + (raw if len(raw) <= 300 else raw[:300] + " …"),
+                              bg=c["sf2"], fg=c["dim"], font=("Segoe UI", 9), justify="left",
+                              anchor="w", wraplength=wrap, cursor="hand2")
+                rl.pack(fill="x", padx=12, pady=(0, 8))
+                rl.bind("<Double-Button-1>", lambda _ev, t=raw: self._history_copy(t))
+                self._hist_labels.append(rl)
+        self._hist_cv.yview_moveto(0)
+
+    def _history_copy(self, text):
+        if not vs.clip_set_text(text):
+            try:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(text)
+            except Exception:
+                pass
+        self.overlay.show("copied", V("o_copied"))
 
     def _idle_tick(self):
         try:
@@ -1615,6 +1818,13 @@ class VoiceController:
         self._note(V("cleanup_note"), pady=(0, 6), indent=30)
         self._check(V("autopaste"), "autopaste")
         self._check(V("restore"), "restore_clip")
+
+        # история
+        self._h(V("hist_menu"))
+        self._check(V("hist_keep"), "history")
+        self._note(V("hist_note", HISTORY_MAX, self.history_file), pady=(0, 6), indent=30)
+        row = self._btn_row()
+        self.app._ghost_btn(row, V("hist_open"), self.open_history).pack(side="left")
 
         # инструкции
         self._h(V("sec_prompts"))
