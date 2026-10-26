@@ -69,6 +69,20 @@ API keys are stored encrypted with Windows DPAPI under your user account.
 
 **One Claude Code for all your PCs.** On the computer that has Claude Code, turn on *Voice input → Share Claude Code with other computers*. On your other computers, choose *Claude on another computer* and paste the address and key it shows. Those computers then need neither Claude Code nor an API key. The shared endpoint is OpenAI‑compatible, accepts only private networks (Tailscale, LAN) and requires the key. It keeps a Claude process warmed up, and the other PC asks it to warm up as soon as you start talking.
 
+## Convert files from the right-click menu
+
+Right-click any image, audio, video, document or data file in Explorer → **Convert to** → pick a format. The result lands next to the original with the same name and the new extension (`report.docx` → `report.md`; if the name is taken you get `report (2).md`).
+
+| Files | Converts to | Engine |
+|---|---|---|
+| png, jpg, webp, bmp, gif, tiff, ico | png, jpg, webp, bmp, gif, ico, tiff, pdf | Pillow (built in) |
+| mp3, wav, ogg, flac, m4a, aac, wma, opus, aiff | mp3, wav, ogg, flac, m4a, opus | [FFmpeg](https://github.com/BtbN/FFmpeg-Builds) |
+| mp4, mkv, mov, avi, webm, wmv, m4v, ts, flv, mpg, 3gp | mp4, mkv, webm, mov, avi, gif + mp3/wav/m4a (audio track) | FFmpeg |
+| md, docx, html, txt, rtf, odt, epub, tex, rst | docx, md, html, txt, rtf, odt, epub | [Pandoc](https://github.com/jgm/pandoc) |
+| csv, tsv, json | csv, tsv, json | built in |
+
+FFmpeg (~190 MB) and Pandoc (~40 MB) are downloaded from their GitHub releases the first time they're needed and verified against the SHA‑256 digest GitHub publishes. On Windows 11 the item is under **Show more options** (or Shift + right‑click). The menu is a few per‑user registry keys — no admin rights; turn it off in **Settings** or it is removed on uninstall.
+
 ## Install
 
 1. Download **[HDContainer-Setup.exe](https://github.com/helldogsify/HDContainer/releases/latest)**.

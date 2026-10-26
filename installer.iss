@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.5.0"
+#define MyAppVersion "1.6.0"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -69,7 +69,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall
 
 [UninstallRun]
-; корректно закрыть запущенный экземпляр перед удалением файлов
+; убрать «Конвертировать в» из меню Проводника (ключи HKCU), затем корректно
+; закрыть запущенный экземпляр перед удалением файлов
+Filename: "{app}\{#MyAppExe}"; Parameters: "--unregister-convert"; Flags: waituntilterminated runhidden; RunOnceId: "UnregConvert"
 Filename: "{app}\{#MyAppExe}"; Parameters: "--quit"; Flags: waituntilterminated runhidden; RunOnceId: "QuitApp"
 
 [Code]

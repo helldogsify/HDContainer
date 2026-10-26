@@ -67,7 +67,13 @@ except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.5.0"
+try:                                   # «Конвертировать в» в меню Проводника
+    import convert
+except Exception:
+    convert = None
+    _CONVERT_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.6.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1804,6 +1810,9 @@ class TrayApp:
 
         # сторож: вернёт окна в норму, если нас резко убьют (без перезапуска)
         self.root.after(1500, self._launch_watchdog)
+        # пункт «Конвертировать в» в меню Проводника: ключи реестра HKCU; после
+        # обновления в другую папку или смены языка перезаписываются
+        self.root.after(6000, self._apply_convert_menu)
         # подчистить разовую задачу обновления, если осталась после установки
         # (задача не может удалить сама себя, пока выполняется её действие)
         self.root.after(3000, self._cleanup_update_task)
@@ -2365,6 +2374,22 @@ class TrayApp:
 
     def _toggle_autostart(self):
         set_autostart(not autostart_enabled())
+
+    def _apply_convert_menu(self):
+        if convert is None:
+            return
+        try:
+            convert.LANG_GET = lambda: LANG
+            exe = _app_exe()
+            if self.settings.get("convert_menu", True):
+                if not convert.menu_registered(exe):
+                    convert.register_menu(exe)
+                    log("convert menu registered for %s" % exe)
+            elif convert.menu_present():
+                convert.unregister_menu()
+                log("convert menu unregistered")
+        except Exception as ex:
+            log("convert menu failed: %r" % ex)
 
     # ------- автообновление -------
     def _update_tick(self):
@@ -4014,7 +4039,8 @@ class TrayApp:
         self._settings_tab = tab
         if getattr(self, "_gen_draft", None) is None:
             self._gen_draft = {"autostart": autostart_enabled(),
-                               "autoupdate": self.settings.get("autoupdate", True)}
+                               "autoupdate": self.settings.get("autoupdate", True),
+                               "convert_menu": self.settings.get("convert_menu", True)}
         if self.voice is not None and self.voice.draft is None:
             self.voice.begin_edit()
 
@@ -4066,6 +4092,12 @@ class TrayApp:
                             lambda v: d.__setitem__("autostart", bool(v)), pad)
         self._setting_check(win, T("auto_update"), d["autoupdate"],
                             lambda v: d.__setitem__("autoupdate", bool(v)), pad)
+        if convert is not None:
+            self._setting_check(win, convert.C("setting"), d["convert_menu"],
+                                lambda v: d.__setitem__("convert_menu", bool(v)), pad)
+            tk.Label(win, text=convert.C("setting_note"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
+                     font=FONT_SM, wraplength=420, justify="left").pack(anchor="w", padx=pad + 30,
+                                                                         pady=(0, 6))
         self._setting_lang(win, pad)
         upd = tk.Label(win, text=T("check_update"), bg=COL_SURFACE, fg=COL_ACCENT,
                        font=FONT_SM, cursor="hand2")
@@ -4115,6 +4147,9 @@ class TrayApp:
                 set_autostart(d["autostart"])
             if "autoupdate" in d:
                 self._set_setting("autoupdate", d["autoupdate"])
+            if "convert_menu" in d:
+                self._set_setting("convert_menu", d["convert_menu"])
+                self._apply_convert_menu()
             if self.voice is not None:
                 self.voice.commit()
         except Exception:
@@ -4287,6 +4322,24 @@ def main():
     # режим сторожа: ждём смерти основного процесса и возвращаем окна в норму
     if "--watchdog" in args:
         _run_watchdog(args)
+        return
+    # конвертация из меню Проводника: отдельный процесс со своим окошком,
+    # основной экземпляр (трей) не нужен
+    if "--convert" in args and convert is not None:
+        i = args.index("--convert")
+        if i + 2 < len(args):
+            global LANG
+            LANG = load_settings().get("lang") or detect_lang()
+            convert.LANG_GET = lambda: LANG
+            convert.LOG = log
+            convert.run_cli(args[i + 1], args[i + 2])
+        return
+    if "--unregister-convert" in args:          # деинсталлятор
+        if convert is not None:
+            try:
+                convert.unregister_menu()
+            except Exception as ex:
+                log("unregister convert failed: %r" % ex)
         return
     # штатно закрыть запущенный экземпляр (для деинсталлятора): WM_CLOSE -> _quit,
     # который снимает владение со всех окон, и ждём, пока процесс действительно выйдет
