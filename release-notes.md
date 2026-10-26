@@ -1,1 +1,1 @@
-- **HEIC / HEIF photos** (iPhone) are now supported in the converter — both as input (heic → jpg, png, webp, pdf…) and as output (→ heic). Built in via libheif, nothing to download. WebP was already supported both ways.
+- **Convert many files at once.** Select any number of files of a type, right-click → Convert to → format: one window shows "3 of 12: name → PDF" and the files are processed one after another (engines are downloaded once). The Windows limit that hid the menu item for more than 15 selected files is lifted.

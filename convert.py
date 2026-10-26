@@ -34,8 +34,10 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import traceback
 import urllib.request
+import uuid
 import winreg
 import zipfile
 import xml.etree.ElementTree as ET
@@ -43,7 +45,7 @@ import xml.etree.ElementTree as ET
 CREATE_NO_WINDOW = 0x08000000
 LANG_GET = lambda: "en"
 LOG = lambda m: None
-MENU_VERSION = 3            # менять при изменении списка форматов -> меню перепишется
+MENU_VERSION = 4            # менять при изменении списка форматов -> меню перепишется
 
 CSTR = {
     "menu": {"en": "Convert to", "ru": "Конвертировать в", "es": "Convertir a", "pt": "Converter para", "de": "Konvertieren in", "fr": "Convertir en", "zh": "转换为"},
@@ -76,6 +78,9 @@ CSTR = {
     "title": {"en": "Convert", "ru": "Конвертация", "es": "Convertir", "pt": "Converter", "de": "Konvertieren", "fr": "Conversion", "zh": "转换"},
     "working": {"en": "Converting %s → %s…", "ru": "Конвертирую %s → %s…", "es": "Convirtiendo %s → %s…", "pt": "Convertendo %s → %s…", "de": "Konvertiere %s → %s…", "fr": "Conversion %s → %s…", "zh": "正在转换 %s → %s…"},
     "done": {"en": "Done: %s", "ru": "Готово: %s", "es": "Listo: %s", "pt": "Pronto: %s", "de": "Fertig: %s", "fr": "Terminé : %s", "zh": "完成：%s"},
+    "batch": {"en": "%d of %d: %s → %s", "ru": "%d из %d: %s → %s", "es": "%d de %d: %s → %s", "pt": "%d de %d: %s → %s", "de": "%d von %d: %s → %s", "fr": "%d sur %d : %s → %s", "zh": "第 %d / %d：%s → %s"},
+    "done_batch": {"en": "Done: %d files", "ru": "Готово: %d файлов", "es": "Listo: %d archivos", "pt": "Pronto: %d arquivos", "de": "Fertig: %d Dateien", "fr": "Terminé : %d fichiers", "zh": "完成：%d 个文件"},
+    "done_errors": {"en": "Done: %d files, %d failed", "ru": "Готово: %d файлов, %d с ошибкой", "es": "Listo: %d archivos, %d con error", "pt": "Pronto: %d arquivos, %d com erro", "de": "Fertig: %d Dateien, %d fehlgeschlagen", "fr": "Terminé : %d fichiers, %d en échec", "zh": "完成：%d 个文件，%d 个失败"},
     "done_pages": {"en": "Done: %d files (%s…)", "ru": "Готово: %d файлов (%s…)", "es": "Listo: %d archivos (%s…)", "pt": "Pronto: %d arquivos (%s…)", "de": "Fertig: %d Dateien (%s…)", "fr": "Terminé : %d fichiers (%s…)", "zh": "完成：%d 个文件（%s…）"},
     "failed": {"en": "Conversion failed", "ru": "Не удалось сконвертировать", "es": "Error de conversión", "pt": "Falha na conversão", "de": "Konvertierung fehlgeschlagen", "fr": "Échec de la conversion", "zh": "转换失败"},
     "need_tool": {"en": "%s (about %d MB) is needed for this conversion. Download it now from GitHub (%s)?", "ru": "Для этой конвертации нужен %s (около %d МБ). Скачать сейчас с GitHub (%s)?", "es": "Para esta conversión se necesita %s (unos %d MB). ¿Descargarlo ahora desde GitHub (%s)?", "pt": "Esta conversão precisa de %s (cerca de %d MB). Baixar agora do GitHub (%s)?", "de": "Für diese Konvertierung wird %s (etwa %d MB) benötigt. Jetzt von GitHub laden (%s)?", "fr": "Cette conversion nécessite %s (environ %d Mo). Le télécharger maintenant depuis GitHub (%s) ?", "zh": "此转换需要 %s（约 %d MB）。现在从 GitHub（%s）下载吗？"},
@@ -890,6 +895,10 @@ def register_menu(exe):
             sub = _assoc_key(ext) + r"\shell\%02d_%s" % (i, fmt)
             with winreg.CreateKey(hk, sub) as k:
                 winreg.SetValueEx(k, "MUIVerb", 0, winreg.REG_SZ, fmt.upper())
+                # много выделенных файлов: Проводник запускает команду на каждый,
+                # а без этого значения при >15 файлах пункт просто исчезает;
+                # запущенные экземпляры сами сливаются в одну очередь (см. run_cli)
+                winreg.SetValueEx(k, "MultiSelectModel", 0, winreg.REG_SZ, "Player")
             with winreg.CreateKey(hk, sub + r"\command") as k:
                 winreg.SetValueEx(k, "", 0, winreg.REG_SZ,
                                   '"%s" --convert "%%1" %s' % (exe, fmt))
@@ -1022,9 +1031,94 @@ def build_settings(app, parent, win, pad=24):
 
 
 # ---------------------------------------------------------------------------
-#  Запуск из меню: --convert <файл> <формат>  (отдельный процесс, своё окно)
+#  Запуск из меню: --convert <файл> <формат>
+#
+#  При нескольких выделенных файлах Проводник запускает нас на КАЖДЫЙ файл.
+#  Каждый экземпляр кладёт задание в папку-очередь; первый, кто захватил
+#  именованный мьютекс, становится «сборщиком»: показывает одно окно и
+#  обрабатывает задания по очереди (в т.ч. те, что подъехали позже),
+#  остальные экземпляры сразу выходят.
 # ---------------------------------------------------------------------------
+_BATCH_MUTEX = "HDContainer_convert_batch"
+_batch_handle = None
+
+
+def queue_dir():
+    d = os.path.join(tools_dir(), "..", "convert-queue")
+    d = os.path.normpath(d)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def enqueue_job(path, fmt):
+    job = os.path.join(queue_dir(), "%d-%s.json" % (int(time.time() * 1000), uuid.uuid4().hex[:8]))
+    tmp = job + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"path": os.path.abspath(path), "fmt": fmt.lower()}, f)
+    os.replace(tmp, job)        # появляется в очереди уже целиком
+
+
+def take_jobs():
+    """Забрать (и удалить из очереди) все задания; очень старые — мусор от краша."""
+    jobs = []
+    now = time.time()
+    for name in sorted(os.listdir(queue_dir())):
+        if not name.endswith(".json"):
+            continue
+        p = os.path.join(queue_dir(), name)
+        try:
+            if now - os.path.getmtime(p) > 3600:
+                os.remove(p)
+                continue
+            with open(p, "r", encoding="utf-8") as f:
+                j = json.load(f)
+            os.remove(p)
+            if j.get("path") and j.get("fmt"):
+                jobs.append((j["path"], j["fmt"]))
+        except Exception:
+            pass
+    return jobs
+
+
+def acquire_batch_lock():
+    """True, если мы — сборщик (мьютекс был свободен)."""
+    global _batch_handle
+    try:
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateMutexW.restype = ctypes.c_void_p
+        k32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+        h = k32.CreateMutexW(None, False, _BATCH_MUTEX)
+        if ctypes.get_last_error() == 183:          # ERROR_ALREADY_EXISTS
+            if h:
+                k32.CloseHandle(ctypes.c_void_p(h))
+            return False
+        _batch_handle = h
+        return True
+    except Exception as ex:
+        LOG("batch lock failed: %r" % ex)
+        return True                                 # лучше два окна, чем ни одного
+
+
+def release_batch_lock():
+    global _batch_handle
+    if _batch_handle:
+        import ctypes
+        ctypes.WinDLL("kernel32").CloseHandle(ctypes.c_void_p(_batch_handle))
+        _batch_handle = None
+
+
 def run_cli(path, fmt):
+    enqueue_job(path, fmt)
+    if not acquire_batch_lock():
+        return                                    # сборщик уже работает — он заберёт задание
+    try:
+        _run_batch_window()
+    finally:
+        release_batch_lock()
+
+
+def _run_batch_window():
     import tkinter as tk
     from tkinter import messagebox
 
@@ -1043,12 +1137,11 @@ def run_cli(path, fmt):
             root.iconbitmap(ico)
     except Exception:
         pass
-    w, h = 460, 150
+    w, h = 480, 160
     root.geometry("%dx%d+%d+%d" % (w, h, (root.winfo_screenwidth() - w) // 2,
                                    (root.winfo_screenheight() - h) // 2))
-    name = os.path.basename(path)
-    status = tk.Label(root, text=C("working", name, fmt.upper()), bg=SF, fg=TX,
-                      font=("Segoe UI", 10), wraplength=420, justify="left")
+    status = tk.Label(root, text="…", bg=SF, fg=TX, font=("Segoe UI", 10), wraplength=440,
+                      justify="left")
     status.pack(anchor="w", padx=20, pady=(22, 10))
     track = tk.Canvas(root, height=8, bg=BG, highlightthickness=0, bd=0)
     track.pack(fill="x", padx=20)
@@ -1071,9 +1164,12 @@ def run_cli(path, fmt):
     btn.pack(side="right", padx=20, pady=12)
     btn.bind("<Button-1>", lambda e: (st.__setitem__("cancel", True), root.destroy()))
 
+    def ui(fn):
+        root.after(0, lambda: status.winfo_exists() and fn())
+
     def set_status(text, frac=None):
         st["frac"] = frac
-        root.after(0, lambda: status.winfo_exists() and status.configure(text=text))
+        ui(lambda: status.configure(text=text))
 
     def need_tool(tname):
         repo, _tag, _asset, _exe, _rule, mb = TOOLS[tname]
@@ -1087,42 +1183,76 @@ def run_cli(path, fmt):
         ev.wait()
         return res["v"]
 
+    def ensure_tools(src_ext, fmt):
+        tools, browser = tools_needed(src_ext, fmt)
+        if browser and not find_browser():
+            raise ConvertError(C("pdf_nobrowser"))
+        for tname in tools:
+            if tool_installed(tname):
+                continue
+            if not need_tool(tname):
+                raise ConvertError("cancelled")
+            try:
+                install_tool(tname, lambda dn, tt, n=tname: set_status(
+                    C("downloading", n, int(dn * 100 / tt) if tt else 0),
+                    (dn / tt) if tt else None), lambda: st["cancel"])
+            except Exception as ex:
+                raise ConvertError(C("tool_fail", tname, str(ex)[:200]))
+
     def work():
+        done, failed, total, last_err, first_out = 0, 0, 0, "", ""
         try:
-            src_ext = os.path.splitext(path)[1].lstrip(".").lower()
-            tools, browser = tools_needed(src_ext, fmt)
-            if browser and not find_browser():
-                raise ConvertError(C("pdf_nobrowser"))
-            for tname in tools:
-                if tool_installed(tname):
-                    continue
-                if not need_tool(tname):
-                    root.after(0, root.destroy)
-                    return
+            pending = []
+            while not st["cancel"]:
+                # дособрать задания: Проводник запускает экземпляры с задержкой
+                pending += take_jobs()
+                if not pending:
+                    deadline = time.time() + 1.5
+                    while time.time() < deadline and not pending and not st["cancel"]:
+                        time.sleep(0.2)
+                        pending += take_jobs()
+                    if not pending:
+                        break
+                total = done + failed + len(pending)
+                src, fmt = pending.pop(0)
+                name = os.path.basename(src)
+                set_status(C("batch", done + failed + 1, total, name, fmt.upper()) if total > 1
+                           else C("working", name, fmt.upper()),
+                           (done + failed) / total if total > 1 else None)
                 try:
-                    install_tool(tname, lambda dn, tt, n=tname: set_status(
-                        C("downloading", n, int(dn * 100 / tt) if tt else 0),
-                        (dn / tt) if tt else None), lambda: st["cancel"])
+                    ensure_tools(os.path.splitext(src)[1].lstrip(".").lower(), fmt)
+                    if total > 1:
+                        set_status(C("batch", done + failed + 1, total, name, fmt.upper()),
+                                   (done + failed) / total)
+                    outs = convert(src, fmt)
+                    first_out = first_out or outs[0]
+                    done += 1
+                    LOG("convert ok: %s -> %s" % (src, outs[0]))
+                except ConvertError as ex:
+                    if str(ex) == "cancelled":
+                        st["cancel"] = True
+                        break
+                    failed += 1
+                    last_err = "%s: %s" % (name, str(ex)[:300])
+                    LOG("convert failed: %s -> %s: %s" % (src, fmt, ex))
                 except Exception as ex:
-                    if st["cancel"]:
-                        return
-                    raise ConvertError(C("tool_fail", tname, str(ex)[:200]))
-                set_status(C("working", name, fmt.upper()), None)
-            outs = convert(path, fmt)
-            LOG("convert ok: %s -> %s" % (path, outs[0]))
+                    failed += 1
+                    last_err = "%s: %s" % (name, repr(ex)[:300])
+                    LOG("convert failed: %s -> %s: %s\n%s" % (src, fmt, ex, traceback.format_exc()))
+        finally:
             st["done"] = True
-            msg = (C("done", os.path.basename(outs[0])) if len(outs) == 1
-                   else C("done_pages", len(outs), os.path.basename(outs[0])))
-            root.after(0, lambda: (status.configure(text=msg),
-                                   track.coords(bar, 0, 0, max(1, track.winfo_width()), 8),
-                                   btn.configure(text=C("close")),
-                                   root.after(1500, root.destroy)))
-        except Exception as ex:
-            LOG("convert failed: %s -> %s: %s\n%s" % (path, fmt, ex, traceback.format_exc()))
-            st["done"] = True
-            msg = str(ex)[:400] if isinstance(ex, ConvertError) else repr(ex)[:400]
-            root.after(0, lambda: (status.configure(text=C("failed") + "\n" + msg, fg=col("COL_DANGER", "#ff453a")),
-                                   track.coords(bar, 0, 0, 0, 8), btn.configure(text=C("close"))))
+            if st["cancel"]:
+                return
+            if failed:
+                msg = (C("done_errors", done, failed) if done + failed > 1 else C("failed")) + "\n" + last_err
+                ui(lambda: (status.configure(text=msg, fg=col("COL_DANGER", "#ff453a")),
+                            track.coords(bar, 0, 0, 0, 8), btn.configure(text=C("close"))))
+            else:
+                msg = C("done", os.path.basename(first_out)) if done == 1 else C("done_batch", done)
+                ui(lambda: (status.configure(text=msg),
+                            track.coords(bar, 0, 0, max(1, track.winfo_width()), 8),
+                            btn.configure(text=C("close")),
+                            root.after(1500, root.destroy)))
 
     threading.Thread(target=work, daemon=True).start()
     root.after(50, tick)
