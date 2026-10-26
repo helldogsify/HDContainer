@@ -75,7 +75,7 @@ Right-click any image, audio, video, document or data file in Explorer → **Con
 
 | Files | Converts to | Engine |
 |---|---|---|
-| png, jpg, webp, avif, bmp, gif, tiff, ico | png, jpg, webp, avif, bmp, gif, ico, tiff, pdf | Pillow (built in) |
+| png, jpg, webp, heic/heif, avif, bmp, gif, tiff, ico | png, jpg, webp, heic, avif, bmp, gif, ico, tiff, pdf | Pillow + libheif (built in) |
 | svg | png, jpg, pdf | Edge/Chrome, headless |
 | mp3, wav, ogg, flac, m4a, aac, wma, opus, aiff, amr | mp3, wav, ogg, flac, m4a, aac, opus | [FFmpeg](https://github.com/BtbN/FFmpeg-Builds) |
 | mp4, mkv, mov, avi, webm, wmv, m4v, ts, flv, mpg, 3gp, mts, vob | mp4, mkv, webm, mov, avi, gif + mp3/wav/m4a (audio track) | FFmpeg |
@@ -109,7 +109,7 @@ Mostly stdlib: `tkinter` + `ctypes`, plus [Pillow](https://python-pillow.org/) f
 Needs Windows, [Python 3.10+](https://www.python.org/) with [PyInstaller](https://pyinstaller.org/), and [Inno Setup 6](https://jrsoftware.org/isdl.php) for the installer.
 
 ```powershell
-pip install pyinstaller pillow
+pip install pyinstaller pillow pillow-heif
 powershell -ExecutionPolicy Bypass -File build.ps1   # exe + installer
 ```
 

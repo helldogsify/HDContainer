@@ -67,10 +67,10 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade "pip==26.2.2"
-          python -m pip install "pyinstaller==6.22.3" "pillow==13.0.0"
+          python -m pip install "pyinstaller==6.22.3" "pillow==13.0.0" "pillow-heif==1.8.1"
           # все модули должны импортироваться: голосовой ввод подключается через
           # try/except, и его ошибка импорта молча прятала бы функцию у всех
-          python -c "import window_container as w; assert w.voice is not None, w._VOICE_IMPORT_ERR; assert w.convert is not None, w._CONVERT_IMPORT_ERR; print('imports ok')"
+          python -c "import window_container as w; assert w.voice is not None, w._VOICE_IMPORT_ERR; assert w.convert is not None, w._CONVERT_IMPORT_ERR; import pillow_heif; print('imports ok, libheif', pillow_heif.libheif_version())"
           if ($LASTEXITCODE -ne 0) { throw "import check failed" }
           $iscc = @("C:\Program Files (x86)\Inno Setup 6\ISCC.exe", "C:\Program Files\Inno Setup 6\ISCC.exe") |
             Where-Object { Test-Path $_ } | Select-Object -First 1

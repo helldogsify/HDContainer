@@ -43,7 +43,7 @@ import xml.etree.ElementTree as ET
 CREATE_NO_WINDOW = 0x08000000
 LANG_GET = lambda: "en"
 LOG = lambda m: None
-MENU_VERSION = 2            # менять при изменении списка форматов -> меню перепишется
+MENU_VERSION = 3            # менять при изменении списка форматов -> меню перепишется
 
 CSTR = {
     "menu": {"en": "Convert to", "ru": "Конвертировать в", "es": "Convertir a", "pt": "Converter para", "de": "Konvertieren in", "fr": "Convertir en", "zh": "转换为"},
@@ -96,8 +96,10 @@ def C(key, *args):
 # ---------------------------------------------------------------------------
 #  Что во что можно
 # ---------------------------------------------------------------------------
-IMAGE_SRC = {"png", "jpg", "jpeg", "jfif", "webp", "bmp", "gif", "tif", "tiff", "ico", "avif"}
-IMAGE_DST = ["png", "jpg", "webp", "avif", "bmp", "gif", "ico", "tiff", "pdf"]
+IMAGE_SRC = {"png", "jpg", "jpeg", "jfif", "webp", "bmp", "gif", "tif", "tiff", "ico", "avif",
+             "heic", "heif"}
+IMAGE_DST = ["png", "jpg", "webp", "heic", "avif", "bmp", "gif", "ico", "tiff", "pdf"]
+HEIF_EXTS = {"heic", "heif"}
 SVG_SRC = {"svg"}
 SVG_DST = ["png", "jpg", "pdf"]
 AUDIO_SRC = {"mp3", "wav", "ogg", "oga", "flac", "m4a", "aac", "wma", "opus", "aiff", "aif", "amr"}
@@ -120,7 +122,7 @@ PANDOC_TO = {"md": "gfm", "html": "html", "txt": "plain", "docx": "docx", "rtf":
              "odt": "odt", "epub": "epub", "fb2": "fb2", "tex": "latex", "rst": "rst"}
 
 _SAME = {("jpeg", "jpg"), ("jfif", "jpg"), ("tif", "tiff"), ("markdown", "md"), ("htm", "html"),
-         ("oga", "ogg"), ("aif", "aiff"), ("ssa", "ass"), ("mpeg", "mpg")}
+         ("oga", "ogg"), ("aif", "aiff"), ("ssa", "ass"), ("mpeg", "mpg"), ("heif", "heic")}
 
 
 def _not_self(ext, dsts):
@@ -177,7 +179,9 @@ def tools_needed(src_ext, fmt):
     """Какие скачиваемые инструменты и нужен ли браузер (для PDF)."""
     eng = engine_for(src_ext, fmt)
     tools, browser = [], False
-    if eng == "ffmpeg":
+    if eng == "image" and src_ext in HEIF_EXTS and not heif_available():
+        tools = ["ffmpeg"]                       # запасной декодер HEIC без pillow-heif
+    elif eng == "ffmpeg":
         tools = ["ffmpeg"]
     elif eng == "pandoc":
         if src_ext not in ("html", "htm", "txt") or fmt != "pdf":
@@ -420,12 +424,29 @@ def _run(args, timeout=3600, cwd=None):
         raise ConvertError(lines[-1][:300] if lines else "exit code %d" % p.returncode)
 
 
+_heif = {"checked": False, "ok": False}
+
+
+def heif_available():
+    """HEIC/HEIF через pillow-heif (libheif); регистрируется в Pillow один раз."""
+    if not _heif["checked"]:
+        _heif["checked"] = True
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+            _heif["ok"] = True
+        except Exception as ex:
+            LOG("pillow-heif unavailable: %r" % ex)
+    return _heif["ok"]
+
+
 def _pil():
     try:
         from PIL import Image
-        return Image
     except Exception:
         raise ConvertError(C("no_pil"))
+    heif_available()
+    return Image
 
 
 def _save_image(im, dst, fmt):
@@ -450,16 +471,36 @@ def _save_image(im, dst, fmt):
         kw = {"quality": 90, "method": 6}
     elif fmt == "avif":
         kw = {"quality": 80}
+    elif fmt == "heic":
+        if not heif_available():
+            raise ConvertError("HEIC support (pillow-heif) is not available")
+        if im.mode not in ("RGB", "RGBA"):
+            im = im.convert("RGBA" if "A" in im.mode else "RGB")
+        kw = {"quality": 85}
     elif fmt == "ico":
         im.thumbnail((256, 256))
         kw = {"sizes": [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]}
     elif fmt == "pdf":
         kw = {"resolution": 100.0}
-    im.save(dst, format={"jpg": "JPEG", "tiff": "TIFF"}.get(fmt, fmt.upper()), **kw)
+    im.save(dst, format={"jpg": "JPEG", "tiff": "TIFF", "heic": "HEIF"}.get(fmt, fmt.upper()), **kw)
 
 
-def convert_image(src, dst, fmt):
-    im = _pil().open(src)
+def convert_image(src, dst, fmt, src_ext=""):
+    Image = _pil()
+    if src_ext in HEIF_EXTS and not heif_available():
+        # нет pillow-heif -> декодируем ffmpeg'ом (у него свой HEIF-демультиплексор)
+        tmp = dst + ".png"
+        try:
+            _run([tool_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", src,
+                  "-frames:v", "1", tmp])
+            _save_image(Image.open(tmp), dst, fmt)
+        finally:
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+        return
+    im = Image.open(src)
     _save_image(im, dst, fmt)
 
 
@@ -765,7 +806,7 @@ def convert(src, fmt):
     dst = output_path(src, fmt)
     try:
         if engine == "image":
-            convert_image(src, dst, fmt)
+            convert_image(src, dst, fmt, src_ext)
         elif engine == "browser":
             convert_svg(src, dst, fmt)
         elif engine == "ffmpeg":

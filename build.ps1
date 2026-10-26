@@ -25,8 +25,9 @@ VSVersionInfo(
 if (Test-Path dist) { Remove-Item -Recurse -Force dist }   # never package a stale exe
 
 Write-Host "==> Building HDContainer.exe $ver with PyInstaller..."
+# pillow-heif: HEIC/HEIF в конвертере — библиотека с нативными DLL, собираем целиком
 python -m PyInstaller --onefile --noconsole --name HDContainer --icon HDContainer.ico `
-  --version-file build\version_info.txt --clean -y window_container.py
+  --version-file build\version_info.txt --collect-all pillow_heif --clean -y window_container.py
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path dist\HDContainer.exe)) { throw "PyInstaller failed" }
 
 $iscc = @(
