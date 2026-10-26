@@ -1,1 +1,6 @@
-- **Convert files from the Explorer right-click menu.** Right-click an image, audio, video, document or csv/json file → **Convert to** → pick a format; the result appears next to the original with the same name and the new extension. Images and csv/tsv/json convert immediately; FFmpeg (~190 MB, audio/video) and Pandoc (~40 MB, documents) are downloaded from GitHub on first use and verified by SHA-256. On Windows 11 the item is under "Show more options" (or Shift + right-click). Can be turned off in Settings; removed on uninstall.
+**Converter: PDF both ways, more formats, its own Settings tab**
+- **To PDF:** docx, md, html, txt, odt, epub, fb2, rtf… and svg, xlsx/csv tables → pdf. Printed by the Microsoft Edge (or Chrome) already on your PC, in the background — nothing to install.
+- **From PDF:** pdf → png/jpg (one image per page), txt, html, docx, md, epub, odt, rtf. Uses Poppler (~45 MB, downloaded on first use like the other engines).
+- New formats: avif images; svg → png/jpg/pdf; fb2 (both ways), tex, rst, org documents; xlsx ↔ csv/tsv/json (+ html/pdf); subtitles srt/vtt/ass; aac, amr, mts, vob.
+- **Settings → Converter** tab: turn the menu on/off, see what converts to what, and download FFmpeg / Pandoc / Poppler in advance (or delete them). Shows whether a browser for PDF output was found.
+- The context menu is rebuilt automatically after this update to pick up the new formats.

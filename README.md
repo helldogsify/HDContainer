@@ -75,13 +75,16 @@ Right-click any image, audio, video, document or data file in Explorer → **Con
 
 | Files | Converts to | Engine |
 |---|---|---|
-| png, jpg, webp, bmp, gif, tiff, ico | png, jpg, webp, bmp, gif, ico, tiff, pdf | Pillow (built in) |
-| mp3, wav, ogg, flac, m4a, aac, wma, opus, aiff | mp3, wav, ogg, flac, m4a, opus | [FFmpeg](https://github.com/BtbN/FFmpeg-Builds) |
-| mp4, mkv, mov, avi, webm, wmv, m4v, ts, flv, mpg, 3gp | mp4, mkv, webm, mov, avi, gif + mp3/wav/m4a (audio track) | FFmpeg |
-| md, docx, html, txt, rtf, odt, epub, tex, rst | docx, md, html, txt, rtf, odt, epub | [Pandoc](https://github.com/jgm/pandoc) |
-| csv, tsv, json | csv, tsv, json | built in |
+| png, jpg, webp, avif, bmp, gif, tiff, ico | png, jpg, webp, avif, bmp, gif, ico, tiff, pdf | Pillow (built in) |
+| svg | png, jpg, pdf | Edge/Chrome, headless |
+| mp3, wav, ogg, flac, m4a, aac, wma, opus, aiff, amr | mp3, wav, ogg, flac, m4a, aac, opus | [FFmpeg](https://github.com/BtbN/FFmpeg-Builds) |
+| mp4, mkv, mov, avi, webm, wmv, m4v, ts, flv, mpg, 3gp, mts, vob | mp4, mkv, webm, mov, avi, gif + mp3/wav/m4a (audio track) | FFmpeg |
+| srt, vtt, ass, ssa | srt, vtt, ass | FFmpeg |
+| md, docx, html, txt, rtf, odt, epub, fb2, tex, rst, org | **pdf**, docx, md, html, txt, rtf, odt, epub, fb2, tex, rst | [Pandoc](https://github.com/jgm/pandoc) (+ Edge for pdf) |
+| pdf | png, jpg (one image per page), txt, html, docx, md, epub, odt, rtf | [Poppler](https://github.com/oschwartz10612/poppler-windows) (+ Pandoc) |
+| csv, tsv, json, xlsx (first sheet) | csv, tsv, json, xlsx, html, pdf | built in |
 
-FFmpeg (~190 MB) and Pandoc (~40 MB) are downloaded from their GitHub releases the first time they're needed and verified against the SHA‑256 digest GitHub publishes. On Windows 11 the item is under **Show more options** (or Shift + right‑click). The menu is a few per‑user registry keys — no admin rights; turn it off in **Settings** or it is removed on uninstall.
+FFmpeg (~190 MB), Pandoc (~40 MB) and Poppler (~45 MB) are downloaded from their GitHub releases the first time they're needed — or in advance from **Settings → Converter** — and verified against the SHA‑256 digest GitHub publishes. PDF output uses the Microsoft Edge (or Chrome) already on the PC in headless mode. On Windows 11 the item is under **Show more options** (or Shift + right‑click). The menu is a few per‑user registry keys — no admin rights; turn it off in **Settings → Converter**, and it is removed on uninstall.
 
 ## Install
 

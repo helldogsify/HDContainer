@@ -73,7 +73,7 @@ except Exception:
     convert = None
     _CONVERT_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -4032,9 +4032,11 @@ class TrayApp:
                 old.destroy()
             except Exception:
                 pass
-        if tab not in ("general", "voice") or (tab == "voice" and self.voice is None):
+        avail = ["general"] + (["voice"] if self.voice is not None else []) \
+            + (["convert"] if convert is not None else [])
+        if tab not in avail:
             tab = getattr(self, "_settings_tab", None) or "general"
-            if tab == "voice" and self.voice is None:
+            if tab not in avail:
                 tab = "general"
         self._settings_tab = tab
         if getattr(self, "_gen_draft", None) is None:
@@ -4057,6 +4059,8 @@ class TrayApp:
         tabs = [("general", T("tab_general"))]
         if self.voice is not None:
             tabs.append(("voice", voice.V("menu")))
+        if convert is not None:
+            tabs.append(("convert", convert.C("tab")))
         for key, label in tabs:
             cell = tk.Frame(bar, bg=COL_SURFACE)
             cell.pack(side="left", padx=(0, 22))
@@ -4082,6 +4086,10 @@ class TrayApp:
         body.pack(fill="both", expand=True)
         if tab == "voice":
             self.voice.build_into(body, win)
+        elif tab == "convert":
+            convert.LANG_GET = lambda: LANG
+            convert.LOG = log
+            convert.build_settings(self, body, win, pad)
         else:
             self._build_general(body, pad)
 
@@ -4092,12 +4100,6 @@ class TrayApp:
                             lambda v: d.__setitem__("autostart", bool(v)), pad)
         self._setting_check(win, T("auto_update"), d["autoupdate"],
                             lambda v: d.__setitem__("autoupdate", bool(v)), pad)
-        if convert is not None:
-            self._setting_check(win, convert.C("setting"), d["convert_menu"],
-                                lambda v: d.__setitem__("convert_menu", bool(v)), pad)
-            tk.Label(win, text=convert.C("setting_note"), bg=COL_SURFACE, fg=COL_TEXT_DIM,
-                     font=FONT_SM, wraplength=420, justify="left").pack(anchor="w", padx=pad + 30,
-                                                                         pady=(0, 6))
         self._setting_lang(win, pad)
         upd = tk.Label(win, text=T("check_update"), bg=COL_SURFACE, fg=COL_ACCENT,
                        font=FONT_SM, cursor="hand2")
