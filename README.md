@@ -71,7 +71,7 @@ API keys are stored encrypted with Windows DPAPI under your user account.
 
 ## Convert files from the right-click menu
 
-Right-click any image, audio, video, document or data file in Explorer → **Convert to** → pick a format. The result lands next to the original with the same name and the new extension (`report.docx` → `report.md`; if the name is taken you get `report (2).md`).
+Right-click any image, audio, video, document or data file in Explorer (or a whole selection of them) → **Convert to** → pick a format. The result lands next to the original with the same name and the new extension (`report.docx` → `report.md`; if the name is taken you get `report (2).md`).
 
 | Files | Converts to | Engine |
 |---|---|---|
