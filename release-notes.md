@@ -1,2 +1,2 @@
-- **Torrents.** Open a `.torrent` file with HDContainer and it starts downloading. Progress, pause/resume and delete are in the tray menu; **Settings → Torrents** holds the save folder and presets (max speed, forced seed requests, merging seeds from all sources, stop seeding when done, remove finished from the list).
-- **Settings tabs switch instantly.** Changing tabs no longer closes and reopens the whole Settings window.
+- **Download finished notice.** When a torrent finishes, the indicator above the clock shows a new animation (an arrow drops into a tray and a ring closes) with the torrent's name; click it to open the folder. It waits while you dictate instead of interrupting.
+- **Speed and time left fit in the tray menu.** The status line now spans the whole row and the row sizes itself to the font, so nothing is cut at 125-150% display scaling.

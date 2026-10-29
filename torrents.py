@@ -36,9 +36,7 @@ TSTR = {
     "error": {"en": "Error", "ru": "Ошибка", "es": "Error", "pt": "Erro", "de": "Fehler", "fr": "Erreur", "zh": "错误"},
     "delete_title": {"en": "Delete download", "ru": "Удаление", "es": "Eliminar descarga", "pt": "Excluir download", "de": "Download löschen", "fr": "Supprimer le téléchargement", "zh": "删除下载"},
     "delete_q": {"en": "Delete “%s” and the files downloaded so far?", "ru": "Точно удалить «%s» вместе с уже скачанными файлами?", "es": "¿Eliminar «%s» y los archivos ya descargados?", "pt": "Excluir “%s” e os arquivos já baixados?", "de": "„%s“ und die bereits geladenen Dateien löschen?", "fr": "Supprimer « %s » et les fichiers déjà téléchargés ?", "zh": "删除“%s”及已下载的文件？"},
-    "started": {"en": "Download started", "ru": "Загрузка началась", "es": "Descarga iniciada", "pt": "Download iniciado", "de": "Download gestartet", "fr": "Téléchargement lancé", "zh": "已开始下载"},
     "finished": {"en": "Downloaded", "ru": "Скачано", "es": "Descargado", "pt": "Baixado", "de": "Heruntergeladen", "fr": "Téléchargé", "zh": "下载完成"},
-    "already": {"en": "Already downloading", "ru": "Уже качается", "es": "Ya se está descargando", "pt": "Já está baixando", "de": "Wird bereits geladen", "fr": "Déjà en cours", "zh": "已在下载"},
     "bad_file": {"en": "Can't open the torrent file", "ru": "Не удалось открыть торрент-файл", "es": "No se puede abrir el archivo torrent", "pt": "Não foi possível abrir o arquivo torrent", "de": "Torrent-Datei kann nicht geöffnet werden", "fr": "Impossible d’ouvrir le fichier torrent", "zh": "无法打开种子文件"},
     "mbs": {"en": "MB/s", "ru": "МБ/с", "es": "MB/s", "pt": "MB/s", "de": "MB/s", "fr": "Mo/s", "zh": "MB/s"},
     "kbs": {"en": "KB/s", "ru": "КБ/с", "es": "KB/s", "pt": "KB/s", "de": "KB/s", "fr": "Ko/s", "zh": "KB/s"},
@@ -270,13 +268,12 @@ class TorrentController:
             ti = lt.torrent_info(path)
         except Exception as ex:
             self.log("bad torrent %r: %r" % (path, ex))
-            self.app._notify(S("bad_file"), os.path.basename(path))
+            self.app._notify(S("bad_file"), os.path.basename(path), kind="error")
             return
         tid = _tid_of(ti.info_hashes())
         it = self.items.get(tid)
         if it is not None and it["h"] is not None:
             self._merge(it, ti)
-            self.app._notify(S("already"), it["name"])
             return
         if it is not None:                 # finished entry kept in the list: start over
             self.items.pop(tid)
@@ -288,7 +285,6 @@ class TorrentController:
             self.log("torrent copy failed: %r" % ex)
         self._add(ti, self.folder())
         self._save_list()
-        self.app._notify(S("started"), ti.name())
         self._repopup()
 
     def _merge(self, it, ti):
@@ -502,22 +498,27 @@ class TorrentController:
 
     def _popup_row(self, parent, tid, width, close, col, font, font_sm, icon_font):
         it = self.items[tid]
-        row = tk.Frame(parent, bg=col["sf"], width=width, height=52)
+        # Sizes come from the fonts, not fixed pixels: at 125-150% display scaling a
+        # fixed-size row cut the status line. The status line spans the whole row
+        # (the buttons sit on the name line), and the row is at least as wide as the
+        # longest status: "100% · 999,9 MB/s · 99:59:59".
+        sample = "100%% · %s · 99:59:59" % _fmt_rate(999.9 * 1048576)
+        inner = max(width - 28, tkfont.Font(font=font_sm).measure(sample) + 6)
+        row = tk.Frame(parent, bg=col["sf"])
         row.pack(fill="x")
-        row.pack_propagate(False)
-        btns = tk.Frame(row, bg=col["sf"])
-        btns.pack(side="right", padx=(0, 10))
-        text = tk.Frame(row, bg=col["sf"])
-        text.pack(side="left", fill="both", expand=True, padx=(14, 6), pady=(7, 6))
-        name = tk.Label(text, text=_elide(it["name"], font, width - 96), bg=col["sf"], fg=col["tx"],
-                        font=font, anchor="w", cursor="hand2")
-        name.pack(fill="x")
+        tk.Frame(row, bg=col["sf"], width=inner + 28, height=1).pack()      # width keeper
+        top = tk.Frame(row, bg=col["sf"])
+        top.pack(fill="x", padx=(14, 8), pady=(6, 0))
+        btns = tk.Frame(top, bg=col["sf"])
+        btns.pack(side="right")
+        name = tk.Label(top, text="", bg=col["sf"], fg=col["tx"], font=font, anchor="w", cursor="hand2")
+        name.pack(side="left", fill="x", expand=True)
         name.bind("<Button-1>", lambda e: (close(), open_folder(it["path"], it["name"])))
-        track = tk.Frame(text, bg=col["bd"], height=3)
-        track.pack(fill="x", pady=(3, 3))
+        track = tk.Frame(row, bg=col["bd"], height=3)
+        track.pack(fill="x", padx=14, pady=(4, 4))
         fill = tk.Frame(track, bg=col["ac"], height=3)
-        line = tk.Label(text, text="", bg=col["sf"], fg=col["dim"], font=font_sm, anchor="w")
-        line.pack(fill="x")
+        line = tk.Label(row, text="", bg=col["sf"], fg=col["dim"], font=font_sm, anchor="w")
+        line.pack(fill="x", padx=14, pady=(0, 8))
 
         def btn(glyph, fg, cmd):
             b = tk.Label(btns, text=glyph, bg=col["sf"], fg=fg, font=icon_font, width=2,
@@ -534,6 +535,8 @@ class TorrentController:
             btn(GLYPH_DELETE, col["err"], lambda: self._ask_delete(tid, close))
         else:
             btn(GLYPH_DISMISS, col["dim"], lambda: (self.remove(tid, delete_files=False), self._repopup()))
+        btns.update_idletasks()
+        name.configure(text=_elide(it["name"], font, inner + 6 - btns.winfo_reqwidth() - 10))
 
         def refresh():
             if not row.winfo_exists() or tid not in self.items:
@@ -543,7 +546,7 @@ class TorrentController:
             except Exception:
                 return
             fill.place(x=0, y=0, relheight=1, relwidth=max(0.0, min(1.0, p)))
-            line.configure(text=_elide(txt, font_sm, width - 96), fg=col["err"] if bad else col["dim"])
+            line.configure(text=_elide(txt, font_sm, inner), fg=col["err"] if bad else col["dim"])
             if pause is not None:
                 cur = self.items[tid]
                 pause.configure(text=GLYPH_PLAY if (cur["paused"] or cur["err"]) else GLYPH_PAUSE)

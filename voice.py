@@ -216,10 +216,11 @@ STATE_COLORS = {
     "cancel": ((150, 156, 168), (90, 96, 110)),
     "error": ((255, 84, 72), (255, 160, 60)),
     "setup": ((255, 176, 48), (255, 84, 72)),
+    "done": ((64, 232, 160), (255, 204, 92)),     # a torrent download finished
 }
-LABEL_STATES = {"error", "setup"}
+LABEL_STATES = {"error", "setup", "done"}
 HIDE_AFTER = {"pasted": 2.2, "copied": 3.0, "answer": 4.0, "nothing": 1.6, "cancel": 1.0,
-              "error": 7.0, "setup": 8.0}
+              "error": 7.0, "setup": 8.0, "done": 6.0}
 
 # ---------------------------------------------------------------------------
 #  Win32 для оверлея
@@ -394,7 +395,8 @@ class Overlay:
         u32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, ctypes.c_long(ex - (1 << 32) if ex >= 1 << 31 else ex).value)
 
     # ---- API ----
-    def show(self, state, title, sub="", rec=None, clickable=False):
+    def show(self, state, title, sub="", rec=None, clickable=False, on_click=None):
+        self._click_fn = on_click          # this message's own click action, else on_click of the overlay
         if not HAVE_PIL:
             return self._show_fallback(state, title, sub, clickable)
         try:
@@ -445,7 +447,7 @@ class Overlay:
         if getattr(self, "_clicked", False):
             self._clicked = False
             self.hide(0)
-            self.on_click()
+            (getattr(self, "_click_fn", None) or self.on_click)()
         now = time.time()
         if self.hide_at and now >= self.hide_at:
             self.target_alpha = 0.0
@@ -571,6 +573,32 @@ class Overlay:
         elif st in ("nothing", "cancel"):
             w = 8 * s * k
             d.line((oc - w, oc, oc + w, oc), fill=c1 + (255,), width=int(3 * s * k))
+        elif st == "done":
+            # torrent finished: the arrow drops into a tray with a small bounce, then a ring
+            # closes around the orb and a single soft wave spreads out
+            p = time.time() - self.t_state
+            u = s * k
+            w = max(2, int(2.8 * u))
+            d.line([(oc - 9 * u, oc + 1.5 * u), (oc - 9 * u, oc + 8 * u), (oc + 9 * u, oc + 8 * u),
+                    (oc + 9 * u, oc + 1.5 * u)], fill=c1 + (255,), width=w, joint="curve")
+            q = min(1.0, p / 0.5)
+            fall = (1 - q) ** 3                                    # ease-out
+            dip = math.sin(min(1.0, (p - 0.5) / 0.22) * math.pi) * 1.8 * u if p > 0.5 else 0.0
+            y = oc - 1.5 * u - 17 * u * fall + dip
+            a = int(255 * min(1.0, q * 2.5))
+            d.line((oc, y - 9 * u, oc, y + 3 * u), fill=c2 + (a,), width=w)
+            d.line([(oc - 5 * u, y - 2 * u), (oc, y + 3 * u), (oc + 5 * u, y - 2 * u)],
+                   fill=c2 + (a,), width=w, joint="curve")
+            ring = (p - 0.6) / 0.45
+            if ring > 0:
+                rr = oc - 7.5 * u
+                d.arc((oc - rr, oc - rr, oc + rr, oc + rr), -90, -90 + 360 * min(1.0, ring),
+                      fill=c1 + (255,), width=max(2, int(2.2 * u)))
+            wave = (p - 1.05) / 0.7
+            if 0 < wave < 1:
+                rw = oc - 7.5 * u + 5 * u * wave
+                d.ellipse((oc - rw, oc - rw, oc + rw, oc + rw), outline=c2 + (int(200 * (1 - wave)),),
+                          width=max(1, int(1.6 * u)))
         else:                                                  # error / setup
             d.line((oc, oc - 9 * s * k, oc, oc + 2 * s * k), fill=c1 + (255,), width=int(3.4 * s * k))
             r = 2.2 * s * k
@@ -661,7 +689,8 @@ class Overlay:
             self._fb = fb
         col = "#%02x%02x%02x" % STATE_COLORS.get(state, STATE_COLORS["listen"])[0]
         self._fb_lbl.configure(text="● " + title + ("\n" + sub if sub else ""), fg=col)
-        self._fb_lbl.bind("<Button-1>", lambda e: (self.on_click(), fb.withdraw()) if clickable else None)
+        fn = getattr(self, "_click_fn", None) or self.on_click
+        self._fb_lbl.bind("<Button-1>", lambda e: (fn(), fb.withdraw()) if clickable else None)
         fb.update_idletasks()
         x, y = self._pos_fb(fb)
         fb.geometry("+%d+%d" % (x, y))
@@ -1404,6 +1433,16 @@ class VoiceController:
     # =======================================================================
     def open_settings(self):
         self.app._open_settings("voice")
+
+    def notify(self, state, title, sub="", on_click=None, _tries=0):
+        """Show a message from another feature on the dictation indicator. It never
+        interrupts a dictation: while one is running (or its result is still on
+        screen) the message waits."""
+        busy = self.state != "idle" or self.overlay._ticking
+        if busy and _tries < 600:
+            self.root.after(1000, lambda: self.notify(state, title, sub, on_click, _tries + 1))
+            return
+        self.overlay.show(state, title, sub, clickable=on_click is not None, on_click=on_click)
 
     def build_into(self, parent, win):
         """Нарисовать вкладку «Голосовой ввод» внутри общего окна настроек."""

@@ -79,7 +79,7 @@ except Exception:
     torrents = None
     _TORRENTS_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1984,8 +1984,16 @@ class TrayApp:
         shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(
             self._nid(NIF_MESSAGE)))
 
-    def _notify(self, title, text, on_click=None):
-        """Short Windows notification from the tray icon; on_click runs if the user clicks it."""
+    def _notify(self, title, text, on_click=None, kind="done"):
+        """Short message for the user: on the dictation indicator above the clock
+        (kind "done" or "error"); without voice input — a tray notification.
+        on_click runs if the user clicks it."""
+        if self.voice is not None:
+            try:
+                self.voice.notify(kind, title, text, on_click)
+                return
+            except Exception:
+                log("overlay notify failed:\n" + traceback.format_exc())
         nid = self._nid(NIF_INFO)
         nid.szInfoTitle = title[:63]
         nid.szInfo = text[:255]
