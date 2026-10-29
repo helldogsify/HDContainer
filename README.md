@@ -86,6 +86,12 @@ Right-click any image, audio, video, document or data file in Explorer (or a who
 
 FFmpeg (~190 MB), Pandoc (~40 MB) and Poppler (~45 MB) are downloaded from their GitHub releases the first time they're needed — or in advance from **Settings → Converter** — and verified against the SHA‑256 digest GitHub publishes. PDF output uses the Microsoft Edge (or Chrome) already on the PC in headless mode. On Windows 11 the item is under **Show more options** (or Shift + right‑click). The menu is a few per‑user registry keys — no admin rights; turn it off in **Settings → Converter**, and it is removed on uninstall.
 
+## Torrents
+
+Open a `.torrent` file with HDContainer and it starts downloading right away — no windows, no questions. Each download shows up in the tray menu with its progress, speed and time left, plus two buttons: pause/resume and delete (it asks first, and removes the partly downloaded files). Click a name to open its folder.
+
+**Settings → Torrents** holds the save folder (your Downloads by default) and the presets, all on by default: maximum speed with no limits, forced seed requests while seeds are scarce, merging seeds from every tracker, the DHT and a second copy of the same torrent, leaving the swarm as soon as the download finishes, and removing finished downloads from the list. Unfinished downloads continue after a restart. Built on [libtorrent](https://libtorrent.org/).
+
 ## Install
 
 1. Download **[HDContainer-Setup.exe](https://github.com/helldogsify/HDContainer/releases/latest)**.
@@ -109,7 +115,7 @@ Mostly stdlib: `tkinter` + `ctypes`, plus [Pillow](https://python-pillow.org/) f
 Needs Windows, [Python 3.10+](https://www.python.org/) with [PyInstaller](https://pyinstaller.org/), and [Inno Setup 6](https://jrsoftware.org/isdl.php) for the installer.
 
 ```powershell
-pip install pyinstaller pillow pillow-heif
+pip install pyinstaller pillow pillow-heif libtorrent
 powershell -ExecutionPolicy Bypass -File build.ps1   # exe + installer
 ```
 

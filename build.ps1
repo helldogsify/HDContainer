@@ -24,6 +24,16 @@ VSVersionInfo(
 "@ | ForEach-Object { if (-not (Test-Path build)) { New-Item -ItemType Directory build | Out-Null }; Set-Content -Path build\version_info.txt -Value $_ -Encoding UTF8 }
 if (Test-Path dist) { Remove-Item -Recurse -Force dist }   # never package a stale exe
 
+# torrents: libtorrent (pinned) must be importable, otherwise the torrent module would
+# be silently left out of the exe (it is imported in try/except like voice input)
+python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('libtorrent') else 1)"
+if ($LASTEXITCODE -ne 0) {
+  python -m pip install "libtorrent==2.1.1"
+  if ($LASTEXITCODE -ne 0) { throw "pip install libtorrent failed" }
+}
+python -c "import window_container as w; assert w.torrents is not None, w._TORRENTS_IMPORT_ERR; print('torrents import ok')"
+if ($LASTEXITCODE -ne 0) { throw "torrents module failed to import" }
+
 Write-Host "==> Building HDContainer.exe $ver with PyInstaller..."
 # pillow-heif: HEIC/HEIF в конвертере — библиотека с нативными DLL, собираем целиком
 python -m PyInstaller --onefile --noconsole --name HDContainer --icon HDContainer.ico `

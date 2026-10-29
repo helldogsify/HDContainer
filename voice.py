@@ -1424,7 +1424,8 @@ class VoiceController:
         win.bind("<MouseWheel>", lambda e: cv.yview_scroll(int(-e.delta / 120) * 3, "units"))
         self._cv, self._body = cv, body
         self._build()
-        self._dl_poll()
+        self._poll_gen = getattr(self, "_poll_gen", 0) + 1   # one poll loop per shown tab
+        self._dl_poll(self._poll_gen)
 
     def _rebuild(self):
         y = self._cv.yview()[0]
@@ -1890,9 +1891,9 @@ class VoiceController:
         threading.Thread(target=run, daemon=True).start()
         self._rebuild()
 
-    def _dl_poll(self):
+    def _dl_poll(self, gen=None):
         try:
-            if not self.win or not self.win.winfo_exists():
+            if gen != getattr(self, "_poll_gen", None) or not self.win or not self.win.winfo_exists():
                 return
         except Exception:
             return
@@ -1907,7 +1908,7 @@ class VoiceController:
                         lb.configure(text=V("downloading", int(100 * self.dl["done"] / self.dl["total"])))
         except Exception:
             pass
-        self.win.after(250, self._dl_poll)
+        self.win.after(250, lambda: self._dl_poll(gen))
 
     def _test_llm(self, label):
         label.configure(text=V("testing"), fg=self.c_dim)

@@ -73,7 +73,13 @@ except Exception:
     convert = None
     _CONVERT_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.7.2"
+try:                                   # torrent downloader (libtorrent)
+    import torrents
+except Exception:
+    torrents = None
+    _TORRENTS_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.8.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -371,6 +377,7 @@ STRINGS = {
     "donate_label": {"en": "Tip the author — %s:", "ru": "Поблагодарить автора — %s:", "es": "Apoyar al autor — %s:", "pt": "Agradecer ao autor — %s:", "de": "Den Autor unterstützen — %s:", "fr": "Soutenir l’auteur — %s :", "zh": "打赏作者 — %s："},
     "copy": {"en": "Copy", "ru": "Копировать", "es": "Copiar", "pt": "Copiar", "de": "Kopieren", "fr": "Copier", "zh": "复制"},
     "cut": {"en": "Cut", "ru": "Вырезать", "es": "Cortar", "pt": "Recortar", "de": "Ausschneiden", "fr": "Couper", "zh": "剪切"},
+    "tor_unavailable": {"en": "Torrents don't work on this PC: the download engine failed to load (see the log).", "ru": "Торренты на этом ПК не работают: не загрузился движок загрузки (см. лог).", "es": "Los torrents no funcionan en este PC: no se cargó el motor de descarga (ver registro).", "pt": "Torrents não funcionam neste PC: o mecanismo de download não carregou (ver log).", "de": "Torrents funktionieren auf diesem PC nicht: Die Download-Engine wurde nicht geladen (siehe Log).", "fr": "Les torrents ne fonctionnent pas sur ce PC : le moteur de téléchargement n’a pas pu se charger (voir le journal).", "zh": "此电脑无法使用种子下载：下载引擎加载失败（见日志）。"},
     "paste": {"en": "Paste", "ru": "Вставить", "es": "Pegar", "pt": "Colar", "de": "Einfügen", "fr": "Coller", "zh": "粘贴"},
     "select_all": {"en": "Select all", "ru": "Выделить всё", "es": "Seleccionar todo", "pt": "Selecionar tudo", "de": "Alles auswählen", "fr": "Tout sélectionner", "zh": "全选"},
     "copied": {"en": "Copied", "ru": "Скопировано", "es": "Copiado", "pt": "Copiado", "de": "Kopiert", "fr": "Copié", "zh": "已复制"},
@@ -621,6 +628,9 @@ NIM_DELETE = 2
 NIF_MESSAGE = 0x01
 NIF_ICON = 0x02
 NIF_TIP = 0x04
+NIF_INFO = 0x10
+NIN_BALLOONUSERCLICK = 0x0405
+COPYDATA_TORRENT = 2          # WM_COPYDATA dwData: the string is a .torrent path, not a container
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
@@ -1543,11 +1553,11 @@ def set_app_id(hwnd, app_id):
         log("set_app_id failed: %r" % ex)
 
 
-def send_copydata(hwnd, text):
+def send_copydata(hwnd, text, kind=1):
     """Передать строку другому экземпляру через WM_COPYDATA."""
     buf = ctypes.create_unicode_buffer(text)
     cds = COPYDATASTRUCT()
-    cds.dwData = 1
+    cds.dwData = kind
     cds.cbData = (len(text) + 1) * ctypes.sizeof(wintypes.WCHAR)
     cds.lpData = ctypes.cast(buf, ctypes.c_void_p)
     user32.SendMessageW(hwnd, WM_COPYDATA, 0, ctypes.addressof(cds))
@@ -1746,7 +1756,7 @@ HOST_CLASS = "WCInvisibleHost"
 
 
 class TrayApp:
-    def __init__(self, launch_name=None):
+    def __init__(self, launch_name=None, torrent_files=()):
         self.my_pid = os.getpid()
         self.containers = []          # list[Container]
         self.current = None           # Container | None
@@ -1800,6 +1810,19 @@ class TrayApp:
         else:
             log("voice import failed:\n" + globals().get("_VOICE_IMPORT_ERR", ""))
 
+        # torrents: the session itself starts lazily, only when there is something to download
+        self.torrents = None
+        self._balloon_click = None
+        if torrents is not None:
+            try:
+                self.torrents = torrents.TorrentController(self, lambda: LANG, log, _local_dir())
+            except Exception:
+                log("torrents init failed:\n" + traceback.format_exc())
+        else:
+            log("torrents import failed:\n" + globals().get("_TORRENTS_IMPORT_ERR", ""))
+        for _p in torrent_files:
+            self.root.after(600, lambda p=_p: self._open_torrent(p))
+
         # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
         # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
         # и перезапустит только то, что не выжило. Никаких ручных действий.
@@ -1839,6 +1862,8 @@ class TrayApp:
             low = lparam & 0xFFFF
             if low in (WM_LBUTTONUP, WM_RBUTTONUP, WM_CONTEXTMENU):
                 self._defer(self._show_menu)
+            elif low == NIN_BALLOONUSERCLICK and self._balloon_click:
+                self._defer(self._balloon_click)
             return 0
         if msg == WM_TASKBARCREATED:
             self._defer(self._add_tray)
@@ -1857,7 +1882,9 @@ class TrayApp:
                 n = min(int(cds.cbData), 4096) // 2
                 name = ctypes.wstring_at(cds.lpData, n).split("\0", 1)[0] \
                     if cds.lpData and n > 0 else ""
-                if name:
+                if name and cds.dwData == COPYDATA_TORRENT:
+                    self._defer(lambda p=name: self._open_torrent(p))
+                elif name:
                     self._defer(lambda n=name: self._activate_by_name(n))
             except Exception as ex:
                 log("copydata failed: %r" % ex)
@@ -1957,6 +1984,24 @@ class TrayApp:
         shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(
             self._nid(NIF_MESSAGE)))
 
+    def _notify(self, title, text, on_click=None):
+        """Short Windows notification from the tray icon; on_click runs if the user clicks it."""
+        nid = self._nid(NIF_INFO)
+        nid.szInfoTitle = title[:63]
+        nid.szInfo = text[:255]
+        self._balloon_click = on_click
+        shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
+
+    def _open_torrent(self, path):
+        # WM_COPYDATA can come from any window: accept only an existing .torrent file
+        if not (path.lower().endswith(".torrent") and os.path.isfile(path)):
+            log("open torrent: ignored %r" % path)
+            return
+        if self.torrents is None:
+            self._info("HDContainer", T("tor_unavailable"))
+            return
+        self.torrents.add_file(path)
+
     # ===================================================================
     #  Меню
     # ===================================================================
@@ -2025,6 +2070,9 @@ class TrayApp:
         for c in self.containers:
             self._popup_container_row(frame, c, W, close)
         if self.containers:
+            tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
+        if self.torrents is not None and self.torrents.has_items():
+            self.torrents.build_popup(frame, W, close)
             tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
         self._popup_action_row(frame, ICON_ADD, T("create_container"), W,
                                lambda: act(self._create_container))
@@ -2108,6 +2156,11 @@ class TrayApp:
             w.bind("<Enter>", enter)
             w.bind("<Leave>", leave)
             w.bind("<Button-1>", lambda e: command())
+
+    def _repopup(self):
+        """Redraw the open tray menu at the same spot (its content changed)."""
+        if getattr(self, "_popup", None) and getattr(self, "_popup_pos", None):
+            self._popup_at(*self._popup_pos)
 
     def _popup_toggle(self, c, want_active):
         if want_active and not c.active:
@@ -3463,6 +3516,11 @@ class TrayApp:
     def _quit(self):
         if getattr(self, "voice", None) is not None:
             self.voice.shutdown()          # снять хоткей, погасить whisper-server
+        if getattr(self, "torrents", None) is not None:
+            try:
+                self.torrents.shutdown()   # save resume data so downloads continue after restart
+            except Exception:
+                log("torrents shutdown failed:\n" + traceback.format_exc())
         for c in self.containers:
             if c.active:
                 c.sync_app_rects()   # запомнить размеры окон ДО отвязки
@@ -4019,32 +4077,48 @@ class TrayApp:
 
     def _reopen_settings(self):
         # смена языка: перерисовать окно, НЕ теряя несохранённых правок
-        self._open_settings(self._settings_tab)
+        self._open_settings(self._settings_tab, rebuild=True)
 
-    def _open_settings(self, tab=None):
-        """Единое окно настроек: вкладки «Общие» и «Голосовой ввод», внизу
-        «Сохранить» / «Отмена». Правки копятся в черновике и применяются
-        только по «Сохранить»; крестик и «Отмена» их отбрасывают."""
+    def _settings_tabs(self):
+        tabs = [("general", T("tab_general"))]
+        if self.voice is not None:
+            tabs.append(("voice", voice.V("menu")))
+        if convert is not None:
+            convert.LANG_GET = lambda: LANG
+            tabs.append(("convert", convert.C("tab")))
+        if self.torrents is not None:
+            tabs.append(("torrents", torrents.S("tab")))
+        return tabs
+
+    def _open_settings(self, tab=None, rebuild=False):
+        """Единое окно настроек с вкладками, внизу «Сохранить» / «Отмена».
+        Правки копятся в черновике и применяются только по «Сохранить»;
+        крестик и «Отмена» их отбрасывают. If the window is already open, only the
+        tab switches; the window is recreated only with rebuild=True (language change)."""
         old = getattr(self, "_settings_win", None)
+        try:
+            alive = bool(old) and bool(old.winfo_exists())
+        except Exception:
+            alive = False
+        if alive and not rebuild:
+            self._settings_show(tab or self._settings_tab)
+            old.lift()
+            old.focus_force()
+            return
         self._settings_win = None
         if old:
             try:
                 old.destroy()
             except Exception:
                 pass
-        avail = ["general"] + (["voice"] if self.voice is not None else []) \
-            + (["convert"] if convert is not None else [])
-        if tab not in avail:
-            tab = getattr(self, "_settings_tab", None) or "general"
-            if tab not in avail:
-                tab = "general"
-        self._settings_tab = tab
         if getattr(self, "_gen_draft", None) is None:
             self._gen_draft = {"autostart": autostart_enabled(),
                                "autoupdate": self.settings.get("autoupdate", True),
                                "convert_menu": self.settings.get("convert_menu", True)}
         if self.voice is not None and self.voice.draft is None:
             self.voice.begin_edit()
+        if self.torrents is not None and self.torrents.draft is None:
+            self.torrents.begin_edit()
 
         win = self._dialog(T("settings_title"), 640, 780)
         win.resizable(False, True)
@@ -4053,24 +4127,9 @@ class TrayApp:
         win.bind("<Escape>", lambda e: self._settings_cancel())
         pad = 24
 
-        # вкладки
+        # вкладки (заполняет _settings_show)
         bar = tk.Frame(win, bg=COL_SURFACE)
         bar.pack(fill="x", padx=pad, pady=(16, 0))
-        tabs = [("general", T("tab_general"))]
-        if self.voice is not None:
-            tabs.append(("voice", voice.V("menu")))
-        if convert is not None:
-            tabs.append(("convert", convert.C("tab")))
-        for key, label in tabs:
-            cell = tk.Frame(bar, bg=COL_SURFACE)
-            cell.pack(side="left", padx=(0, 22))
-            on = key == tab
-            lb = tk.Label(cell, text=label, bg=COL_SURFACE, fg=COL_TEXT if on else COL_TEXT_DIM,
-                          font=("Segoe UI Semibold", 12), cursor="hand2", pady=6)
-            lb.pack()
-            tk.Frame(cell, bg=COL_ACCENT if on else COL_SURFACE, height=2).pack(fill="x")
-            if not on:
-                lb.bind("<Button-1>", lambda e, k=key: self._open_settings(k))
         tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=pad)
 
         # низ: Сохранить / Отмена
@@ -4084,12 +4143,43 @@ class TrayApp:
 
         body = tk.Frame(win, bg=COL_SURFACE)
         body.pack(fill="both", expand=True)
+        self._settings_bar, self._settings_body = bar, body
+        self._settings_show(tab)
+
+    def _settings_show(self, tab):
+        """Fill the tab bar and the body for one tab, inside the existing window."""
+        keys = [k for k, _ in self._settings_tabs()]
+        if tab not in keys:
+            tab = getattr(self, "_settings_tab", None)
+            if tab not in keys:
+                tab = "general"
+        self._settings_tab = tab
+        win, bar, body = self._settings_win, self._settings_bar, self._settings_body
+        # the voice tab redraws itself and scrolls on the window's wheel: detach it first
+        if self.voice is not None:
+            self.voice.win = None
+        win.unbind("<MouseWheel>")
+        for w in bar.winfo_children() + body.winfo_children():
+            w.destroy()
+        for key, label in self._settings_tabs():
+            cell = tk.Frame(bar, bg=COL_SURFACE)
+            cell.pack(side="left", padx=(0, 22))
+            on = key == tab
+            lb = tk.Label(cell, text=label, bg=COL_SURFACE, fg=COL_TEXT if on else COL_TEXT_DIM,
+                          font=("Segoe UI Semibold", 12), cursor="hand2", pady=6)
+            lb.pack()
+            tk.Frame(cell, bg=COL_ACCENT if on else COL_SURFACE, height=2).pack(fill="x")
+            if not on:
+                lb.bind("<Button-1>", lambda e, k=key: self._settings_show(k))
+        pad = 24
         if tab == "voice":
             self.voice.build_into(body, win)
         elif tab == "convert":
             convert.LANG_GET = lambda: LANG
             convert.LOG = log
             convert.build_settings(self, body, win, pad)
+        elif tab == "torrents":
+            self.torrents.build_into(body, win, pad)
         else:
             self._build_general(body, pad)
 
@@ -4154,6 +4244,8 @@ class TrayApp:
                 self._apply_convert_menu()
             if self.voice is not None:
                 self.voice.commit()
+            if self.torrents is not None:
+                self.torrents.commit()
         except Exception:
             log("settings save failed:\n" + traceback.format_exc())
         self._settings_close_win()
@@ -4161,6 +4253,8 @@ class TrayApp:
     def _settings_cancel(self):
         if self.voice is not None:
             self.voice.discard()
+        if self.torrents is not None:
+            self.torrents.discard()
         self._settings_close_win()
 
     def _info(self, title, prompt):
@@ -4364,11 +4458,16 @@ def main():
         return
 
     launch_name = _parse_launch(args)
+    # .torrent files opened with HDContainer (file association / "Open with")
+    torrent_files = [os.path.abspath(a) for a in args
+                     if a.lower().endswith(".torrent") and os.path.isfile(a)]
     # единственный экземпляр: если уже запущен — отдать ему команду и выйти
     existing = user32.FindWindowW(None, IPC_TITLE)
     if existing:
         if launch_name:
             send_copydata(existing, launch_name)
+        for p in torrent_files:
+            send_copydata(existing, p, COPYDATA_TORRENT)
         return
     # именованный мьютекс держим всё время работы: по нему установщик (AppMutex)
     # понимает, что программа запущена, и закрывает её перед обновлением
@@ -4383,12 +4482,14 @@ def main():
                 if existing:
                     if launch_name:
                         send_copydata(existing, launch_name)
+                    for p in torrent_files:
+                        send_copydata(existing, p, COPYDATA_TORRENT)
                     return
                 time.sleep(0.25)
             return
     except Exception:
         pass
-    TrayApp(launch_name=launch_name).run()
+    TrayApp(launch_name=launch_name, torrent_files=torrent_files).run()
 
 
 if __name__ == "__main__":

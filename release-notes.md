@@ -1,1 +1,2 @@
-- **Convert many files at once.** Select any number of files of a type, right-click → Convert to → format: one window shows "3 of 12: name → PDF" and the files are processed one after another (engines are downloaded once). The Windows limit that hid the menu item for more than 15 selected files is lifted.
+- **Torrents.** Open a `.torrent` file with HDContainer and it starts downloading. Progress, pause/resume and delete are in the tray menu; **Settings → Torrents** holds the save folder and presets (max speed, forced seed requests, merging seeds from all sources, stop seeding when done, remove finished from the list).
+- **Settings tabs switch instantly.** Changing tabs no longer closes and reopens the whole Settings window.
