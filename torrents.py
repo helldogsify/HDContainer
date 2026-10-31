@@ -58,7 +58,9 @@ DEFAULTS = {"dir": "", "max_speed": True, "force_seeds": True, "merge": True,
 LISTEN = "0.0.0.0:6881,[::]:6881"
 FORCE_EVERY = 180        # s between forced announces while seeds are scarce
 FORCE_MIN_SEEDS = 5      # fewer connected seeds than this -> keep forcing
-RESUME_EVERY = 300       # s between resume-data snapshots of active downloads
+RESUME_EVERY = 30        # s between resume-data snapshots of active downloads
+LOCK = "running.lock"    # exists while the app runs; left behind = the last exit was not clean
+MARKER = "format2"       # state written by a version with LOCK; older state may hold a stale snapshot
 TICK_MS = 1000
 
 # "Maximum speed" lifts libtorrent's conservative connection defaults; rate limits
@@ -145,7 +147,17 @@ class TorrentController:
         self.order = []
         self.draft = None
         self._popup = None     # {"parent", "sig", "rows"} while the tray menu is open
+        self._lock = os.path.join(self.dir, LOCK)
+        marker = os.path.join(self.dir, MARKER)
+        # versions before 1.8.2 saved snapshots only every 5 min and not at Windows shutdown,
+        # so their state is checked against the files once
+        self._unclean = os.path.exists(self._lock) or not os.path.exists(marker)
         self._restore()
+        try:
+            open(marker, "w").close()
+        except OSError:
+            pass
+        self._set_lock(True)
         self.root.after(TICK_MS, self._tick)
 
     # ---- settings ----
@@ -218,6 +230,27 @@ class TorrentController:
         except Exception as ex:
             self.log("torrent list save failed: %r" % ex)
 
+    def _set_lock(self, on):
+        try:
+            if on:
+                open(self._lock, "w").close()
+            else:
+                os.remove(self._lock)
+        except OSError:
+            pass
+
+    def _write_resume(self, a):
+        """Store a save_resume_data_alert atomically: a torn file would lose all progress."""
+        try:
+            tid = _tid_of(a.handle.info_hashes())
+            if tid in self.items:
+                tmp = self._p(tid, ".resume.tmp")
+                with open(tmp, "wb") as f:
+                    f.write(lt.write_resume_data_buf(a.params))
+                os.replace(tmp, self._p(tid, ".resume"))
+        except Exception as ex:
+            self.log("resume write failed: %r" % ex)
+
     def _drop_state(self, tid):
         for ext in (".torrent", ".resume"):
             try:
@@ -247,11 +280,17 @@ class TorrentController:
                 self.log("torrent restore failed %s: %r" % (tid, ex))
                 continue
             resume = None
-            try:
-                with open(self._p(tid, ".resume"), "rb") as f:
-                    resume = f.read()
-            except OSError:
-                pass
+            if self._unclean and not r.get("done"):
+                # killed, crashed or power lost: the snapshot can be older than the files
+                # (pieces fetched after it would be downloaded again), so without resume
+                # data libtorrent checks what is really on disk
+                self.log("torrent %s: last exit was not clean, checking files" % r.get("name"))
+            else:
+                try:
+                    with open(self._p(tid, ".resume"), "rb") as f:
+                        resume = f.read()
+                except OSError:
+                    pass
             self._add(ti, r.get("path") or self.folder(), resume=resume,
                       paused=bool(r.get("paused")), done=bool(r.get("done")))
         self._save_list()
@@ -347,6 +386,7 @@ class TorrentController:
         else:
             h.pause()
             it["paused"] = True
+            h.save_resume_data(lt.torrent_handle.flush_disk_cache)
         self._save_list()
 
     def remove(self, tid, delete_files):
@@ -398,13 +438,7 @@ class TorrentController:
         pending = 0
         for a in self.ses.pop_alerts():
             if isinstance(a, lt.save_resume_data_alert):
-                try:
-                    tid = _tid_of(a.handle.info_hashes())
-                    if tid in self.items:
-                        with open(self._p(tid, ".resume"), "wb") as f:
-                            f.write(lt.write_resume_data_buf(a.params))
-                except Exception as ex:
-                    self.log("resume write failed: %r" % ex)
+                self._write_resume(a)
                 pending += 1
             elif isinstance(a, lt.save_resume_data_failed_alert):
                 pending += 1
@@ -439,8 +473,9 @@ class TorrentController:
         self._maybe_close_session()
         self._repopup()
 
-    def shutdown(self):
-        """Quit: snapshot resume data so a restart continues where it stopped."""
+    def _save_all_resume(self, wait):
+        """Snapshot every torrent now and wait for the files. Only resume alerts are
+        handled here (no notices, no tk), so it is safe at Windows session end."""
         if self.ses is None:
             return
         n = 0
@@ -448,13 +483,33 @@ class TorrentController:
             if it["h"] is not None and it["h"].is_valid():
                 it["h"].save_resume_data(lt.torrent_handle.flush_disk_cache)
                 n += 1
-        deadline = time.time() + 5
+        deadline = time.time() + wait
         while n > 0 and time.time() < deadline:
-            if self.ses.wait_for_alert(250) is not None:
-                n -= self._alerts()
+            if self.ses.wait_for_alert(250) is None:
+                continue
+            for a in self.ses.pop_alerts():
+                if isinstance(a, lt.save_resume_data_alert):
+                    self._write_resume(a)
+                    n -= 1
+                elif isinstance(a, lt.save_resume_data_failed_alert):
+                    n -= 1
+
+    def shutdown(self):
+        """Quit: snapshot resume data so a restart continues where it stopped."""
+        self._save_all_resume(5)
         self._save_list()
-        self.ses.pause()
-        self.ses = None
+        if self.ses is not None:
+            self.ses.pause()
+            self.ses = None
+        self._set_lock(False)
+
+    def end_session(self):
+        """Windows is shutting down or restarting and kills us right after this:
+        save progress now. Called from the window procedure, so no tk here."""
+        self._save_all_resume(3)
+        self._save_list()
+        self._set_lock(False)
+        self.log("torrents saved at session end")
 
     # ---- tray menu rows ----
     def has_items(self):

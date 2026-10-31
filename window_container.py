@@ -79,7 +79,7 @@ except Exception:
     torrents = None
     _TORRENTS_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.8.1"
+VERSION = "1.8.2"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -631,6 +631,7 @@ NIF_TIP = 0x04
 NIF_INFO = 0x10
 NIN_BALLOONUSERCLICK = 0x0405
 COPYDATA_TORRENT = 2          # WM_COPYDATA dwData: the string is a .torrent path, not a container
+WM_ENDSESSION = 0x0016
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
@@ -1874,6 +1875,13 @@ class TrayApp:
             except Exception as ex:
                 log("voice hotkey failed: %r" % ex)
             return 0
+        if msg == WM_ENDSESSION and wparam and getattr(self, "torrents", None) is not None:
+            # Windows shuts down / restarts and kills the process right after this:
+            # save torrent progress now (end_session doesn't touch tk), then default handling
+            try:
+                self.torrents.end_session()
+            except Exception as ex:
+                log("torrents end_session failed: %r" % ex)
         if msg == WM_COPYDATA:
             try:
                 cds = COPYDATASTRUCT.from_address(int(lparam))
