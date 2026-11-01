@@ -1,1 +1,4 @@
-- **Boxes show up on Windows 11 24H2 and newer.** The desktop is put together differently there, and a new box stayed invisible after you named it. Boxes now live in the desktop's icon layer, right above the icons, so they appear on every Windows version.
+- **Boxes open right away on hover.** Before, a box waited until the mouse stopped moving over its title.
+- **A box is as tall as its icons need.** The height follows the number of items (down to the bottom of the screen, then it scrolls); dragging the right edge changes the width and the height follows.
+- **This PC, the Recycle Bin** and the other standard desktop icons can be dragged into a box. They leave the desktop and come back when you take them out of the box. Right-click gives their own menu (Empty Recycle Bin…). The user's folder and drives are never moved, only linked.
+- **Settings → Boxes → Arrange**: one click puts all boxes along the top of the screen (left, center or right) or in a column at the left or right edge, with the box width and the gap you set in pixels. New boxes get that width; Cancel puts the boxes back.

@@ -76,6 +76,15 @@ BSTR = {
     "snap": {"en": "Line boxes up when moving", "ru": "Выстраивать ящики при перемещении", "es": "Alinear las cajas al moverlas", "pt": "Alinhar as caixas ao mover", "de": "Boxen beim Verschieben ausrichten", "fr": "Aligner les boîtes en les déplaçant", "zh": "移动时排列收纳盒"},
     "snap_note": {"en": "They stick to each other with the same gap and line up by their edges.", "ru": "Прилипают друг к другу с одинаковым отступом и выравниваются по краям.", "es": "Se pegan entre sí con el mismo hueco y se alinean por los bordes.", "pt": "Grudam umas nas outras com o mesmo espaço e se alinham pelas bordas.", "de": "Sie haften mit gleichem Abstand aneinander und richten ihre Kanten aus.", "fr": "Elles se collent avec le même écart et s’alignent par les bords.", "zh": "以相同间距相互吸附，并按边缘对齐。"},
     "quickhide": {"en": "Double-click the empty desktop to hide boxes and icons", "ru": "Двойной клик по рабочему столу прячет ящики и значки", "es": "Doble clic en el escritorio vacío oculta cajas e iconos", "pt": "Clique duplo na área de trabalho vazia oculta caixas e ícones", "de": "Doppelklick auf den leeren Desktop blendet Boxen und Symbole aus", "fr": "Double-clic sur le bureau vide : masquer boîtes et icônes", "zh": "双击桌面空白处隐藏收纳盒和图标"},
+    "arrange": {"en": "Arrange", "ru": "Расстановка", "es": "Colocación", "pt": "Disposição", "de": "Anordnung", "fr": "Disposition", "zh": "排列"},
+    "box_w": {"en": "Box width", "ru": "Ширина ящика", "es": "Ancho de caja", "pt": "Largura da caixa", "de": "Boxbreite", "fr": "Largeur des boîtes", "zh": "收纳盒宽度"},
+    "gap": {"en": "Gap", "ru": "Отступ", "es": "Espacio", "pt": "Espaço", "de": "Abstand", "fr": "Écart", "zh": "间距"},
+    "arr_top": {"en": "Along the top", "ru": "Вверху", "es": "Arriba", "pt": "No topo", "de": "Oben", "fr": "En haut", "zh": "顶部"},
+    "arr_col": {"en": "In a column", "ru": "Столбцом", "es": "En columna", "pt": "Em coluna", "de": "Als Spalte", "fr": "En colonne", "zh": "成列"},
+    "left": {"en": "Left", "ru": "Слева", "es": "Izquierda", "pt": "Esquerda", "de": "Links", "fr": "À gauche", "zh": "左"},
+    "center": {"en": "Center", "ru": "По центру", "es": "Centro", "pt": "Centro", "de": "Mitte", "fr": "Au centre", "zh": "居中"},
+    "right": {"en": "Right", "ru": "Справа", "es": "Derecha", "pt": "Direita", "de": "Rechts", "fr": "À droite", "zh": "右"},
+    "arrange_note": {"en": "One click puts all boxes there, with this width and the same gap between them and from the screen edge.", "ru": "Один клик ставит туда все ящики: с этой шириной и одинаковым отступом друг от друга и от края экрана.", "es": "Un clic coloca ahí todas las cajas, con este ancho y el mismo espacio entre ellas y hasta el borde.", "pt": "Um clique coloca todas as caixas ali, com esta largura e o mesmo espaço entre elas e até a borda.", "de": "Ein Klick stellt alle Boxen dorthin, mit dieser Breite und gleichem Abstand zueinander und zum Bildschirmrand.", "fr": "Un clic y place toutes les boîtes, avec cette largeur et le même écart entre elles et avec le bord.", "zh": "单击即可把所有收纳盒放到该处，使用此宽度，彼此及与屏幕边缘的间距相同。"},
     "import": {"en": "Import boxes from iTop Easy Desktop", "ru": "Перенести ящики из iTop Easy Desktop", "es": "Importar cajas de iTop Easy Desktop", "pt": "Importar caixas do iTop Easy Desktop", "de": "Boxen aus iTop Easy Desktop übernehmen", "fr": "Importer les boîtes d’iTop Easy Desktop", "zh": "从 iTop Easy Desktop 导入收纳盒"},
     "imported_n": {"en": "Imported boxes: %d. Drag your files into them.", "ru": "Перенесено ящиков: %d. Перетащите в них свои файлы.", "es": "Cajas importadas: %d. Arrastra tus archivos a ellas.", "pt": "Caixas importadas: %d. Arraste seus arquivos para elas.", "de": "Übernommene Boxen: %d. Zieh deine Dateien hinein.", "fr": "Boîtes importées : %d. Glissez-y vos fichiers.", "zh": "已导入收纳盒：%d。把文件拖进去即可。"},
     "itop_running": {"en": "Quit iTop Easy Desktop first, otherwise both programs will draw boxes.", "ru": "Сначала закройте iTop Easy Desktop, иначе ящики будут рисовать обе программы.", "es": "Cierra primero iTop Easy Desktop; si no, ambos programas dibujarán cajas.", "pt": "Feche o iTop Easy Desktop primeiro, senão os dois programas vão desenhar caixas.", "de": "Beende zuerst iTop Easy Desktop, sonst zeichnen beide Programme Boxen.", "fr": "Quittez d’abord iTop Easy Desktop, sinon les deux programmes dessineront des boîtes.", "zh": "请先退出 iTop Easy Desktop，否则两个程序都会绘制收纳盒。"},
@@ -98,11 +107,12 @@ BG_COLORS = [None, "#2b5ea7", "#4c8bf5", "#64d2ff", "#1a9e8f", "#34c759",
 TITLE_COLORS = ["#f4f6fa", "#c9ced8", "#1d1f24", "#ffd60a", "#64d2ff", "#ff9f0a"]
 STYLE_DEFAULT = {"color": None, "transp": 30, "hover_transp": 10, "font": "Segoe UI Semibold",
                  "font_size": 11, "bold": False, "title_color": "#f4f6fa"}
-OPTS_DEFAULT = {"round": True, "border": False, "badge": True, "icon_size": 48, "snap": True, "quickhide": True}
+OPTS_DEFAULT = {"round": True, "border": False, "badge": True, "icon_size": 48, "snap": True, "quickhide": True,
+                "box_w": 300, "gap": 12}           # box_w / gap: plain screen pixels, as the user sets them
 
 # logical sizes (scaled by the window's DPI)
 PAD, RADIUS, EDGE = 8, 10, 6
-HOVER_OPEN_MS, LEAVE_CLOSE_MS, ANIM_MS = 220, 450, 130
+HOVER_OPEN_MS, LEAVE_CLOSE_MS, ANIM_MS = 100, 450, 130
 HEADER_EXTRA = 48          # an open box's header is this much denser (0..255), setting it apart
 DATA_VERSION = 3
 TICK_MS = 50
@@ -287,6 +297,9 @@ _d(shell32.SHCreateItemFromParsingName, HRESULT, [wintypes.LPCWSTR, VP, VP, ctyp
 _d(shell32.ShellExecuteW, VP, [HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_int])
 _d(shell32.ILFindLastID, VP, [VP])
 _d(shell32.ILFree, None, [VP])
+_d(shell32.ILCombine, VP, [VP, VP])
+_d(shell32.ILGetSize, UINT, [VP])
+_d(shell32.SHGetNameFromIDList, HRESULT, [VP, ctypes.c_uint, ctypes.POINTER(ctypes.c_wchar_p)])
 _d(shell32.SHChangeNotify, None, [ctypes.c_long, UINT, VP, VP])
 _d(shell32.DragQueryFileW, UINT, [VP, UINT, wintypes.LPWSTR, UINT])
 _d(shell32.SHFileOperationW, ctypes.c_int, [VP])
@@ -326,6 +339,8 @@ CF_HDROP = 15
 IDC_ARROW, IDC_SIZEWE, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEALL = 32512, 32644, 32645, 32642, 32646
 LVM_HITTEST = 0x1012
 SHCNE_UPDATEDIR, SHCNF_PATHW = 0x1000, 0x5
+SHCNE_ASSOCCHANGED, SHCNF_IDLIST = 0x08000000, 0x0
+SIGDN_NORMALDISPLAY, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_FILESYSPATH = 0x0, 0x80028000, 0x80058000
 
 _HINST = kernel32.GetModuleHandleW(None)
 
@@ -347,6 +362,9 @@ IID_IDropTarget = _guid("{00000122-0000-0000-C000-000000000046}")
 IID_IShellItemImageFactory = _guid("{BCC18B79-BA16-442F-80C4-8A59C30C463B}")
 CLSID_DragDropHelper = _guid("{4657278A-411B-11D2-839A-00C04FD918D0}")
 IID_IDragSourceHelper = _guid("{DE5BF786-477A-11D2-839D-00C04FD918D0}")
+CLSID_ShellLink = _guid("{00021401-0000-0000-C000-000000000046}")
+IID_IShellLinkW = _guid("{000214F9-0000-0000-C000-000000000046}")
+IID_IPersistFile = _guid("{0000010B-0000-0000-C000-000000000046}")
 FOLDERID_Desktop = _guid("{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}")
 
 
@@ -621,6 +639,153 @@ def dataobject_files(pdo):
         ole32.ReleaseStgMedium(ctypes.byref(stg))
 
 
+def pidl_name(pidl, sigdn):
+    p = ctypes.c_wchar_p()
+    if shell32.SHGetNameFromIDList(pidl, sigdn, ctypes.byref(p)) != 0 or not p.value:
+        return ""
+    s = p.value
+    ole32.CoTaskMemFree(p)
+    return s
+
+
+def dataobject_items(pdo):
+    """Every item of a shell drag (its "Shell IDList Array"): [(parsing name, display name,
+    absolute ID list bytes, dragged from the desktop, file system path or "")]."""
+    fmt = FORMATETC(user32.RegisterClipboardFormatW("Shell IDList Array"), None, 1, -1, 1)
+    stg = STGMEDIUM()
+    if _vcall(pdo, 3, HRESULT, [VP, VP], ctypes.byref(fmt), ctypes.byref(stg)) != 0:
+        return []
+    out = []
+    try:
+        base = kernel32.GlobalLock(stg.hGlobal)
+        if not base:
+            return []
+        try:
+            n = ctypes.c_uint.from_address(base).value                  # CIDA: count, offsets, parent, children
+            if n > 400:                                                 # a big folder drag: plain files will do
+                return []
+            offs = (ctypes.c_uint * (n + 1)).from_address(base + 4)
+            parent = base + offs[0]
+            from_desktop = ctypes.c_ushort.from_address(parent).value == 0     # empty ID list = the desktop
+            for i in range(1, n + 1):
+                pidl = shell32.ILCombine(parent, base + offs[i])
+                if not pidl:
+                    continue
+                try:
+                    out.append((pidl_name(pidl, SIGDN_DESKTOPABSOLUTEPARSING), pidl_name(pidl, SIGDN_NORMALDISPLAY),
+                                ctypes.string_at(pidl, shell32.ILGetSize(pidl)), from_desktop,
+                                pidl_name(pidl, SIGDN_FILESYSPATH)))
+                finally:
+                    shell32.ILFree(pidl)
+        finally:
+            kernel32.GlobalUnlock(stg.hGlobal)
+    finally:
+        ole32.ReleaseStgMedium(ctypes.byref(stg))
+    return out
+
+
+def _shell_link():
+    """(IShellLinkW, IPersistFile) of a new shell link object, or (None, None)."""
+    psl, ppf = VP(), VP()
+    if ole32.CoCreateInstance(ctypes.byref(CLSID_ShellLink), None, 1, ctypes.byref(IID_IShellLinkW),
+                              ctypes.byref(psl)) != 0:
+        return None, None
+    if _vcall(psl, 0, HRESULT, [VP, ctypes.POINTER(VP)], ctypes.byref(IID_IPersistFile), ctypes.byref(ppf)) != 0:
+        _release(psl)
+        return None, None
+    return psl, ppf
+
+
+def make_link(path, pidl_bytes):
+    """Save a .lnk pointing at a shell item by its ID list: works for This PC, the Recycle Bin
+    and anything else that has no file of its own."""
+    psl, ppf = _shell_link()
+    if not psl:
+        return False
+    try:
+        buf = ctypes.create_string_buffer(pidl_bytes, len(pidl_bytes) + 2)
+        if _vcall(psl, 5, HRESULT, [VP], buf) != 0:                       # IShellLinkW::SetIDList
+            return False
+        return _vcall(ppf, 6, HRESULT, [wintypes.LPCWSTR, BOOL], path, True) == 0     # IPersistFile::Save
+    finally:
+        _release(ppf)
+        _release(psl)
+
+
+def link_target(path):
+    """The parsing name of what a .lnk points to ("::{CLSID}" for This PC, the Recycle Bin…)."""
+    psl, ppf = _shell_link()
+    if not psl:
+        return ""
+    pidl = VP()
+    try:
+        if _vcall(ppf, 5, HRESULT, [wintypes.LPCWSTR, DWORD], path, 0) != 0:           # IPersistFile::Load
+            return ""
+        if _vcall(psl, 4, HRESULT, [ctypes.POINTER(VP)], ctypes.byref(pidl)) != 0 or not pidl:   # GetIDList
+            return ""
+        return pidl_name(pidl, SIGDN_DESKTOPABSOLUTEPARSING)
+    finally:
+        if pidl:
+            shell32.ILFree(pidl)
+        _release(ppf)
+        _release(psl)
+
+
+# the standard desktop icons (Settings → Personalization → Themes → Desktop icon settings):
+# parsing CLSID -> the value that shows / hides it
+DESKTOP_ICONS = {
+    "{20D04FE0-3AEA-1069-A2D8-08002B30309D}": "{20D04FE0-3AEA-1069-A2D8-08002B30309D}",     # This PC
+    "{645FF040-5081-101B-9F08-00AA002F954E}": "{645FF040-5081-101B-9F08-00AA002F954E}",     # Recycle Bin
+    "{59031A47-3F72-44A7-89C5-5595FE6B30EE}": "{59031A47-3F72-44A7-89C5-5595FE6B30EE}",     # the user's folder
+    "{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}": "{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}",     # Network
+    "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}": "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}",     # Control Panel
+    "{26EE0668-A00A-44D7-9371-BEB064C98683}": "{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}",     # Control Panel (categories)
+}
+HIDE_ICONS_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel"
+
+
+USER_FILES = "{59031A47-3F72-44A7-89C5-5595FE6B30EE}"
+
+
+def _profile():
+    return os.path.normcase(os.environ.get("USERPROFILE") or os.path.expanduser("~")).rstrip("\\/")
+
+
+def protected_folder(path):
+    """Folders a box must never move or copy in, only link to: a drive root, the user's profile
+    (the desktop shows it as an icon of its own) and any folder the desktop itself lives in."""
+    if not path:
+        return False
+    p = os.path.normcase(os.path.abspath(path)).rstrip("\\/")
+    if len(p) <= 2 or p == _profile():
+        return True
+    desk = os.path.normcase(desktop_dir()).rstrip("\\/")
+    return desk == p or desk.startswith(p + os.sep)
+
+
+def desktop_icon_clsid(parse, from_desktop=False, fs=""):
+    """The CLSID of a standard desktop icon, else None. The user's folder icon is parsed
+    as its plain path, so it is recognised by being the profile, dragged from the desktop."""
+    c = parse[2:].upper() if parse.startswith("::{") and len(parse) == 40 else None
+    if c in DESKTOP_ICONS:
+        return c
+    if from_desktop and fs and os.path.normcase(fs).rstrip("\\/") == _profile():
+        return USER_FILES
+    return None
+
+
+def link_is_icon(path, clsid):
+    t = link_target(path)
+    return t.upper() == "::" + clsid or (clsid == USER_FILES and os.path.normcase(t).rstrip("\\/") == _profile())
+
+
+def show_desktop_icon(clsid, show):
+    import winreg
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, HIDE_ICONS_KEY, 0, winreg.KEY_SET_VALUE) as k:
+        winreg.SetValueEx(k, DESKTOP_ICONS[clsid], 0, winreg.REG_DWORD, 0 if show else 1)
+    shell32.SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None)     # the desktop re-reads its icons
+
+
 # ---------------------------------------------------------------------------
 # COM objects implemented here: drop source and drop target
 # ---------------------------------------------------------------------------
@@ -664,8 +829,9 @@ class DropSource(_ComObject):
 class DropTarget(_ComObject):
     def __init__(self, box):
         self.box = box
-        self.files = []
-        enter = ctypes.WINFUNCTYPE(HRESULT, VP, VP, DWORD, ctypes.c_uint64, ctypes.POINTER(DWORD))(self._enter)
+        self.files = []                 # real files and folders: moved / copied into the box
+        self.links = []                 # shell items without a file of their own: become shortcuts
+        enter =ctypes.WINFUNCTYPE(HRESULT, VP, VP, DWORD, ctypes.c_uint64, ctypes.POINTER(DWORD))(self._enter)
         over = ctypes.WINFUNCTYPE(HRESULT, VP, DWORD, ctypes.c_uint64, ctypes.POINTER(DWORD))(self._over)
         leave = ctypes.WINFUNCTYPE(HRESULT, VP)(self._leave)
         drop = ctypes.WINFUNCTYPE(HRESULT, VP, VP, DWORD, ctypes.c_uint64, ctypes.POINTER(DWORD))(self._drop)
@@ -673,8 +839,10 @@ class DropTarget(_ComObject):
 
     def _effect(self, keys):
         folder = self.box.folder
-        if not self.files or not folder or not os.path.isdir(folder):
+        if not folder or not os.path.isdir(folder):
             return DROPEFFECT_NONE
+        if not self.files:
+            return DROPEFFECT_LINK if self.links else DROPEFFECT_NONE
         if all(os.path.normcase(os.path.dirname(f)) == os.path.normcase(folder) for f in self.files):
             return DROPEFFECT_NONE
         if keys & MK_CONTROL:
@@ -686,15 +854,33 @@ class DropTarget(_ComObject):
 
     def _negotiate(self, keys, allowed):
         eff = self._effect(keys)
+        if eff == DROPEFFECT_LINK:
+            return eff if not allowed or allowed & eff else (allowed & DROPEFFECT_COPY)
         if eff and allowed and not eff & allowed:
             eff = DROPEFFECT_COPY if allowed & DROPEFFECT_COPY else (allowed & DROPEFFECT_MOVE)
         return eff
 
-    def _enter(self, this, pdo, keys, pt, peff):
+    def _read(self, pdo):
         try:
-            self.files = dataobject_files(pdo)
-        except Exception:
-            self.files = []
+            files = dataobject_files(pdo)
+            items = dataobject_items(pdo)
+        except Exception as ex:
+            self.box.mgr.log("box drop read failed: %r" % ex)
+            files, items = [], []
+        # namespace items (This PC, the Recycle Bin…) and protected folders (the user's own
+        # folder, a drive) are never moved or copied: they go in as shortcuts
+        links = [it for it in items if it[0].startswith("::") or protected_folder(it[4])]
+        skip = {os.path.normcase(it[4]) for it in links if it[4]}
+        if files:
+            files = [f for f in files if os.path.normcase(f) not in skip]
+        else:
+            files = [it[4] for it in items if it not in links and it[4]]
+        for f in [f for f in files if protected_folder(f)]:          # no ID list to link with: just refuse
+            files.remove(f)
+        self.files, self.links = files, links
+
+    def _enter(self, this, pdo, keys, pt, peff):
+        self._read(pdo)
         peff[0] = self._negotiate(keys, peff[0])
         self.box.drag_hover(True)
         return S_OK
@@ -708,17 +894,20 @@ class DropTarget(_ComObject):
         return S_OK
 
     def _drop(self, this, pdo, keys, pt, peff):
+        if not self.files and not self.links:
+            self._read(pdo)
         eff = self._negotiate(keys, peff[0])
-        files = self.files or dataobject_files(pdo)
+        files, links = self.files, self.links
         self.box.drag_hover(False)
         if eff and files:
             # we move/copy ourselves and report COPY: a source told MOVE would delete
             # the originals itself, racing with our own operation
-            self.box.mgr.receive(self.box, files, FO_COPY if eff == DROPEFFECT_COPY else FO_MOVE)
-            peff[0] = DROPEFFECT_COPY
-        else:
-            peff[0] = DROPEFFECT_NONE
-        self.files = []
+            self.box.mgr.receive(self.box, files, FO_MOVE if eff == DROPEFFECT_MOVE else FO_COPY)
+        if eff and links:
+            box = self.box                                  # after the drop: the desktop is still in its drag loop
+            box.mgr.defer(lambda: box.mgr.add_links(box, links))
+        peff[0] = (DROPEFFECT_COPY if files else eff) if eff else DROPEFFECT_NONE
+        self.files, self.links = [], []
         return S_OK
 
 
@@ -894,6 +1083,7 @@ class Box:
         self.cur_h = None               # current height (animation)
         self.anim = None                # (from_h, to_h, t0)
         self.temp_open = False          # opened by hover, closes when the mouse leaves
+        self.open_pending = False       # the hover-open timer is running
         self.drop_hl = False
         self.tracking = False
         self.press = None               # dict while a mouse button is held
@@ -942,14 +1132,17 @@ class Box:
         return (w - cols * cell) // 2, cols, cell, self.icon_px() + self.px(40), pad
 
     def rect(self):
-        """[x, y, w, h] in screen pixels for the current monitor layout."""
+        """[x, y, w, h] in screen pixels for the current monitor layout. h is the open height:
+        it follows the number of items, down to the bottom of the screen at most (then it scrolls)."""
         r = self.d.get("rects", {}).get(self.mgr.sig) or self.d.get("last") or [200, 120, 320, 420]
-        x, y, w, h = r
+        x, y, w, _h = r
         wa = work_area_at(x + 10, y + 10)
         w = max(self.px(PAD) * 2 + self.icon_px() + self.px(40), w)
-        h = max(self.title_h() + 10, h)
         x = min(max(x, wa[0] - w + 40), wa[2] - 40)
-        y = min(max(y, wa[1]), wa[3] - self.title_h())
+        t = self.title_h()
+        y = min(max(y, wa[1]), wa[3] - t)
+        one_row = t + self.px(PAD) * 2 + self.layout(w)[3]
+        h = min(t + self.content_h(w), max(one_row, wa[3] - y))
         return [x, y, w, h]
 
     def visible_rect(self):
@@ -970,6 +1163,10 @@ class Box:
 
     def target_h(self):
         return self.title_h() if self.rolled() else self.rect()[3]
+
+    def rest_h(self):
+        """Height while the cursor is elsewhere: just the title for a box that rolls up."""
+        return self.title_h() if (self.d.get("rollup") or self.d.get("collapsed")) else self.rect()[3]
 
     # ---- listing ----
     def refresh_items(self):
@@ -1062,7 +1259,7 @@ class Box:
     # ---- drawing ----
     def content_h(self, w):
         _x0, cols, _cell, ch, pad = self.layout(w)
-        rows = (len(self.items) + cols - 1) // cols
+        rows = max(1, (len(self.items) + cols - 1) // cols)     # an empty box keeps one row to drop into
         return pad * 2 + rows * ch
 
     def render(self):
@@ -1149,7 +1346,7 @@ class Box:
                 aa_fill(grid, box, self.px(6), (76, 139, 245, 110))
             elif i == self.hover:
                 aa_fill(grid, box, self.px(6), (255, 255, 255, 34))
-            pic = self.mgr.icons.get(path, icon, mtime)
+            pic = self.mgr.icons.get(self.mgr.moved_target(path) or path, icon, mtime)
             ix, iy = cx + (cell - icon) // 2, cy + self.px(7)
             if pic:                                       # bottom-aligned, like Explorer: labels start on one line
                 grid.alpha_composite(pic, (ix + (icon - pic.width) // 2, iy + icon - pic.height))
@@ -1222,19 +1419,12 @@ class Box:
 
     # ---- geometry helpers ----
     def hit(self, x, y):
-        """('title'|'resize-r'|'resize-b'|'resize-rb'|'item'|'empty', index)"""
+        """('title'|'resize-r'|'item'|'empty', index); the height follows the items, so only the width resizes"""
         _x, _y, w, _h = self.rect()
         h = self.cur_h or _h
         t = self.title_h()
-        e = self.px(EDGE)
-        if not self.rolled() and h > t and not self.d.get("locked"):
-            right, bottom = x >= w - e, y >= h - e
-            if right and bottom:
-                return "resize-rb", -1
-            if right:
-                return "resize-r", -1
-            if bottom:
-                return "resize-b", -1
+        if not self.rolled() and h > t and not self.d.get("locked") and x >= w - self.px(EDGE):
+            return "resize-r", -1
         if y < t:
             return "title", -1
         x0, cols, cell, ch, pad = self.layout(w)
@@ -1317,12 +1507,14 @@ class Box:
             if changed:
                 self.render()
             user32.KillTimer(self.hwnd, 1)
+            self.open_pending = False
             if self.d.get("rollup") and self.temp_open and not self.press:
                 user32.SetTimer(self.hwnd, 2, LEAVE_CLOSE_MS, None)
             return 0
         if msg == WM_TIMER:
             if wp == 1:                                       # hover over a rolled title -> open
                 user32.KillTimer(self.hwnd, 1)
+                self.open_pending = False
                 if self.rolled():
                     self.temp_open = True
                     self.update_roll()
@@ -1339,7 +1531,7 @@ class Box:
             user32.GetCursorPos(ctypes.byref(p))
             user32.ScreenToClient(self.hwnd, ctypes.byref(p))
             zone = self.hit(p.x, p.y)[0]
-            cur = {"resize-r": IDC_SIZEWE, "resize-b": IDC_SIZENS, "resize-rb": IDC_SIZENWSE}.get(zone, IDC_ARROW)
+            cur = IDC_SIZEWE if zone == "resize-r" else IDC_ARROW
             user32.SetCursor(user32.LoadCursorW(None, VP(cur)))
             return 1
         if msg == WM_CAPTURECHANGED:
@@ -1385,19 +1577,17 @@ class Box:
                 return 0
             if mode == "resize":
                 r = self.rect()
-                right = r[0] + r[2] if pr["zone"] == "resize-b" else p.x + pr["ox"]
-                bottom = r[1] + r[3] if pr["zone"] == "resize-r" else p.y + pr["oy"]
-                right, bottom = self.mgr.snap_resize(self, right, bottom, pr["zone"])
+                right = self.mgr.snap_resize(self, p.x + pr["ox"])
                 min_w = self.px(PAD) * 2 + self.icon_px() + self.px(40)
-                w = max(min_w, right - r[0])
-                h = max(self.title_h() + self.icon_px() + self.px(40), bottom - r[1])
-                self.d.setdefault("rects", {})[self.mgr.sig] = [r[0], r[1], w, h]
-                self.cur_h = h
+                self.d.setdefault("rects", {})[self.mgr.sig] = [r[0], r[1], max(min_w, right - r[0]), r[3]]
+                self.cur_h = self.rect()[3]                   # fewer columns, more rows: the height follows
                 self.render()
                 return 0
             return 0
         zone, i = self.hit(x, y)
-        if zone == "title" and self.rolled():
+        if zone == "title" and self.rolled() and not self.open_pending:
+            # armed once per visit: re-arming on every move kept a moving cursor waiting
+            self.open_pending = True
             user32.SetTimer(self.hwnd, 1, HOVER_OPEN_MS, None)
         if i != self.hover or redraw:
             self.hover = i
@@ -1593,6 +1783,7 @@ class BoxManager:
         self.draft = None
         self.settings_target = None         # box id the Settings tab opens on (None: all boxes)
         self._ui = None                     # Settings tab widgets while it is shown
+        self._arrange_undo = None           # box places before Settings → Arrange, until Save / Cancel
         self._save_at = 0.0
         self._scan_at = 0.0
         self._menu_cm = None                # IContextMenu2/3 while a shell menu is open
@@ -1751,11 +1942,17 @@ class BoxManager:
             now = time.time()
             if now >= self._scan_at:
                 self._scan_at = now + SCAN_EVERY
+                changed = False
                 for b in self.boxes:
                     if b.hwnd and b.refresh_items():
-                        if not b.rolled():
+                        changed = True
+                        if b.rolled():
+                            b.render()
+                        else:
                             b.mark_seen()
-                        b.render()
+                            b.animate_to(b.target_h())             # items came or went: the height follows
+                if changed:
+                    self._check_moved_icons()
             if self.icons.dirty:
                 self.icons.dirty = False
                 for b in self.boxes:
@@ -1845,30 +2042,64 @@ class BoxManager:
                 cy += [oy + oh + g for g in gaps] + [oy - h - g for g in gaps]
         return nx, _nearest(y, cy, reach)
 
-    def snap_resize(self, box, right, bottom, zone):
+    def arrange(self, where):
+        """Settings → Arrange: every box on its own monitor, all with the box width, the same gap
+        between them and from the screen edge. where: top-left, top-center, top-right (rows,
+        wrapping when a row is full) or col-left, col-right (columns, the next one beside)."""
+        if not self.boxes:
+            return
+        if self._arrange_undo is None:
+            self._arrange_undo = {b.id: json.loads(json.dumps([b.d.get("rects", {}), b.d.get("last")]))
+                                  for b in self.boxes}
+        gap = max(0, int(self.opt("gap")))
+        groups = {}
+        for b in self.boxes:
+            x, y, w, _h = b.rect()
+            groups.setdefault(tuple(work_area_at(x + w // 2, y + b.title_h() // 2)), []).append(b)
+        for wa, group in groups.items():
+            bw = max(group[0].px(PAD) * 2 + group[0].icon_px() + group[0].px(40),
+                     min(int(self.opt("box_w")), wa[2] - wa[0] - 2 * gap))
+            if where.startswith("top"):
+                group.sort(key=lambda b: (b.rect()[0], b.rect()[1]))       # keep their left-to-right order
+                per_row = max(1, (wa[2] - wa[0] - 2 * gap + gap) // (bw + gap))
+                y = wa[1] + gap
+                for i in range(0, len(group), per_row):
+                    row = group[i:i + per_row]
+                    total = len(row) * bw + (len(row) - 1) * gap
+                    x = {"top-left": wa[0] + gap, "top-right": wa[2] - gap - total}.get(
+                        where, wa[0] + (wa[2] - wa[0] - total) // 2)
+                    for b in row:
+                        b.set_rect([x, y, bw, 0])
+                        x += bw + gap
+                    y += max(b.rest_h() for b in row) + gap
+            else:
+                group.sort(key=lambda b: (b.rect()[1], b.rect()[0]))       # keep their top-to-bottom order
+                step = bw + gap if where == "col-left" else -(bw + gap)
+                x = wa[0] + gap if where == "col-left" else wa[2] - gap - bw
+                y = wa[1] + gap
+                for b in group:
+                    if y > wa[1] + gap and y + b.title_h() > wa[3]:          # column full: start the next one
+                        x, y = x + step, wa[1] + gap
+                    b.set_rect([x, y, bw, 0])
+                    y += b.rest_h() + gap
+        self.redraw_all()
+
+    def snap_resize(self, box, right):
+        """The right edge while the width is dragged (the height follows the items)."""
         if not self.opt("snap"):
-            return right, bottom
-        x, y, _w, _h = box.rect()
+            return right
+        x, y, _w, h = box.visible_rect()
         reach = box.px(12)
         rects = self._others(box)
         gaps = _gaps(rects, box.px(240)) or {box.px(8)}   # repeat the gaps already there; 8 px if none
         wa = work_area_at(x + 10, y + 10)
-        x0, _cols, cell, ch, pad = box.layout(_w)
-        if zone != "resize-b":
-            cands = [wa[2]] + [x + pad * 2 + n * cell for n in range(1, 30)]     # whole columns of icons
-            for ox, oy, ow, oh in rects:
-                cands += [ox + ow]
-                if y < oy + oh and oy < bottom:
-                    cands += [ox - g for g in gaps]
-            right = _nearest(right, cands, reach)
-        if zone != "resize-r":
-            cands = [wa[3]] + [y + box.title_h() + pad * 2 + n * ch for n in range(1, 30)]
-            for ox, oy, ow, oh in rects:
-                cands += [oy + oh, oy]
-                if x < ox + ow and ox < right:
-                    cands += [oy - g for g in gaps]
-            bottom = _nearest(bottom, cands, reach)
-        return right, bottom
+        _x0, _cols, cell, _ch, pad = box.layout(_w)
+        cands = [wa[2]] + [x + pad * 2 + n * cell for n in range(1, 30)]     # whole columns of icons
+        for ox, oy, ow, oh in rects:
+            cands += [ox + ow]
+            if y < oy + oh and oy < y + h:
+                cands += [ox - g for g in gaps]
+        return _nearest(right, cands, reach)
 
     # ---- items ----
     def open_item(self, path):
@@ -1879,6 +2110,76 @@ class BoxManager:
         if folder and os.path.isdir(folder):
             file_op(func, files, folder, self.log)
             self._scan_at = time.time() + 0.6
+
+    def add_links(self, box, links):
+        """Shell items with no file of their own go into a box as shortcuts. A standard desktop
+        icon (This PC, Recycle Bin…) dragged from the desktop leaves it, like a moved file, and
+        comes back when its shortcut leaves the boxes (see _check_moved_icons)."""
+        folder = box.folder
+        if not folder or not os.path.isdir(folder):
+            return
+        moved = self.data.setdefault("moved_icons", {})
+        for parse, name, raw, from_desktop, fs in links:
+            clsid = desktop_icon_clsid(parse, from_desktop, fs)
+            if clsid and clsid in moved and os.path.isfile(moved[clsid]):
+                continue                                        # already in a box
+            path = unique_path(folder, safe_name(name or "Shortcut") + ".lnk")
+            if not make_link(path, raw):
+                self.log("box shortcut failed: %s" % parse)
+                continue
+            if clsid and from_desktop:
+                moved[clsid] = path
+                try:
+                    show_desktop_icon(clsid, False)
+                except OSError as ex:
+                    self.log("hide desktop icon failed: %r" % ex)
+        self.save()
+        self._scan_at = 0
+
+    def moved_target(self, path):
+        """'::{CLSID}' when path is the shortcut of a desktop icon moved into a box."""
+        n = os.path.normcase(path)
+        for clsid, p in (self.data.get("moved_icons") or {}).items():
+            if os.path.normcase(p) == n:
+                return "::" + clsid
+        return None
+
+    def _check_moved_icons(self):
+        """A moved desktop icon whose shortcut has left the boxes (deleted, moved out, its box
+        deleted) is shown on the desktop again; its shortcut there gives way to the real icon."""
+        moved = self.data.get("moved_icons")
+        if not moved:
+            return
+        folders = {os.path.normcase(b.folder) for b in self.boxes if b.folder}
+        changed = False
+        for clsid, path in list(moved.items()):
+            if os.path.isfile(path) and os.path.normcase(os.path.dirname(path)) in folders:
+                continue
+            changed = True
+            found = None
+            for b in self.boxes:                                # moved to another box or renamed
+                for name, p, is_dir, _m in b.items:
+                    if not is_dir and name.lower().endswith(".lnk") and link_is_icon(p, clsid):
+                        found = p
+                        break
+                if found:
+                    break
+            if found:
+                moved[clsid] = found
+                continue
+            back = os.path.join(self.desktop, os.path.basename(path))
+            if os.path.isfile(back) and link_is_icon(back, clsid):
+                try:
+                    os.remove(back)
+                except OSError:
+                    pass
+            del moved[clsid]
+            try:
+                show_desktop_icon(clsid, True)
+            except OSError as ex:
+                self.log("show desktop icon failed: %r" % ex)
+        if changed:
+            self.save()
 
     def drag_out(self, box, paths):
         if not paths or not self.ole_ok:
@@ -1916,7 +2217,9 @@ class BoxManager:
         return cmd
 
     def item_menu(self, box, paths, x, y):
-        items = ShellItems(paths)
+        # a moved desktop icon gets its own menu (Empty Recycle Bin, Properties of This PC…)
+        target = self.moved_target(paths[0]) if len(paths) == 1 else None
+        items = ShellItems([target] if target else paths)
         cm = items.ui_object(self.owner, IID_IContextMenu)
         hmenu = user32.CreatePopupMenu()
         cm3 = VP()
@@ -2071,7 +2374,8 @@ class BoxManager:
             self.receive(box, files, FO_MOVE if cut else FO_COPY)
 
     # ---- creating / deleting / renaming ----
-    def _place_new(self, at, w=300, h=400):
+    def _place_new(self, at, w=None, h=400):
+        w = w or int(self.opt("box_w"))
         if at:
             x, y = at
         else:
@@ -2152,6 +2456,7 @@ class BoxManager:
         self.data["boxes"].remove(box.d)
         self.data["box_styles"].pop(box.id, None)
         self.save()
+        self._check_moved_icons()                           # This PC & co. went back to the desktop with the files
         self._apply_quickhide()
 
     # ---- double-click on the empty desktop: hide / show boxes and icons ----
@@ -2239,17 +2544,25 @@ class BoxManager:
     # ---- settings tab ----
     def begin_edit(self):
         self.draft = json.loads(json.dumps({k: self.data.get(k, {}) for k in ("style", "box_styles", "opts")}))
+        self._arrange_undo = None
 
     def discard(self):
         self.draft = None
         self._ui = None
         self.settings_target = None
+        undo, self._arrange_undo = self._arrange_undo, None
+        if undo:                                             # Cancel puts arranged boxes back too
+            for b in self.boxes:
+                if b.id in undo:
+                    b.d["rects"], b.d["last"] = undo[b.id]
+            self.save()
         self.redraw_all()
 
     def commit(self):
         d, self.draft = self.draft, None
         self._ui = None
         self.settings_target = None
+        self._arrange_undo = None
         if d is None:
             return
         for k in ("style", "box_styles", "opts"):
@@ -2377,6 +2690,31 @@ class BoxManager:
         self.app._setting_check(b2, B("quickhide"), bool(self.opt("quickhide")),
                                 lambda v: self._set_opt("quickhide", bool(v)), pad)
 
+        header(B("arrange"), top=20)
+        grid = tk.Frame(body, bg=sf)
+        grid.pack(fill="x", padx=pad)
+        nums = tk.Frame(grid, bg=sf)
+        nums.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 4))
+        for key, lo, hi in (("box_w", 120, 1600), ("gap", 0, 300)):
+            tk.Label(nums, text=B(key) + ":", bg=sf, fg=tx, font=fonts["f"]).pack(
+                side="left", padx=(0 if key == "box_w" else 22, 6))
+            self._num_entry(nums, key, lo, hi).pack(side="left")
+            tk.Label(nums, text="px", bg=sf, fg=dim, font=fonts["sm"]).pack(side="left", padx=(4, 0))
+        for r, (label, places) in enumerate((("arr_top", (("left", "top-left", 1), ("center", "top-center", 2),
+                                                          ("right", "top-right", 3))),
+                                             ("arr_col", (("left", "col-left", 1), ("right", "col-right", 3)))), 1):
+            tk.Label(grid, text=B(label) + ":", bg=sf, fg=tx, font=fonts["f"]).grid(
+                row=r, column=0, sticky="w", padx=(0, 10), pady=(6, 0))
+            for key, where, c in places:
+                lb = tk.Label(grid, text=B(key), bg=col["sf2"], fg=tx, font=fonts["sm"], padx=10, pady=4,
+                              cursor="hand2")
+                lb.grid(row=r, column=c, sticky="we", padx=(0, 2), pady=(6, 0))
+                lb.bind("<Button-1>", lambda e, w=where, l=lb: (
+                    l.configure(bg=ac, fg="white"), self.arrange(w),
+                    l.after(250, lambda: l.winfo_exists() and l.configure(bg=col["sf2"], fg=tx))))
+        tk.Label(body, text=B("arrange_note"), bg=sf, fg=dim, font=fonts["sm"], wraplength=520,
+                 justify="left").pack(anchor="w", padx=pad, pady=(8, 0))
+
         btns = tk.Frame(body, bg=sf)
         btns.pack(fill="x", padx=pad, pady=(14, 4))
         self.app._accent_btn(btns, B("new_box"), lambda: (self.new_box_dialog(), self._build_body())).pack(side="left")
@@ -2394,6 +2732,35 @@ class BoxManager:
         op.bind("<Button-1>", lambda e: os.path.isdir(self.box_root) and
                 shell32.ShellExecuteW(None, "open", self.box_root, None, None, 1))
         self._refresh_preview()
+
+    def _num_entry(self, parent, key, lo, hi):
+        """A small number field for a pixel option; the mouse wheel steps it (Shift: by 10)."""
+        col, fonts = self._ui["col"], self._ui["fonts"]
+        var = tk.StringVar(value=str(int(self.opt(key))))
+        e = tk.Entry(parent, textvariable=var, width=5, justify="center", bg=col["sf2"], fg=col["tx"],
+                     insertbackground=col["tx"], relief="flat", font=fonts["f"], highlightthickness=1,
+                     highlightbackground=col["bd"], highlightcolor=col["ac"])
+
+        def apply(*_):
+            try:
+                v = int(var.get())
+            except ValueError:
+                return
+            if lo <= v <= hi and self.draft is not None:
+                self.draft["opts"][key] = v                    # nothing to redraw: used by Arrange / new boxes
+
+        def wheel(ev):
+            try:
+                v = int(var.get())
+            except ValueError:
+                v = int(self.opt(key))
+            var.set(str(max(lo, min(hi, v + (1 if ev.delta > 0 else -1) * (10 if ev.state & 1 else 1)))))
+            return "break"
+
+        var.trace_add("write", apply)
+        e.bind("<MouseWheel>", wheel)
+        e.bind("<FocusOut>", lambda ev: var.set(str(int(self.opt(key)))))
+        return e
 
     def _set_target(self, box_id):
         self.settings_target = box_id
