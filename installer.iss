@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.9.1"
+#define MyAppVersion "1.9.2"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 

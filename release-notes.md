@@ -1,5 +1,1 @@
-- **Boxes stay rolled up and open on hover** — that is now how every box starts. Double-click the title to rename.
-- **Appearance settings** in **Settings → Boxes**, for all boxes or one box: background color, background transparency, transparency under the cursor, title font (any installed font, size, bold) and color, rounded corners, border, new-file counter, icon size — with a live preview. The title is as translucent as the box; an open box's header is slightly denser. Corners are smooth.
-- **Boxes line up**: they stick to each other with the same gap as the boxes already there and align their edges, also when resized.
-- **Double-click the empty desktop** now hides boxes and desktop icons, and works while other desktop tools are running.
-- **Fixes**: a box could vanish under another program's desktop window; the sorting-by-type rules are gone; on laptops running on battery the watchdog and the self-update did not start.
+- **Boxes show up on Windows 11 24H2 and newer.** The desktop is put together differently there, and a new box stayed invisible after you named it. Boxes now live in the desktop's icon layer, right above the icons, so they appear on every Windows version.

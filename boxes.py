@@ -216,6 +216,7 @@ _d(user32.IsWindowVisible, BOOL, [HWND])
 _d(user32.GetWindowRect, BOOL, [HWND, ctypes.POINTER(RECT)])
 _d(user32.SetParent, HWND, [HWND, HWND])
 _d(user32.GetParent, HWND, [HWND])
+_d(user32.GetWindowLongPtrW, ctypes.c_ssize_t, [HWND, ctypes.c_int])
 _d(user32.GetWindow, HWND, [HWND, UINT])
 _d(user32.FindWindowExW, HWND, [HWND, HWND, wintypes.LPCWSTR, wintypes.LPCWSTR])
 _d(user32.EnumWindows, BOOL, [ENUMPROC, LPARAM])
@@ -305,6 +306,7 @@ except AttributeError:
 
 WS_CHILD, WS_CLIPSIBLINGS, WS_POPUP = 0x40000000, 0x04000000, 0x80000000
 WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE = 0x80000, 0x80, 0x08000000
+WS_EX_NOREDIRECTIONBITMAP = 0x00200000
 SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE, SWP_SHOWWINDOW = 0x1, 0x2, 0x4, 0x10, 0x40
 WM_TIMER, WM_SETCURSOR, WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP = 0x113, 0x20, 0x200, 0x201, 0x202
 WM_LBUTTONDBLCLK, WM_RBUTTONUP, WM_MOUSEWHEEL, WM_MOUSELEAVE = 0x203, 0x205, 0x20A, 0x2A3
@@ -397,6 +399,16 @@ def desktop_host():
         return True
     user32.EnumWindows(ENUMPROC(cb), 0)
     return found[0] if found else (None, None)
+
+
+def box_parent(host, dv):
+    """The window boxes live in. Since Windows 11 24H2 Progman has no surface of its own
+    (WS_EX_NOREDIRECTIONBITMAP): Explorer composes only the icon view and the wallpaper
+    layer, so a child of Progman is never on screen. There boxes go inside SHELLDLL_DefView,
+    above the icons; on older systems they stay next to it."""
+    if host and dv and user32.GetWindowLongPtrW(host, -20) & WS_EX_NOREDIRECTIONBITMAP:   # GWL_EXSTYLE
+        return dv
+    return host
 
 
 _MONS = {"t": 0.0, "v": None}
@@ -1761,11 +1773,14 @@ class BoxManager:
 
     def _ensure_windows(self):
         sig = screen_signature()
-        host, _dv = desktop_host()
+        host, dv = desktop_host()
         if not host:
             return
+        host = box_parent(host, dv)
         if host != self.host or sig != self.sig:
             moved = host != self.host
+            if moved:
+                self.log("boxes: desktop window %s" % _class_of(host))
             self.host, self.sig = host, sig
             for b in self.boxes:
                 if b.hwnd and moved and user32.IsWindow(b.hwnd):
