@@ -85,7 +85,7 @@ except Exception:
     boxes = None
     _BOXES_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.9.0"
+VERSION = "1.9.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1561,6 +1561,41 @@ def set_app_id(hwnd, app_id):
         log("set_app_id failed: %r" % ex)
 
 
+def run_task(task, command, arguments, unlimited=False):
+    """Create (or replace) a one-shot Task Scheduler task for the current user and start it.
+    Built from XML: schtasks /Create's defaults don't start a task on battery and stop it
+    after 72 hours, which left laptops without the watchdog and without self-updates."""
+    from xml.sax.saxutils import escape
+    xml = ('<?xml version="1.0" encoding="UTF-16"?>\r\n'
+           '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">'
+           '<Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType>'
+           '<RunLevel>LeastPrivilege</RunLevel></Principal></Principals>'
+           '<Settings><MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>'
+           '<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>'
+           '<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>'
+           '<AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>false</StartWhenAvailable>'
+           '<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>'
+           '<IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings>'
+           '<AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><Hidden>false</Hidden>'
+           '<RunOnlyIfIdle>false</RunOnlyIfIdle><WakeToRun>false</WakeToRun>'
+           '<ExecutionTimeLimit>%s</ExecutionTimeLimit><Priority>7</Priority></Settings>'
+           '<Actions Context="Author"><Exec><Command>%s</Command><Arguments>%s</Arguments></Exec></Actions>'
+           '</Task>' % ("PT0S" if unlimited else "PT2H", escape(command), escape(arguments)))
+    path = os.path.join(tempfile.gettempdir(), task + ".xml")
+    with open(path, "w", encoding="utf-16") as f:
+        f.write(xml)
+    try:
+        subprocess.run(["schtasks", "/Create", "/XML", path, "/TN", task, "/F"],
+                       creationflags=CREATE_NO_WINDOW, timeout=20)
+        r = subprocess.run(["schtasks", "/Run", "/TN", task], creationflags=CREATE_NO_WINDOW, timeout=20)
+        return r.returncode == 0
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 def send_copydata(hwnd, text, kind=1):
     """Передать строку другому экземпляру через WM_COPYDATA."""
     buf = ctypes.create_unicode_buffer(text)
@@ -2680,15 +2715,9 @@ class TrayApp:
             log("update vbs write failed: %r" % ex)
             return False
         try:
-            cf = CREATE_NO_WINDOW
-            subprocess.run(["schtasks", "/Create", "/TN", task, "/TR",
-                            'wscript.exe "%s"' % vbs, "/SC", "ONCE", "/ST", "00:00",
-                            "/F"], creationflags=cf, timeout=20)
-            r = subprocess.run(["schtasks", "/Run", "/TN", task], creationflags=cf,
-                               timeout=20)
-            if r.returncode == 0:
+            if run_task(task, "wscript.exe", '"%s"' % vbs):
                 return True
-            log("schtasks /Run rc=%s" % r.returncode)
+            log("updater task did not start")
         except Exception as ex:
             log("schtasks updater failed: %r" % ex)
         # запасной путь (если Планировщик отключён): невидимый wscript напрямую
@@ -3907,11 +3936,7 @@ class TrayApp:
         try:
             with open(vbs, "w", encoding="utf-16") as f:
                 f.write(script)
-            cf = CREATE_NO_WINDOW
-            subprocess.run(["schtasks", "/Create", "/TN", task, "/TR",
-                            'wscript.exe "%s"' % vbs, "/SC", "ONCE", "/ST", "00:00",
-                            "/F"], creationflags=cf, timeout=15)
-            subprocess.run(["schtasks", "/Run", "/TN", task], creationflags=cf, timeout=15)
+            run_task(task, "wscript.exe", '"%s"' % vbs, unlimited=True)   # the watchdog lives as long as we do
         except Exception as ex:
             log("launch watchdog failed: %r" % ex)
 

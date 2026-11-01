@@ -19,7 +19,7 @@
 | | |
 |---|---|
 | **[Window containers](#window-containers)** | A set of windows becomes one program: one taskbar button, one Alt+Tab entry. Switch your whole workspace with a single keystroke. |
-| **[Desktop boxes](#desktop-boxes)** | Panels on the desktop that hold files and shortcuts. They roll up into a title bar, sort new desktop files by type and stay under your windows. |
+| **[Desktop boxes](#desktop-boxes)** | Panels on the desktop that hold files and shortcuts. They roll up into a title bar, open on hover, line up with even gaps and stay under your windows. |
 | **[Voice input](#voice-input)** | Hold **Left Alt** and talk. The text appears where your cursor is, cleaned up by an LLM. Select text first and your words become an instruction for it. |
 | **[Convert to](#convert-files-from-the-right-click-menu)** | Right‑click any image, audio, video, document or table in Explorer → **Convert to** → pick a format. |
 | **[Torrents](#torrents)** | Open a `.torrent` file and it starts downloading. Progress, pause and delete are in the tray menu. |
@@ -64,14 +64,15 @@ And it's **not** a hack that jams windows inside another and breaks your typing.
 
 A box is a panel on the desktop that holds files, folders and shortcuts. Boxes live in the desktop layer itself: they stay under every window, are there after Win+D, and never show up in the taskbar or Alt+Tab.
 
+- **Rolled up until you need it**: a box sits on the desktop as just its title and opens when you hover it, rolling back up when the mouse leaves. A red counter on the title shows files that arrived since you last looked.
 - **Make a box** from the tray menu (**New box**) or by right‑clicking any box. Drag files, folders and shortcuts in from the desktop or any folder; drag them out to the desktop, another box, a folder or any app (a chat, a browser upload…).
-- **It works like Explorer**: double‑click opens, right‑click shows the full Explorer menu (Open with, Send to, archivers, Properties…), Ctrl+click selects several, Cut in Explorer and **Paste** into a box.
-- **Roll up into the title**: a box shrinks to its title bar and opens when you hover it; it rolls back up when the mouse leaves. Click the title to keep it open. A red counter on the title shows files that arrived since you last looked.
-- **Color and transparency** per box, sorting by name, type or date, move by the title, resize by the edge. Positions are remembered separately for each monitor layout.
-- **Sort new desktop files by type**: in **Settings → Boxes** choose a box for folders, shortcuts and apps, documents, images, videos, music, archives, installers, web links and everything else. New files are moved once they finish downloading; **Sort the desktop now** does it for what's already there.
-- **Hide all boxes** with a double‑click on an empty spot of the desktop (and bring them back the same way).
+- **It works like Explorer**: double‑click opens, right‑click shows the full Explorer menu (Open with, Send to, archivers, Properties…), Ctrl+click selects several, Cut in Explorer and **Paste** into a box. Double‑click a box's title to rename it.
+- **Boxes line up by themselves**: drag one next to another and it sticks with the same gap as the boxes already there, its edges align with its neighbours and the screen edges; resizing snaps to whole columns of icons.
+- **Your look** in **Settings → Boxes**, for all boxes or for one box: background color, background transparency, transparency under the cursor, the title font (any installed font, size, bold) and its color; rounded corners, a border, the new‑file counter and the icon size. A live preview on your wallpaper shows the result, and the boxes on the desktop follow as you change things.
+- **Hide everything** with a double‑click on an empty spot of the desktop: boxes and desktop icons disappear and come back the same way.
+- **More in the box menu**: sort by name, type or date, lock position and size, keep a box visible on double‑click, refresh icons, open the box folder.
 - **A box for any folder**: a box can show a folder of your choice — Downloads, a project folder — instead of its own.
-- **Moving from iTop Easy Desktop**: **Settings → Boxes → Import boxes from iTop Easy Desktop** recreates your boxes with their names, positions, roll‑up and sorting rules, and can sort your desktop files into them right away.
+- **Moving from iTop Easy Desktop**: **Settings → Boxes → Import boxes from iTop Easy Desktop** recreates your boxes with their names, positions and roll‑up.
 
 The files really move: each box is a folder in `Desktop\HDContainer Boxes` (hidden, so the desktop stays clean). Nothing is kept in a database and no driver is installed — uninstalling HDContainer turns that folder back into a normal one with all your files.
 
