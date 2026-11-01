@@ -112,7 +112,7 @@ OPTS_DEFAULT = {"round": True, "border": False, "badge": True, "icon_size": 48, 
 
 # logical sizes (scaled by the window's DPI)
 PAD, RADIUS, EDGE = 8, 10, 6
-HOVER_OPEN_MS, LEAVE_CLOSE_MS, ANIM_MS = 100, 450, 130
+HOVER_OPEN_MS, LEAVE_CLOSE_MS, ANIM_MS, FRAME_MS = 50, 350, 170, 8
 HEADER_EXTRA = 48          # an open box's header is this much denser (0..255), setting it apart
 DATA_VERSION = 3
 TICK_MS = 50
@@ -552,6 +552,7 @@ class IconCache:
         self.lock = threading.Lock()
         self.q = queue.Queue()
         self.dirty = False
+        self.gen = 0                    # bumped with every new picture: drawn item layers go stale
         threading.Thread(target=self._run, daemon=True, name="hdc-box-icons").start()
 
     def get(self, path, size, mtime):
@@ -575,6 +576,7 @@ class IconCache:
             with self.lock:
                 self.cache[key] = img or False          # False: no picture, draw a placeholder
                 self.pending.discard(key)
+                self.gen += 1
             self.dirty = True
 
 
@@ -951,23 +953,53 @@ class ShellItems:
 # one box
 # ---------------------------------------------------------------------------
 _MASKS = {}
+_CORNERS = {}
+_MEASURE = ImageDraw.Draw(Image.new("L", (1, 1)))          # text measuring without a picture
+
+
+def _corner(r):
+    """Coverage of a top-left corner of radius r, drawn 4x larger and averaged down:
+    smooth instead of Pillow's jagged arcs."""
+    c = _CORNERS.get(r)
+    if c is None:
+        k = 4
+        big = Image.new("L", (r * k, r * k), 0)
+        ImageDraw.Draw(big).ellipse((0, 0, 2 * r * k - 1, 2 * r * k - 1), fill=255)
+        c = _CORNERS[r] = big.resize((r, r), Image.BOX)
+    return c
+
+
+def _rect_mask(w, h, r, corners):
+    m = Image.new("L", (w, h), 255)
+    r = min(r, w // 2, h // 2)
+    if r > 0:
+        c = _corner(r)
+        tl, tr, br, bl = corners or (True, True, True, True)
+        if tl:
+            m.paste(c, (0, 0))
+        if tr:
+            m.paste(c.transpose(Image.FLIP_LEFT_RIGHT), (w - r, 0))
+        if br:
+            m.paste(c.transpose(Image.ROTATE_180), (w - r, h - r))
+        if bl:
+            m.paste(c.transpose(Image.FLIP_TOP_BOTTOM), (0, h - r))
+    return m
 
 
 def aa_mask(w, h, r, corners=None, outline=0):
-    """Coverage mask of a rounded rectangle, drawn 4x larger and averaged down:
-    smooth corners instead of Pillow's jagged ones."""
+    """Coverage mask of a rounded rectangle with smooth corners. Built from cached corner
+    pieces, so a new height costs next to nothing: the roll animation makes one every frame."""
+    w, h = max(1, int(w)), max(1, int(h))
     key = (w, h, r, corners, outline)
     m = _MASKS.get(key)
     if m is None:
-        k = 4
-        big = Image.new("L", (max(1, w * k), max(1, h * k)), 0)
-        d = ImageDraw.Draw(big)
-        box = (0, 0, w * k - 1, h * k - 1)
+        m = _rect_mask(w, h, r, corners)
         if outline:
-            d.rounded_rectangle(box, radius=r * k, outline=255, width=outline * k, corners=corners)
-        else:
-            d.rounded_rectangle(box, radius=r * k, fill=255, corners=corners)
-        m = big.resize((max(1, w), max(1, h)), Image.BOX)
+            inner = Image.new("L", (w, h), 0)
+            if w > 2 * outline and h > 2 * outline:
+                inner.paste(_rect_mask(w - 2 * outline, h - 2 * outline, max(0, r - outline), corners),
+                            (outline, outline))
+            m = ImageChops.subtract(m, inner)
         if len(_MASKS) > 96:
             _MASKS.clear()
         _MASKS[key] = m
@@ -1088,6 +1120,9 @@ class Box:
         self.tracking = False
         self.press = None               # dict while a mouse button is held
         self._dc = None
+        self._pos = None                # where the window was last put (parent client coordinates)
+        self._layer = None              # (key, icons and labels of all items) reused by every frame
+        self._wraps = {}                # label -> its lines
 
     # ---- data ----
     @property
@@ -1103,11 +1138,16 @@ class Box:
         return self.d.get("name") or "Box"
 
     def scale(self):
+        now = time.monotonic()
+        c = getattr(self, "_scale", None)
+        if c and c[0] == self.hwnd and now - c[1] < 1.0:           # asked ~1000 times per frame: cache it
+            return c[2]
         try:
             dpi = user32.GetDpiForWindow(self.hwnd) if self.hwnd else 96
         except Exception:
             dpi = 96
-        return (dpi or 96) / 96.0
+        self._scale = (self.hwnd, now, (dpi or 96) / 96.0)
+        return self._scale[2]
 
     def px(self, v):
         return int(round(v * self.scale()))
@@ -1125,11 +1165,31 @@ class Box:
         return self.px(int(self.mgr.opt("icon_size")))
 
     def layout(self, w):
-        """(x0, cols, cell, cell_h, pad): fixed-width cells, the whole grid centered,
-        so the gaps between icons equal the margins and columns line up across rows."""
+        """(x0, cols, cell, row_h, pad): fixed-width cells, the whole grid centered, so the gaps
+        between icons equal the margins and columns line up across rows; a row has room
+        for a label on two lines."""
         pad, cell = self.px(PAD), self.icon_px() + self.px(40)
         cols = max(1, (w - 2 * pad) // cell)
-        return (w - cols * cell) // 2, cols, cell, self.icon_px() + self.px(40), pad
+        return (w - cols * cell) // 2, cols, cell, self.icon_px() + self.px(48), pad
+
+    def _label_font(self):
+        return _font(None, self.px(12))
+
+    def _lines(self, w, name, is_dir):
+        """An item's label wrapped to its cell (one or two lines), cached."""
+        cell = self.layout(w)[2]
+        maxw = cell - 3 * self.px(4)
+        key = (name, is_dir, maxw, self.px(12))
+        ln = self._wraps.get(key)
+        if ln is None:
+            if len(self._wraps) > 2000:
+                self._wraps.clear()
+            ln = self._wraps[key] = self._wrap(_MEASURE, self.label(name, is_dir), self._label_font(), maxw)
+        return ln
+
+    def _item_h(self, lines):
+        """Height an item takes: the icon, then its label. The box ends under the text."""
+        return self.px(7) + self.icon_px() + self.px(4) + lines * self.px(15) + self.px(5)
 
     def rect(self):
         """[x, y, w, h] in screen pixels for the current monitor layout. h is the open height:
@@ -1229,6 +1289,7 @@ class Box:
             self.mgr.log("box window failed: %d" % ctypes.get_last_error())
             return False
         self.mgr.by_hwnd[self.hwnd] = self
+        self._pos = (cx, cy)
         self.cur_h = self.target_h()
         self.refresh_items()
         self.render()
@@ -1255,12 +1316,15 @@ class Box:
         x, y, w, _h = self.rect()
         cx, cy = self.mgr.to_client(x, y)
         user32.SetWindowPos(self.hwnd, None, cx, cy, w, self.cur_h, SWP_NOZORDER | SWP_NOACTIVATE)
+        self._pos = (cx, cy)
 
     # ---- drawing ----
     def content_h(self, w):
         _x0, cols, _cell, ch, pad = self.layout(w)
         rows = max(1, (len(self.items) + cols - 1) // cols)     # an empty box keeps one row to drop into
-        return pad * 2 + rows * ch
+        last = self.items[(rows - 1) * cols:]
+        lines = max([len(self._lines(w, n, d)) for n, _p, d, _m in last] or [1])
+        return pad * 2 + (rows - 1) * ch + self._item_h(lines)
 
     def render(self):
         if not self.hwnd:
@@ -1279,8 +1343,9 @@ class Box:
         rolled_now = h <= t + 1
         # one translucent shape: rolled up it is just the title; open, the body keeps the
         # same transparency and the header gets a denser fill of the same color
-        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        aa_fill(img, (0, 0, w, h), r, rgb + (a,))
+        img = Image.new("RGBA", (w, h), rgb + (0,))
+        m = aa_mask(w, h, r)
+        img.putalpha(m if a >= 255 else m.point(lambda v, a=a: v * a // 255))
         if not rolled_now:
             head = Image.new("RGBA", (w, t), rgb + (min(255, a + HEADER_EXTRA),))
             img.paste(head, (0, 0), aa_mask(w, t, r, (True, True, False, False)))
@@ -1321,54 +1386,72 @@ class Box:
             aa_fill(img, (0, 0, w, h), r, (76, 139, 245, 255), outline=self.px(2))
         return img
 
-    def _draw_items(self, img, w, h, t, r):
-        view_h = h - t
-        grid = Image.new("RGBA", (w, max(1, view_h)), (0, 0, 0, 0))
-        dr = ImageDraw.Draw(grid)
-        x0, cols, cell, ch, pad = self.layout(w)
+    def _items_layer(self, w):
+        """Icons and labels of all items (scroll 0, the grid only), drawn once and reused by
+        every frame: the roll animation and hover highlights only composite it. Rebuilt when
+        the items, the column count, the icon size or the icons themselves change."""
+        _x0, cols, cell, ch, pad = self.layout(w)
+        rows = max(1, (len(self.items) + cols - 1) // cols)
+        key = (cols, cell, ch, self.px(12), self.sig, self.mgr.icons.gen, len(self.mgr.data.get("moved_icons") or ()))
+        if self._layer and self._layer[0] == key:
+            return self._layer[1]
+        layer = Image.new("RGBA", (cols * cell, pad + rows * ch), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(layer)
         icon = self.icon_px()
-        inset = self.px(4)
-        fl = _font(None, self.px(12))
-        if not self.items:
-            msg = B("missing") if not os.path.isdir(self.folder or "") else B("empty")
-            tl = dr.textlength(msg, font=fl)
-            dr.text(((w - tl) / 2.0, self.px(18)), msg, font=fl, fill=(200, 205, 214, 200))
-        full = self.content_h(w)
-        self.scroll = max(0, min(self.scroll, max(0, full - view_h)))
+        fl = self._label_font()
         for i, (name, path, is_dir, mtime) in enumerate(self.items):
-            col, row = i % cols, i // cols
-            cx = x0 + col * cell
-            cy = pad + row * ch - self.scroll
-            if cy + ch < 0 or cy > view_h:
-                continue
-            box = (cx + inset, cy + inset // 2, cx + cell - inset, cy + ch - inset)
-            if i in self.sel:
-                aa_fill(grid, box, self.px(6), (76, 139, 245, 110))
-            elif i == self.hover:
-                aa_fill(grid, box, self.px(6), (255, 255, 255, 34))
+            cx, cy = (i % cols) * cell, pad + (i // cols) * ch
             pic = self.mgr.icons.get(self.mgr.moved_target(path) or path, icon, mtime)
             ix, iy = cx + (cell - icon) // 2, cy + self.px(7)
             if pic:                                       # bottom-aligned, like Explorer: labels start on one line
-                grid.alpha_composite(pic, (ix + (icon - pic.width) // 2, iy + icon - pic.height))
+                layer.alpha_composite(pic, (ix + (icon - pic.width) // 2, iy + icon - pic.height))
             else:
-                aa_fill(grid, (ix + icon // 6, iy + self.px(4), ix + icon - icon // 6, iy + icon - self.px(2)),
+                aa_fill(layer, (ix + icon // 6, iy + self.px(4), ix + icon - icon // 6, iy + icon - self.px(2)),
                         self.px(4), (210, 214, 222, 160), outline=self.px(2))
-            lines = self._wrap(dr, self.label(name, is_dir), fl, cell - 2 * inset - self.px(4))
             ly = iy + icon + self.px(4)
-            for ln in lines:
+            for ln in self._lines(w, name, is_dir):
                 lw = dr.textlength(ln, font=fl)
                 lx = round(cx + (cell - lw) / 2.0)
                 dr.text((lx + 1, ly + 1), ln, font=fl, fill=(0, 0, 0, 170))
                 dr.text((lx, ly), ln, font=fl, fill=(242, 244, 248, 255))
                 ly += self.px(15)
+        self._layer = (key, layer)
+        return layer
+
+    def _draw_items(self, img, w, h, t, r):
+        view_h = h - t
+        if view_h <= 0:
+            return
+        x0, cols, cell, ch, pad = self.layout(w)
+        inset = self.px(4)
+        full = self.content_h(w)
+        self.scroll = max(0, min(self.scroll, max(0, full - view_h)))
+        layer = self._items_layer(w)
+        grid = layer.crop((-x0, self.scroll, w - x0, self.scroll + view_h))     # shifted into place in one step
+        marks = [i for i in sorted(self.sel | {self.hover}) if 0 <= i < len(self.items)]
+        for i in marks:                                    # highlights go under the icons; only their own spot is redone
+            name, _p, is_dir, _m = self.items[i]
+            cx, cy = x0 + (i % cols) * cell, pad + (i // cols) * ch - self.scroll
+            box = (cx + inset, max(0, cy + inset // 2), cx + cell - inset,
+                   min(view_h, cy + self._item_h(len(self._lines(w, name, is_dir))) - inset // 2))
+            if box[3] - box[1] < 2:
+                continue
+            under = Image.new("RGBA", (box[2] - box[0], box[3] - box[1]), (0, 0, 0, 0))
+            aa_fill(under, (0, 0) + under.size, self.px(6), (76, 139, 245, 110) if i in self.sel else (255, 255, 255, 34))
+            grid.paste(Image.alpha_composite(under, grid.crop(box)), box[:2])
+        if not self.items:
+            dr = ImageDraw.Draw(grid)
+            fl = self._label_font()
+            msg = B("missing") if not os.path.isdir(self.folder or "") else B("empty")
+            tl = dr.textlength(msg, font=fl)
+            dr.text(((w - tl) / 2.0, self.px(18)), msg, font=fl, fill=(200, 205, 214, 200))
         if full > view_h:                                   # slim scrollbar
             bar_h = max(self.px(24), int(view_h * view_h / float(full)))
             by = int((view_h - bar_h) * self.scroll / float(full - view_h))
             aa_fill(grid, (w - self.px(6), by + 2, w - self.px(2), by + bar_h - 2), self.px(2), (255, 255, 255, 90))
-        mask = aa_mask(w, max(1, view_h), r, (False, False, True, True))
-        clipped = Image.new("RGBA", grid.size, (0, 0, 0, 0))
-        clipped.paste(grid, (0, 0), mask)
-        img.alpha_composite(clipped, (0, t))
+        mask = aa_mask(w, view_h, r, (False, False, True, True))     # round the bottom corners
+        grid.putalpha(ImageChops.multiply(grid.getchannel("A"), mask))
+        img.alpha_composite(grid, (0, t))
 
     @staticmethod
     def _wrap(dr, text, font, maxw):
@@ -1389,9 +1472,12 @@ class Box:
 
     def _blit(self, img):
         w, h = img.size
-        a = img.getchannel("A")
-        r, g, b, _ = img.convert("RGBa").split()
-        data = Image.merge("RGBA", (b, g, r, a)).tobytes()
+        try:
+            data = img.convert("RGBa").tobytes("raw", "BGRa")       # premultiplied BGRA in one pass
+        except Exception:
+            a = img.getchannel("A")
+            r, g, b, _ = img.convert("RGBa").split()
+            data = Image.merge("RGBA", (b, g, r, a)).tobytes()
         if self._dc is None or self._dc[3] != (w, h):
             self._free_dc()
             bi = BITMAPINFOHEADER(ctypes.sizeof(BITMAPINFOHEADER), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
@@ -1404,7 +1490,10 @@ class Box:
         ctypes.memmove(bits, data, len(data))
         x, y, _w, _h = self.rect()
         cx, cy = self.mgr.to_client(x, y)
-        user32.SetWindowPos(self.hwnd, None, cx, cy, w, h, SWP_NOZORDER | SWP_NOACTIVATE)
+        if self._pos != (cx, cy):
+            user32.SetWindowPos(self.hwnd, None, cx, cy, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+            self._pos = (cx, cy)
+        # the size changes together with the picture: no frame of the old picture at the new size
         blend = BLENDFUNCTION(0, 0, 255, 1)
         user32.UpdateLayeredWindow(self.hwnd, None, None, ctypes.byref(SIZE(w, h)), mdc,
                                    ctypes.byref(POINT(0, 0)), 0, ctypes.byref(blend), 2)
@@ -1444,16 +1533,16 @@ class Box:
             self.anim = None
             self.render()
             return
-        self.anim = (self.cur_h, h, time.time())
-        user32.SetTimer(self.hwnd, 3, 15, None)
+        self.anim = (self.cur_h, h, time.perf_counter())
+        user32.SetTimer(self.hwnd, 3, FRAME_MS, None)       # frames come as often as the timer allows
 
     def _anim_step(self):
         if not self.anim:
             user32.KillTimer(self.hwnd, 3)
             return
         a, b, t0 = self.anim
-        k = min(1.0, (time.time() - t0) * 1000.0 / ANIM_MS)
-        k = 1 - (1 - k) ** 3
+        k = min(1.0, (time.perf_counter() - t0) * 1000.0 / ANIM_MS)
+        k = 1 - (1 - k) ** 3                              # ease-out: quick start, soft landing
         self.cur_h = int(a + (b - a) * k)
         if k >= 1.0:
             self.cur_h = b
@@ -1980,6 +2069,7 @@ class BoxManager:
                 self.log("boxes: desktop window %s" % _class_of(host))
             self.host, self.sig = host, sig
             for b in self.boxes:
+                b._pos = None                                   # new parent or screens: place it again
                 if b.hwnd and moved and user32.IsWindow(b.hwnd):
                     user32.SetParent(b.hwnd, host)
                 if b.hwnd:
@@ -2336,9 +2426,11 @@ class BoxManager:
             if box.folder:
                 shell32.ShellExecuteW(None, "open", box.folder, None, None, 1)
         elif cmd == 0x9013:
+            targets = {self.moved_target(p) for _n, p, _d, _m in box.items} - {None}    # e.g. a full Recycle Bin
             with self.icons.lock:
-                for k in [k for k in self.icons.cache if os.path.dirname(k[0]) == box.folder]:
+                for k in [k for k in self.icons.cache if os.path.dirname(k[0]) == box.folder or k[0] in targets]:
                     self.icons.cache.pop(k, None)
+            box._layer = None
             box.sig = None
             box.refresh_items()
         elif cmd == 0x9007:
