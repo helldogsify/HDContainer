@@ -71,7 +71,8 @@ A box is a panel on the desktop that holds files, folders and shortcuts. Boxes l
 - **Arrange them in one click** in **Settings → Boxes → Arrange**: along the top (left, center or right) or in a column at the left or right edge, all with the box width and gap you set in pixels.
 - **Your look** in **Settings → Boxes**, for all boxes or for one box: background color, background transparency, transparency under the cursor, the title font (any installed font, size, bold) and its color; rounded corners, a border, the new‑file counter and the icon size. A live preview on your wallpaper shows the result, and the boxes on the desktop follow as you change things.
 - **Hide everything** with a double‑click on an empty spot of the desktop: boxes and desktop icons disappear and come back the same way.
-- **More in the box menu**: sort by name, type or date, lock position and size, keep a box visible on double‑click, refresh icons, open the box folder.
+- **Your own order**: press an icon and move it inside the box — it lifts and the others glide aside, like app icons on a phone. Drag it past the edge to take it out.
+- **More in the box menu**: sort by name, type, date or your own order, lock position and size, keep a box visible on double‑click, refresh icons, open the box folder.
 - **A box for any folder**: a box can show a folder of your choice — Downloads, a project folder — instead of its own.
 - **Moving from iTop Easy Desktop**: **Settings → Boxes → Import boxes from iTop Easy Desktop** recreates your boxes with their names, positions and roll‑up.
 

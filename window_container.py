@@ -85,7 +85,7 @@ except Exception:
     boxes = None
     _BOXES_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.9.4"
+VERSION = "1.9.5"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"

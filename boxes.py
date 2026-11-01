@@ -13,6 +13,7 @@ drag-and-drop are started from the app's deferred queue (a tk timer).
 import os
 import re
 import json
+import math
 import time
 import queue
 import shutil
@@ -45,6 +46,7 @@ BSTR = {
     "sort_name": {"en": "By name", "ru": "По имени", "es": "Por nombre", "pt": "Por nome", "de": "Nach Name", "fr": "Par nom", "zh": "按名称"},
     "sort_type": {"en": "By type", "ru": "По типу", "es": "Por tipo", "pt": "Por tipo", "de": "Nach Typ", "fr": "Par type", "zh": "按类型"},
     "sort_date": {"en": "By date", "ru": "По дате", "es": "Por fecha", "pt": "Por data", "de": "Nach Datum", "fr": "Par date", "zh": "按日期"},
+    "sort_manual": {"en": "Custom order", "ru": "Свой порядок", "es": "Orden propio", "pt": "Ordem própria", "de": "Eigene Reihenfolge", "fr": "Ordre personnalisé", "zh": "自定义顺序"},
     "paste": {"en": "Paste", "ru": "Вставить", "es": "Pegar", "pt": "Colar", "de": "Einfügen", "fr": "Coller", "zh": "粘贴"},
     "open_folder": {"en": "Open box folder", "ru": "Открыть папку ящика", "es": "Abrir la carpeta de la caja", "pt": "Abrir a pasta da caixa", "de": "Box-Ordner öffnen", "fr": "Ouvrir le dossier de la boîte", "zh": "打开收纳盒文件夹"},
     "delete_box": {"en": "Delete box", "ru": "Удалить ящик", "es": "Eliminar caja", "pt": "Excluir caixa", "de": "Box löschen", "fr": "Supprimer la boîte", "zh": "删除收纳盒"},
@@ -113,6 +115,7 @@ OPTS_DEFAULT = {"round": True, "border": False, "badge": True, "icon_size": 48, 
 # logical sizes (scaled by the window's DPI)
 PAD, RADIUS, EDGE = 8, 10, 6
 HOVER_OPEN_MS, LEAVE_CLOSE_MS, ANIM_MS, FRAME_MS = 50, 350, 170, 8
+LIFT, GLIDE = 1.1, 18.0        # a dragged item grows by 10 %; others glide aside (rate per second)
 HEADER_EXTRA = 48          # an open box's header is this much denser (0..255), setting it apart
 DATA_VERSION = 3
 TICK_MS = 50
@@ -1018,6 +1021,15 @@ def aa_fill(img, box, r, rgba, corners=None, outline=0):
     img.alpha_composite(layer, (x0, y0))
 
 
+def _blend_at(dst, src, x, y):
+    """alpha_composite src onto dst at (x, y), clipped to dst (Pillow refuses negative offsets)."""
+    sx, sy = max(0, -x), max(0, -y)
+    x, y = max(0, x), max(0, y)
+    w, h = min(src.width - sx, dst.width - x), min(src.height - sy, dst.height - y)
+    if w > 0 and h > 0:
+        dst.alpha_composite(src, (x, y), (sx, sy, sx + w, sy + h))
+
+
 def _mix(rgb, other, f):
     return tuple(int(a + (b - a) * f) for a, b in zip(rgb, other))
 
@@ -1123,6 +1135,9 @@ class Box:
         self._pos = None                # where the window was last put (parent client coordinates)
         self._layer = None              # (key, icons and labels of all items) reused by every frame
         self._wraps = {}                # label -> its lines
+        self._tiles = {}                # path -> (key, one item's picture) for drawing it off its cell
+        self.reorder = None             # dict while an item is dragged around inside the box
+        self.slots = None               # path -> [x, y] where each item is drawn while items glide
 
     # ---- data ----
     @property
@@ -1246,7 +1261,10 @@ class Box:
             out = None
         sort = self.d.get("sort", "name")
         if out is not None:
-            if sort == "date":
+            if sort == "manual":                         # dragged into place; new files go to the end
+                rank = {n: k for k, n in enumerate(self.d.get("order") or [])}
+                out.sort(key=lambda t: (t[0] not in rank, rank.get(t[0], 0), not t[2], t[0].lower()))
+            elif sort == "date":
                 out.sort(key=lambda t: -t[3])
             elif sort == "type":
                 out.sort(key=lambda t: (not t[2], os.path.splitext(t[0])[1].lower(), t[0].lower()))
@@ -1397,26 +1415,49 @@ class Box:
             return self._layer[1]
         layer = Image.new("RGBA", (cols * cell, pad + rows * ch), (0, 0, 0, 0))
         dr = ImageDraw.Draw(layer)
-        icon = self.icon_px()
-        fl = self._label_font()
-        for i, (name, path, is_dir, mtime) in enumerate(self.items):
-            cx, cy = (i % cols) * cell, pad + (i // cols) * ch
-            pic = self.mgr.icons.get(self.mgr.moved_target(path) or path, icon, mtime)
-            ix, iy = cx + (cell - icon) // 2, cy + self.px(7)
-            if pic:                                       # bottom-aligned, like Explorer: labels start on one line
-                layer.alpha_composite(pic, (ix + (icon - pic.width) // 2, iy + icon - pic.height))
-            else:
-                aa_fill(layer, (ix + icon // 6, iy + self.px(4), ix + icon - icon // 6, iy + icon - self.px(2)),
-                        self.px(4), (210, 214, 222, 160), outline=self.px(2))
-            ly = iy + icon + self.px(4)
-            for ln in self._lines(w, name, is_dir):
-                lw = dr.textlength(ln, font=fl)
-                lx = round(cx + (cell - lw) / 2.0)
-                dr.text((lx + 1, ly + 1), ln, font=fl, fill=(0, 0, 0, 170))
-                dr.text((lx, ly), ln, font=fl, fill=(242, 244, 248, 255))
-                ly += self.px(15)
+        for i, item in enumerate(self.items):
+            self._paint_item(layer, dr, (i % cols) * cell, pad + (i // cols) * ch, item, w)
         self._layer = (key, layer)
         return layer
+
+    def _paint_item(self, img, dr, cx, cy, item, w):
+        """An item's icon and label in the cell whose top-left corner is (cx, cy)."""
+        name, path, is_dir, mtime = item
+        cell, icon, fl = self.layout(w)[2], self.icon_px(), self._label_font()
+        pic = self.mgr.icons.get(self.mgr.moved_target(path) or path, icon, mtime)
+        ix, iy = cx + (cell - icon) // 2, cy + self.px(7)
+        if pic:                                           # bottom-aligned, like Explorer: labels start on one line
+            img.alpha_composite(pic, (ix + (icon - pic.width) // 2, iy + icon - pic.height))
+        else:
+            aa_fill(img, (ix + icon // 6, iy + self.px(4), ix + icon - icon // 6, iy + icon - self.px(2)),
+                    self.px(4), (210, 214, 222, 160), outline=self.px(2))
+        ly = iy + icon + self.px(4)
+        for ln in self._lines(w, name, is_dir):
+            lw = dr.textlength(ln, font=fl)
+            lx = round(cx + (cell - lw) / 2.0)
+            dr.text((lx + 1, ly + 1), ln, font=fl, fill=(0, 0, 0, 170))
+            dr.text((lx, ly), ln, font=fl, fill=(242, 244, 248, 255))
+            ly += self.px(15)
+
+    def _tile(self, i, w):
+        """One item on its own picture, to draw it away from its cell (while items glide)."""
+        _x0, _cols, cell, ch, _pad = self.layout(w)
+        item = self.items[i]
+        key = (item, cell, ch, self.px(12), self.mgr.icons.gen)
+        c = self._tiles.get(item[1])
+        if c and c[0] == key:
+            return c[1]
+        img = Image.new("RGBA", (cell, ch), (0, 0, 0, 0))
+        self._paint_item(img, ImageDraw.Draw(img), 0, 0, item, w)
+        if len(self._tiles) > 500:
+            self._tiles.clear()
+        self._tiles[item[1]] = (key, img)
+        return img
+
+    def _slot_xy(self, k, w):
+        """Top-left corner of cell k in content coordinates (before scrolling)."""
+        x0, cols, cell, ch, pad = self.layout(w)
+        return x0 + (k % cols) * cell, pad + (k // cols) * ch
 
     def _draw_items(self, img, w, h, t, r):
         view_h = h - t
@@ -1426,9 +1467,18 @@ class Box:
         inset = self.px(4)
         full = self.content_h(w)
         self.scroll = max(0, min(self.scroll, max(0, full - view_h)))
-        layer = self._items_layer(w)
-        grid = layer.crop((-x0, self.scroll, w - x0, self.scroll + view_h))     # shifted into place in one step
-        marks = [i for i in sorted(self.sel | {self.hover}) if 0 <= i < len(self.items)]
+        if self.slots is not None:                         # items gliding to new places: each drawn on its own
+            grid = Image.new("RGBA", (w, view_h), (0, 0, 0, 0))
+            lifted = self.reorder["path"] if self.reorder else None
+            for i, it in enumerate(self.items):
+                if it[1] != lifted:
+                    x, y = self.slots.get(it[1]) or self._slot_xy(i, w)
+                    _blend_at(grid, self._tile(i, w), int(round(x)), int(round(y)) - self.scroll)
+            marks = []
+        else:
+            layer = self._items_layer(w)
+            grid = layer.crop((-x0, self.scroll, w - x0, self.scroll + view_h))     # shifted into place in one step
+            marks = [i for i in sorted(self.sel | {self.hover}) if 0 <= i < len(self.items)]
         for i in marks:                                    # highlights go under the icons; only their own spot is redone
             name, _p, is_dir, _m = self.items[i]
             cx, cy = x0 + (i % cols) * cell, pad + (i // cols) * ch - self.scroll
@@ -1452,6 +1502,15 @@ class Box:
         mask = aa_mask(w, view_h, r, (False, False, True, True))     # round the bottom corners
         grid.putalpha(ImageChops.multiply(grid.getchannel("A"), mask))
         img.alpha_composite(grid, (0, t))
+        if self.reorder and self.reorder["path"] in self.slots:      # the lifted item: a bit larger, over everything
+            tile = self._tile(self.reorder["i"], w)
+            bw, bh = int(tile.width * LIFT), int(tile.height * LIFT)
+            big = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+            aa_fill(big, (0, 0, bw, bh - self.px(6)), self.px(8), (255, 255, 255, 38))
+            big.alpha_composite(tile.resize((bw, bh), Image.BILINEAR))
+            x, y = self.slots[self.reorder["path"]]
+            _blend_at(img, big, int(round(x - (bw - tile.width) / 2.0)),
+                      int(round(t + y - self.scroll - (bh - tile.height) / 2.0)))
 
     @staticmethod
     def _wrap(dr, text, font, maxw):
@@ -1614,6 +1673,8 @@ class Box:
                     self.update_roll()
             elif wp == 3:
                 self._anim_step()
+            elif wp == 4:
+                self._reorder_step()
             return 0
         if msg == WM_SETCURSOR:
             p = POINT()
@@ -1626,6 +1687,9 @@ class Box:
         if msg == WM_CAPTURECHANGED:
             if self.press and self.press.get("mode") in ("move", "resize"):
                 self._finish_press()
+            elif self.press and self.press.get("mode") == "reorder":     # capture taken away: put things back
+                self.press = None
+                self._end_reorder(commit=False)
             return 0
         return None
 
@@ -1651,10 +1715,22 @@ class Box:
             user32.GetCursorPos(ctypes.byref(p))
             mode = pr["mode"]
             if mode == "item" and (abs(p.x - pr["sx"]) > 4 or abs(p.y - pr["sy"]) > 4):
-                self.press = None
-                user32.ReleaseCapture()
-                paths = [self.items[i][1] for i in sorted(self.sel) if i < len(self.items)]
-                self.mgr.defer(lambda: self.mgr.drag_out(self, paths))
+                if len(self.sel) <= 1 and 0 <= pr["i"] < len(self.items):
+                    pr["mode"] = "reorder"                   # one item: lift it and move it around the box
+                    self._start_reorder(pr["i"], x, y)
+                    return 0
+                self._drag_out([self.items[i][1] for i in sorted(self.sel) if i < len(self.items)])
+                return 0
+            if mode == "reorder":
+                _x, _y, w, _h = self.rect()
+                m = self.px(10)
+                if x < -m or y < -m or x > w + m or y > (self.cur_h or _h) + m:    # out of the box: a real drag
+                    path = self.reorder["path"] if self.reorder else None
+                    self._end_reorder(commit=False)
+                    if path:
+                        self._drag_out([path])
+                    return 0
+                self._reorder_move(x, y)
                 return 0
             if mode == "title" and not self.d.get("locked") and (abs(p.x - pr["sx"]) > 3 or abs(p.y - pr["sy"]) > 3):
                 pr["mode"] = "move"
@@ -1705,13 +1781,109 @@ class Box:
         return 0
 
     def _up(self, x, y):
+        self._finish_press()                    # before ReleaseCapture: WM_CAPTURECHANGED would cancel a reorder
         if user32.GetCapture() == self.hwnd:
             user32.ReleaseCapture()
-        self._finish_press()
         return 0
+
+    def _drag_out(self, paths):
+        """Hand the items over to a shell drag (to the desktop, another box, a folder, an app)."""
+        self.press = None
+        user32.ReleaseCapture()
+        self.mgr.defer(lambda: self.mgr.drag_out(self, paths))
+
+    # ---- moving items around inside the box (like app icons on a phone) ----
+    def _start_reorder(self, i, x, y):
+        w = self.rect()[2]
+        sx, sy = self._slot_xy(i, w)
+        cy = y - self.title_h() + self.scroll                  # content coordinates
+        self.reorder = {"i": i, "path": self.items[i][1], "target": i, "gx": x - sx, "gy": cy - sy,
+                        "x": x, "y": y, "t": time.perf_counter()}
+        self.slots = {it[1]: list(self._slot_xy(k, w)) for k, it in enumerate(self.items)}
+        self.hover = -1
+        self._glide_t = time.perf_counter()
+        self._reorder_move(x, y)
+        user32.SetTimer(self.hwnd, 4, FRAME_MS, None)
+
+    def _reorder_move(self, x, y):
+        r = self.reorder
+        if not r:
+            return
+        w = self.rect()[2]
+        x0, cols, cell, ch, pad = self.layout(w)
+        r["x"], r["y"] = x, y
+        lx, ly = x - r["gx"], y - self.title_h() + self.scroll - r["gy"]     # the lifted item's cell corner
+        self.slots[r["path"]] = [lx, ly]
+        col = min(cols - 1, max(0, int((lx + cell / 2.0 - x0) // cell)))   # the cell under the item's middle
+        row = max(0, int((ly + ch / 2.0 - pad) // ch))
+        r["target"] = min(len(self.items) - 1, row * cols + col)
+
+    def _reorder_order(self, r):
+        order = [k for k in range(len(self.items)) if k != r["i"]]
+        order.insert(r["target"], r["i"])
+        return order
+
+    def _reorder_step(self):
+        """One frame: the others glide to their places in the order being made; the lifted
+        item follows the cursor; near the top or bottom edge the box scrolls."""
+        if self.slots is None or not self.hwnd:
+            user32.KillTimer(self.hwnd, 4)
+            return
+        now = time.perf_counter()
+        last = getattr(self, "_glide_t", now)
+        self._glide_t = now
+        k = 1.0 - math.exp(-GLIDE * max(0.0, min(0.1, now - last)))
+        w = self.rect()[2]
+        r = self.reorder
+        if r:
+            t, edge = self.title_h(), self.px(26)
+            if r["y"] > (self.cur_h or 0) - edge:
+                self.scroll += self.px(8)
+            elif r["y"] < t + edge and self.scroll > 0:
+                self.scroll = max(0, self.scroll - self.px(8))
+            self._reorder_move(r["x"], r["y"])
+            order = self._reorder_order(r)
+        else:
+            order = list(range(len(self.items)))
+        settled = True
+        for slot, j in enumerate(order):
+            path = self.items[j][1]
+            if r and path == r["path"]:
+                continue
+            gx, gy = self._slot_xy(slot, w)
+            pos = self.slots.setdefault(path, [gx, gy])
+            pos[0] += (gx - pos[0]) * k
+            pos[1] += (gy - pos[1]) * k
+            if abs(gx - pos[0]) > 0.5 or abs(gy - pos[1]) > 0.5:
+                settled = False
+            else:
+                pos[0], pos[1] = gx, gy
+        if settled and not r:                                  # all home: back to the one-picture drawing
+            self.slots = None
+            user32.KillTimer(self.hwnd, 4)
+        self.render()
+
+    def _end_reorder(self, commit):
+        r, self.reorder = self.reorder, None
+        if self.hwnd:
+            user32.SetTimer(self.hwnd, 4, FRAME_MS, None)       # glide on to the final places
+        if not r:
+            return
+        self._glide_t = time.perf_counter()
+        if commit and r["target"] != r["i"]:
+            order = self._reorder_order(r)
+            self.items = [self.items[j] for j in order]
+            self.d["order"] = [it[0] for it in self.items]
+            self.d["sort"] = "manual"
+            self.sig = tuple((n, m) for n, _p, _d, m in self.items)
+            self.sel = {order.index(r["i"])}
+            self.mgr.save_soon()
 
     def _finish_press(self):
         pr, self.press = self.press, None
+        if pr and pr["mode"] == "reorder":
+            self._end_reorder(commit=True)
+            return
         if pr and pr["mode"] in ("move", "resize"):
             self.set_rect(self.rect())
             self.cur_h = self.target_h()
@@ -2033,7 +2205,7 @@ class BoxManager:
                 self._scan_at = now + SCAN_EVERY
                 changed = False
                 for b in self.boxes:
-                    if b.hwnd and b.refresh_items():
+                    if b.hwnd and not b.reorder and b.refresh_items():
                         changed = True
                         if b.rolled():
                             b.render()
@@ -2385,7 +2557,7 @@ class BoxManager:
             so = user32.CreatePopupMenu()
             subs.append(so)
             user32.AppendMenuW(menu, MF_POPUP, so, B("sort"))
-            for i, k in enumerate(("name", "type", "date")):
+            for i, k in enumerate(("name", "type", "date", "manual")):
                 add(so, 0x9300 + i, B("sort_" + k), checked=box.d.get("sort", "name") == k)
             add(menu, 0x9011, B("lock"), checked=bool(box.d.get("locked")))
             add(menu, 0x9012, B("no_quickhide"), checked=bool(box.d.get("no_quickhide")))
@@ -2412,8 +2584,8 @@ class BoxManager:
         elif cmd == 0x9005:
             box.d["rollup"] = not box.d.get("rollup")
             box.temp_open = False
-        elif 0x9300 <= cmd < 0x9303:
-            box.d["sort"] = ("name", "type", "date")[cmd - 0x9300]
+        elif 0x9300 <= cmd < 0x9304:
+            box.d["sort"] = ("name", "type", "date", "manual")[cmd - 0x9300]       # the custom order is kept
             box.sig = None
             box.refresh_items()
         elif cmd == 0x9011:
