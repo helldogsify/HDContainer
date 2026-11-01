@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.8.2"
+#define MyAppVersion "1.9.0"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -83,6 +83,8 @@ Filename: "{app}\{#MyAppExe}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; F
 ; закрыть запущенный экземпляр перед удалением файлов
 Filename: "{app}\{#MyAppExe}"; Parameters: "--unregister-convert"; Flags: waituntilterminated runhidden; RunOnceId: "UnregConvert"
 Filename: "{app}\{#MyAppExe}"; Parameters: "--quit"; Flags: waituntilterminated runhidden; RunOnceId: "QuitApp"
+; desktop boxes keep their files in a hidden folder on the desktop: make it a normal folder again
+Filename: "{cmd}"; Parameters: "/C attrib -h -s ""{userdesktop}\HDContainer Boxes"""; Flags: runhidden; RunOnceId: "UnhideBoxes"
 
 [Code]
 var

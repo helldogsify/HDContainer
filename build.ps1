@@ -31,8 +31,8 @@ if ($LASTEXITCODE -ne 0) {
   python -m pip install "libtorrent==2.1.1"
   if ($LASTEXITCODE -ne 0) { throw "pip install libtorrent failed" }
 }
-python -c "import window_container as w; assert w.torrents is not None, w._TORRENTS_IMPORT_ERR; print('torrents import ok')"
-if ($LASTEXITCODE -ne 0) { throw "torrents module failed to import" }
+python -c "import window_container as w; assert w.torrents is not None, w._TORRENTS_IMPORT_ERR; assert w.boxes is not None, w._BOXES_IMPORT_ERR; print('torrents and boxes import ok')"
+if ($LASTEXITCODE -ne 0) { throw "torrents or boxes module failed to import" }
 
 Write-Host "==> Building HDContainer.exe $ver with PyInstaller..."
 # pillow-heif: HEIC/HEIF в конвертере — библиотека с нативными DLL, собираем целиком

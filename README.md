@@ -4,7 +4,7 @@
 
 # HDContainer
 
-### One small tray app for Windows that does four everyday jobs: groups a task's windows into one app, turns your voice into text, converts files from the right‑click menu, and downloads torrents.
+### One small tray app for Windows that does five everyday jobs: groups a task's windows into one app, keeps your desktop tidy in boxes, turns your voice into text, converts files from the right‑click menu, and downloads torrents.
 
 [![Download](https://img.shields.io/badge/Download-Setup.exe-4c8bf5?style=for-the-badge)](https://github.com/helldogsify/HDContainer/releases/latest)
 [![Release](https://img.shields.io/github/v/release/helldogsify/HDContainer?style=for-the-badge)](https://github.com/helldogsify/HDContainer/releases/latest)
@@ -19,6 +19,7 @@
 | | |
 |---|---|
 | **[Window containers](#window-containers)** | A set of windows becomes one program: one taskbar button, one Alt+Tab entry. Switch your whole workspace with a single keystroke. |
+| **[Desktop boxes](#desktop-boxes)** | Panels on the desktop that hold files and shortcuts. They roll up into a title bar, sort new desktop files by type and stay under your windows. |
 | **[Voice input](#voice-input)** | Hold **Left Alt** and talk. The text appears where your cursor is, cleaned up by an LLM. Select text first and your words become an instruction for it. |
 | **[Convert to](#convert-files-from-the-right-click-menu)** | Right‑click any image, audio, video, document or table in Explorer → **Convert to** → pick a format. |
 | **[Torrents](#torrents)** | Open a `.torrent` file and it starts downloading. Progress, pause and delete are in the tray menu. |
@@ -58,6 +59,21 @@ And it's **not** a hack that jams windows inside another and breaks your typing.
 <img src="assets/color-labels.png" width="420" alt="Color labels">
 <br><sub>Color-label each container to tell your workspaces apart</sub>
 </div>
+
+## Desktop boxes
+
+A box is a panel on the desktop that holds files, folders and shortcuts. Boxes live in the desktop layer itself: they stay under every window, are there after Win+D, and never show up in the taskbar or Alt+Tab.
+
+- **Make a box** from the tray menu (**New box**) or by right‑clicking any box. Drag files, folders and shortcuts in from the desktop or any folder; drag them out to the desktop, another box, a folder or any app (a chat, a browser upload…).
+- **It works like Explorer**: double‑click opens, right‑click shows the full Explorer menu (Open with, Send to, archivers, Properties…), Ctrl+click selects several, Cut in Explorer and **Paste** into a box.
+- **Roll up into the title**: a box shrinks to its title bar and opens when you hover it; it rolls back up when the mouse leaves. Click the title to keep it open. A red counter on the title shows files that arrived since you last looked.
+- **Color and transparency** per box, sorting by name, type or date, move by the title, resize by the edge. Positions are remembered separately for each monitor layout.
+- **Sort new desktop files by type**: in **Settings → Boxes** choose a box for folders, shortcuts and apps, documents, images, videos, music, archives, installers, web links and everything else. New files are moved once they finish downloading; **Sort the desktop now** does it for what's already there.
+- **Hide all boxes** with a double‑click on an empty spot of the desktop (and bring them back the same way).
+- **A box for any folder**: a box can show a folder of your choice — Downloads, a project folder — instead of its own.
+- **Moving from iTop Easy Desktop**: **Settings → Boxes → Import boxes from iTop Easy Desktop** recreates your boxes with their names, positions, roll‑up and sorting rules, and can sort your desktop files into them right away.
+
+The files really move: each box is a folder in `Desktop\HDContainer Boxes` (hidden, so the desktop stays clean). Nothing is kept in a database and no driver is installed — uninstalling HDContainer turns that folder back into a normal one with all your files.
 
 ## Voice input
 
@@ -127,6 +143,7 @@ The app is Python — `tkinter` for the UI and `ctypes` for the Win32 work — p
 | Part | Files | Built on |
 |---|---|---|
 | Tray, containers, settings, updater | `window_container.py` | stdlib + [Pillow](https://python-pillow.org/) for icons |
+| Desktop boxes | `boxes.py` | layered child windows of the desktop icon layer drawn with Pillow; Explorer thumbnails, context menus and OLE drag‑and‑drop through COM |
 | Voice input | `voice.py`, `voice_engines.py`, `voice_sys.py` | microphone through `winmm`, selection and text fields through UI Automation, pasting with `SendInput`; whisper.cpp server downloaded on first use; LLM connectors are plain HTTP or a `claude` subprocess |
 | Converter | `convert.py` | Pillow + pillow‑heif; FFmpeg, Pandoc and Poppler downloaded on demand; Edge/Chrome for PDF |
 | Torrents | `torrents.py` | [libtorrent](https://libtorrent.org/) |

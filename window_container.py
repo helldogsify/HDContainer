@@ -79,7 +79,13 @@ except Exception:
     torrents = None
     _TORRENTS_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.8.2"
+try:                                   # desktop boxes (panels on the desktop that hold files)
+    import boxes
+except Exception:
+    boxes = None
+    _BOXES_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.9.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -273,6 +279,7 @@ FONT_H     = ("Segoe UI Semibold", 14)
 # от ⏻/⚙ в обычных шрифтах, которые на части систем рисуются пустым прямоугольником)
 ICON_FONT = "Segoe MDL2 Assets"
 ICON_ADD, ICON_SETTINGS, ICON_POWER = "\uE710", "\uE713", "\uE7E8"
+ICON_BOX = "\uE7B8"
 ICON_HISTORY = "\uE81C"
 
 # ---------------------------------------------------------------------------
@@ -1824,6 +1831,16 @@ class TrayApp:
         for _p in torrent_files:
             self.root.after(600, lambda p=_p: self._open_torrent(p))
 
+        # desktop boxes: windows inside the desktop icon layer, created on the boxes' own timer
+        self.boxes = None
+        if boxes is not None:
+            try:
+                self.boxes = boxes.BoxManager(self, lambda: LANG, log, _DIR)
+            except Exception:
+                log("boxes init failed:\n" + traceback.format_exc())
+        else:
+            log("boxes import failed:\n" + globals().get("_BOXES_IMPORT_ERR", ""))
+
         # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
         # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
         # и перезапустит только то, что не выжило. Никаких ручных действий.
@@ -1868,6 +1885,8 @@ class TrayApp:
             return 0
         if msg == WM_TASKBARCREATED:
             self._defer(self._add_tray)
+            if getattr(self, "boxes", None) is not None:
+                self._defer(self.boxes.on_explorer_restart)      # Explorer restarted: boxes died with it
             return 0
         if msg == WM_HOTKEY and self.voice is not None:
             try:
@@ -1882,6 +1901,11 @@ class TrayApp:
                 self.torrents.end_session()
             except Exception as ex:
                 log("torrents end_session failed: %r" % ex)
+        if msg == WM_ENDSESSION and wparam and getattr(self, "boxes", None) is not None:
+            try:
+                self.boxes.save()
+            except Exception as ex:
+                log("boxes save at session end failed: %r" % ex)
         if msg == WM_COPYDATA:
             try:
                 cds = COPYDATASTRUCT.from_address(int(lparam))
@@ -2092,6 +2116,9 @@ class TrayApp:
             tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
         self._popup_action_row(frame, ICON_ADD, T("create_container"), W,
                                lambda: act(self._create_container))
+        if self.boxes is not None:
+            self._popup_action_row(frame, ICON_BOX, boxes.B("new_box"), W,
+                                   lambda: act(self.boxes.new_box_dialog))
         self._popup_action_row(frame, ICON_SETTINGS, T("settings"), W,
                                lambda: act(self._open_settings))
         if self.voice is not None:
@@ -3537,6 +3564,11 @@ class TrayApp:
                 self.torrents.shutdown()   # save resume data so downloads continue after restart
             except Exception:
                 log("torrents shutdown failed:\n" + traceback.format_exc())
+        if getattr(self, "boxes", None) is not None:
+            try:
+                self.boxes.shutdown()
+            except Exception:
+                log("boxes shutdown failed:\n" + traceback.format_exc())
         for c in self.containers:
             if c.active:
                 c.sync_app_rects()   # запомнить размеры окон ДО отвязки
@@ -4104,6 +4136,8 @@ class TrayApp:
             tabs.append(("convert", convert.C("tab")))
         if self.torrents is not None:
             tabs.append(("torrents", torrents.S("tab")))
+        if self.boxes is not None:
+            tabs.append(("boxes", boxes.B("tab")))
         return tabs
 
     def _open_settings(self, tab=None, rebuild=False):
@@ -4135,6 +4169,8 @@ class TrayApp:
             self.voice.begin_edit()
         if self.torrents is not None and self.torrents.draft is None:
             self.torrents.begin_edit()
+        if self.boxes is not None and self.boxes.draft is None:
+            self.boxes.begin_edit()
 
         win = self._dialog(T("settings_title"), 640, 780)
         win.resizable(False, True)
@@ -4196,6 +4232,8 @@ class TrayApp:
             convert.build_settings(self, body, win, pad)
         elif tab == "torrents":
             self.torrents.build_into(body, win, pad)
+        elif tab == "boxes":
+            self.boxes.build_into(body, win, pad)
         else:
             self._build_general(body, pad)
 
@@ -4262,6 +4300,8 @@ class TrayApp:
                 self.voice.commit()
             if self.torrents is not None:
                 self.torrents.commit()
+            if self.boxes is not None:
+                self.boxes.commit()
         except Exception:
             log("settings save failed:\n" + traceback.format_exc())
         self._settings_close_win()
@@ -4271,6 +4311,8 @@ class TrayApp:
             self.voice.discard()
         if self.torrents is not None:
             self.torrents.discard()
+        if self.boxes is not None:
+            self.boxes.discard()
         self._settings_close_win()
 
     def _info(self, title, prompt):
