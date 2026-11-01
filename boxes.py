@@ -82,11 +82,13 @@ BSTR = {
     "box_w": {"en": "Box width", "ru": "Ширина ящика", "es": "Ancho de caja", "pt": "Largura da caixa", "de": "Boxbreite", "fr": "Largeur des boîtes", "zh": "收纳盒宽度"},
     "gap": {"en": "Gap", "ru": "Отступ", "es": "Espacio", "pt": "Espaço", "de": "Abstand", "fr": "Écart", "zh": "间距"},
     "arr_top": {"en": "Along the top", "ru": "Вверху", "es": "Arriba", "pt": "No topo", "de": "Oben", "fr": "En haut", "zh": "顶部"},
+    "arr_bottom": {"en": "Along the bottom", "ru": "Внизу", "es": "Abajo", "pt": "Embaixo", "de": "Unten", "fr": "En bas", "zh": "底部"},
+    "up_note": {"en": "Boxes in the lower half of the screen open upwards, with the title at the bottom.", "ru": "Ящики в нижней половине экрана открываются вверх, заголовок у них снизу.", "es": "Las cajas de la mitad inferior de la pantalla se abren hacia arriba, con el título abajo.", "pt": "As caixas na metade de baixo da tela abrem para cima, com o título embaixo.", "de": "Boxen in der unteren Bildschirmhälfte öffnen nach oben, mit dem Titel unten.", "fr": "Les boîtes de la moitié basse de l’écran s’ouvrent vers le haut, titre en bas.", "zh": "位于屏幕下半部分的收纳盒向上展开，标题在底部。"},
     "arr_col": {"en": "In a column", "ru": "Столбцом", "es": "En columna", "pt": "Em coluna", "de": "Als Spalte", "fr": "En colonne", "zh": "成列"},
     "left": {"en": "Left", "ru": "Слева", "es": "Izquierda", "pt": "Esquerda", "de": "Links", "fr": "À gauche", "zh": "左"},
     "center": {"en": "Center", "ru": "По центру", "es": "Centro", "pt": "Centro", "de": "Mitte", "fr": "Au centre", "zh": "居中"},
     "right": {"en": "Right", "ru": "Справа", "es": "Derecha", "pt": "Direita", "de": "Rechts", "fr": "À droite", "zh": "右"},
-    "arrange_note": {"en": "One click puts all boxes there, with this width and the same gap between them and from the screen edge.", "ru": "Один клик ставит туда все ящики: с этой шириной и одинаковым отступом друг от друга и от края экрана.", "es": "Un clic coloca ahí todas las cajas, con este ancho y el mismo espacio entre ellas y hasta el borde.", "pt": "Um clique coloca todas as caixas ali, com esta largura e o mesmo espaço entre elas e até a borda.", "de": "Ein Klick stellt alle Boxen dorthin, mit dieser Breite und gleichem Abstand zueinander und zum Bildschirmrand.", "fr": "Un clic y place toutes les boîtes, avec cette largeur et le même écart entre elles et avec le bord.", "zh": "单击即可把所有收纳盒放到该处，使用此宽度，彼此及与屏幕边缘的间距相同。"},
+    "arrange_note": {"en": "The width changes on all boxes at once. A click on a place puts all boxes there with the same gap between them and from the screen edge; while they stay there, the gap follows at once too.", "ru": "Ширина сразу меняется у всех ящиков. Клик по месту ставит туда все ящики с одинаковым отступом друг от друга и от края экрана; пока они там стоят, отступ тоже меняется сразу.", "es": "El ancho cambia en todas las cajas al momento. Un clic en un lugar coloca ahí todas las cajas con el mismo espacio entre ellas y hasta el borde; mientras sigan ahí, el espacio también cambia al momento.", "pt": "A largura muda em todas as caixas na hora. Um clique num lugar coloca todas as caixas ali com o mesmo espaço entre elas e até a borda; enquanto ficarem ali, o espaço também muda na hora.", "de": "Die Breite ändert sich sofort bei allen Boxen. Ein Klick auf einen Platz stellt alle Boxen dorthin, mit gleichem Abstand zueinander und zum Bildschirmrand; solange sie dort stehen, folgt auch der Abstand sofort.", "fr": "La largeur change tout de suite sur toutes les boîtes. Un clic sur une place y met toutes les boîtes avec le même écart entre elles et avec le bord ; tant qu’elles y restent, l’écart suit aussi tout de suite.", "zh": "宽度会立即应用到所有收纳盒。单击某个位置即可把所有收纳盒放到该处，彼此及与屏幕边缘的间距相同；只要它们还在那里，间距也会立即跟随调整。"},
     "import": {"en": "Import boxes from iTop Easy Desktop", "ru": "Перенести ящики из iTop Easy Desktop", "es": "Importar cajas de iTop Easy Desktop", "pt": "Importar caixas do iTop Easy Desktop", "de": "Boxen aus iTop Easy Desktop übernehmen", "fr": "Importer les boîtes d’iTop Easy Desktop", "zh": "从 iTop Easy Desktop 导入收纳盒"},
     "imported_n": {"en": "Imported boxes: %d. Drag your files into them.", "ru": "Перенесено ящиков: %d. Перетащите в них свои файлы.", "es": "Cajas importadas: %d. Arrastra tus archivos a ellas.", "pt": "Caixas importadas: %d. Arraste seus arquivos para elas.", "de": "Übernommene Boxen: %d. Zieh deine Dateien hinein.", "fr": "Boîtes importées : %d. Glissez-y vos fichiers.", "zh": "已导入收纳盒：%d。把文件拖进去即可。"},
     "itop_running": {"en": "Quit iTop Easy Desktop first, otherwise both programs will draw boxes.", "ru": "Сначала закройте iTop Easy Desktop, иначе ящики будут рисовать обе программы.", "es": "Cierra primero iTop Easy Desktop; si no, ambos programas dibujarán cajas.", "pt": "Feche o iTop Easy Desktop primeiro, senão os dois programas vão desenhar caixas.", "de": "Beende zuerst iTop Easy Desktop, sonst zeichnen beide Programme Boxen.", "fr": "Quittez d’abord iTop Easy Desktop, sinon les deux programmes dessineront des boîtes.", "zh": "请先退出 iTop Easy Desktop，否则两个程序都会绘制收纳盒。"},
@@ -110,7 +112,8 @@ TITLE_COLORS = ["#f4f6fa", "#c9ced8", "#1d1f24", "#ffd60a", "#64d2ff", "#ff9f0a"
 STYLE_DEFAULT = {"color": None, "transp": 30, "hover_transp": 10, "font": "Segoe UI Semibold",
                  "font_size": 11, "bold": False, "title_color": "#f4f6fa"}
 OPTS_DEFAULT = {"round": True, "border": False, "badge": True, "icon_size": 48, "snap": True, "quickhide": True,
-                "box_w": 300, "gap": 12}           # box_w / gap: plain screen pixels, as the user sets them
+                "box_w": 300, "gap": 12,           # box_w / gap: plain screen pixels, as the user sets them
+                "layout": None}                    # the last Arrange place while the boxes keep it
 
 # logical sizes (scaled by the window's DPI)
 PAD, RADIUS, EDGE = 8, 10, 6
@@ -1206,9 +1209,25 @@ class Box:
         """Height an item takes: the icon, then its label. The box ends under the text."""
         return self.px(7) + self.icon_px() + self.px(4) + lines * self.px(15) + self.px(5)
 
+    def up(self):
+        """A box in the lower half of its screen opens upwards; its title is then a footer."""
+        r = self.d.get("rects", {}).get(self.mgr.sig) or self.d.get("last") or [200, 120, 320, 420]
+        wa = work_area_at(r[0] + 10, r[1] + 10)
+        return r[1] + self.title_h() / 2.0 > (wa[1] + wa[3]) / 2.0
+
+    def win_top(self, h):
+        """Screen y of the window's top edge at height h: (x, y) of rect() is always the title."""
+        y = self.rect()[1]
+        return y + self.title_h() - h if self.up() else y
+
+    def grid_top(self):
+        """Where the items start inside the window: under the title, or at the top over a footer."""
+        return 0 if self.up() else self.title_h()
+
     def rect(self):
-        """[x, y, w, h] in screen pixels for the current monitor layout. h is the open height:
-        it follows the number of items, down to the bottom of the screen at most (then it scrolls)."""
+        """[x, y, w, h] in screen pixels for the current monitor layout; (x, y) is the title's
+        corner. h is the open height: it follows the number of items, up to the screen edge the
+        box opens towards (then it scrolls)."""
         r = self.d.get("rects", {}).get(self.mgr.sig) or self.d.get("last") or [200, 120, 320, 420]
         x, y, w, _h = r
         wa = work_area_at(x + 10, y + 10)
@@ -1217,12 +1236,14 @@ class Box:
         t = self.title_h()
         y = min(max(y, wa[1]), wa[3] - t)
         one_row = t + self.px(PAD) * 2 + self.layout(w)[3]
-        h = min(t + self.content_h(w), max(one_row, wa[3] - y))
+        room = (y + t - wa[1]) if self.up() else (wa[3] - y)
+        h = min(t + self.content_h(w), max(one_row, room))
         return [x, y, w, h]
 
     def visible_rect(self):
         x, y, w, h = self.rect()
-        return [x, y, w, self.cur_h or self.target_h()]
+        vh = self.cur_h or self.target_h()
+        return [x, self.win_top(vh), w, vh]
 
     def set_rect(self, r):
         self.d.setdefault("rects", {})[self.mgr.sig] = list(r)
@@ -1332,7 +1353,7 @@ class Box:
 
     def place(self):
         x, y, w, _h = self.rect()
-        cx, cy = self.mgr.to_client(x, y)
+        cx, cy = self.mgr.to_client(x, self.win_top(self.cur_h or self.title_h()))
         user32.SetWindowPos(self.hwnd, None, cx, cy, w, self.cur_h, SWP_NOZORDER | SWP_NOACTIVATE)
         self._pos = (cx, cy)
 
@@ -1359,6 +1380,8 @@ class Box:
         a = int(round(255 * (1 - max(0, min(95, int(tr))) / 100.0)))
         r = self.px(RADIUS) if self.mgr.opt("round") else 0
         rolled_now = h <= t + 1
+        up = self.up()
+        hy = h - t if (up and not rolled_now) else 0       # the title strip: on top, or a footer
         # one translucent shape: rolled up it is just the title; open, the body keeps the
         # same transparency and the header gets a denser fill of the same color
         img = Image.new("RGBA", (w, h), rgb + (0,))
@@ -1366,7 +1389,7 @@ class Box:
         img.putalpha(m if a >= 255 else m.point(lambda v, a=a: v * a // 255))
         if not rolled_now:
             head = Image.new("RGBA", (w, t), rgb + (min(255, a + HEADER_EXTRA),))
-            img.paste(head, (0, 0), aa_mask(w, t, r, (True, True, False, False)))
+            img.paste(head, (0, hy), aa_mask(w, t, r, (False, False, True, True) if up else (True, True, False, False)))
         if self.mgr.opt("border"):
             aa_fill(img, (0, 0, w, h), r, (255, 255, 255, 72), outline=max(1, self.px(1)))
         dr = ImageDraw.Draw(img)
@@ -1386,14 +1409,14 @@ class Box:
         x0 = (w - tw - bw - gap) / 2.0
         asc, desc = f.getmetrics()
         th = min(h, t)
-        ty = (th - (asc + desc)) / 2.0
+        ty = hy + (th - (asc + desc)) / 2.0
         sw = 1 if fake_bold else 0
         dark_text = sum(tc) < 300
         dr.text((x0 + 1, ty + 1), name, font=f, fill=(255, 255, 255, 70) if dark_text else (0, 0, 0, 110),
                 stroke_width=sw, stroke_fill=(0, 0, 0, 0))
         dr.text((x0, ty), name, font=f, fill=tc + (255,), stroke_width=sw, stroke_fill=tc + (255,))
         if badge:
-            bx, by = x0 + tw + gap, (th - bh) / 2.0
+            bx, by = x0 + tw + gap, hy + (th - bh) / 2.0
             aa_fill(img, (bx, by, bx + bw, by + bh), bh // 2, (235, 64, 52, 255))
             tl = dr.textlength(txt, font=fb)
             fa, fd = fb.getmetrics()
@@ -1499,9 +1522,11 @@ class Box:
             bar_h = max(self.px(24), int(view_h * view_h / float(full)))
             by = int((view_h - bar_h) * self.scroll / float(full - view_h))
             aa_fill(grid, (w - self.px(6), by + 2, w - self.px(2), by + bar_h - 2), self.px(2), (255, 255, 255, 90))
-        mask = aa_mask(w, view_h, r, (False, False, True, True))     # round the bottom corners
+        up = self.up()
+        mask = aa_mask(w, view_h, r, (True, True, False, False) if up else (False, False, True, True))   # outer corners
         grid.putalpha(ImageChops.multiply(grid.getchannel("A"), mask))
-        img.alpha_composite(grid, (0, t))
+        gy0 = 0 if up else t
+        img.alpha_composite(grid, (0, gy0))
         if self.reorder and self.reorder["path"] in self.slots:      # the lifted item: a bit larger, over everything
             tile = self._tile(self.reorder["i"], w)
             bw, bh = int(tile.width * LIFT), int(tile.height * LIFT)
@@ -1510,7 +1535,7 @@ class Box:
             big.alpha_composite(tile.resize((bw, bh), Image.BILINEAR))
             x, y = self.slots[self.reorder["path"]]
             _blend_at(img, big, int(round(x - (bw - tile.width) / 2.0)),
-                      int(round(t + y - self.scroll - (bh - tile.height) / 2.0)))
+                      int(round(gy0 + y - self.scroll - (bh - tile.height) / 2.0)))
 
     @staticmethod
     def _wrap(dr, text, font, maxw):
@@ -1547,14 +1572,14 @@ class Box:
             self._dc = (mdc, hbm, old, (w, h), bits)
         mdc, _hbm, _old, _sz, bits = self._dc
         ctypes.memmove(bits, data, len(data))
-        x, y, _w, _h = self.rect()
-        cx, cy = self.mgr.to_client(x, y)
-        if self._pos != (cx, cy):
-            user32.SetWindowPos(self.hwnd, None, cx, cy, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
-            self._pos = (cx, cy)
-        # the size changes together with the picture: no frame of the old picture at the new size
+        x = self.rect()[0]
+        cx, cy = self.mgr.to_client(x, self.win_top(h))
+        self._pos = (cx, cy)
+        # place, size and picture change in one call (for a child window the place is in the
+        # parent's client coordinates): no frame of the old picture at the new size or place,
+        # which matters for a box that grows upwards
         blend = BLENDFUNCTION(0, 0, 255, 1)
-        user32.UpdateLayeredWindow(self.hwnd, None, None, ctypes.byref(SIZE(w, h)), mdc,
+        user32.UpdateLayeredWindow(self.hwnd, None, ctypes.byref(POINT(cx, cy)), ctypes.byref(SIZE(w, h)), mdc,
                                    ctypes.byref(POINT(0, 0)), 0, ctypes.byref(blend), 2)
 
     def _free_dc(self):
@@ -1573,10 +1598,10 @@ class Box:
         t = self.title_h()
         if not self.rolled() and h > t and not self.d.get("locked") and x >= w - self.px(EDGE):
             return "resize-r", -1
-        if y < t:
+        if (y >= h - t) if self.up() else (y < t):
             return "title", -1
         x0, cols, cell, ch, pad = self.layout(w)
-        gx, gy = x - x0, y - t - pad + self.scroll
+        gx, gy = x - x0, y - self.grid_top() - pad + self.scroll
         if gx >= 0 and gy >= 0:
             col, row = int(gx // cell), int(gy // ch)
             i = row * cols + col
@@ -1796,7 +1821,7 @@ class Box:
     def _start_reorder(self, i, x, y):
         w = self.rect()[2]
         sx, sy = self._slot_xy(i, w)
-        cy = y - self.title_h() + self.scroll                  # content coordinates
+        cy = y - self.grid_top() + self.scroll                 # content coordinates
         self.reorder = {"i": i, "path": self.items[i][1], "target": i, "gx": x - sx, "gy": cy - sy,
                         "x": x, "y": y, "t": time.perf_counter()}
         self.slots = {it[1]: list(self._slot_xy(k, w)) for k, it in enumerate(self.items)}
@@ -1812,7 +1837,7 @@ class Box:
         w = self.rect()[2]
         x0, cols, cell, ch, pad = self.layout(w)
         r["x"], r["y"] = x, y
-        lx, ly = x - r["gx"], y - self.title_h() + self.scroll - r["gy"]     # the lifted item's cell corner
+        lx, ly = x - r["gx"], y - self.grid_top() + self.scroll - r["gy"]    # the lifted item's cell corner
         self.slots[r["path"]] = [lx, ly]
         col = min(cols - 1, max(0, int((lx + cell / 2.0 - x0) // cell)))   # the cell under the item's middle
         row = max(0, int((ly + ch / 2.0 - pad) // ch))
@@ -1836,10 +1861,11 @@ class Box:
         w = self.rect()[2]
         r = self.reorder
         if r:
-            t, edge = self.title_h(), self.px(26)
-            if r["y"] > (self.cur_h or 0) - edge:
+            g0, edge = self.grid_top(), self.px(26)
+            g1 = (self.cur_h or 0) - (self.title_h() if self.up() else 0)
+            if r["y"] > g1 - edge:
                 self.scroll += self.px(8)
-            elif r["y"] < t + edge and self.scroll > 0:
+            elif r["y"] < g0 + edge and self.scroll > 0:
                 self.scroll = max(0, self.scroll - self.px(8))
             self._reorder_move(r["x"], r["y"])
             order = self._reorder_order(r)
@@ -1885,6 +1911,8 @@ class Box:
             self._end_reorder(commit=True)
             return
         if pr and pr["mode"] in ("move", "resize"):
+            if pr["mode"] == "move":
+                self.mgr.forget_layout()
             self.set_rect(self.rect())
             self.cur_h = self.target_h()
             self.render()
@@ -2308,11 +2336,10 @@ class BoxManager:
         """Settings → Arrange: every box on its own monitor, all with the box width, the same gap
         between them and from the screen edge. where: top-left, top-center, top-right (rows,
         wrapping when a row is full) or col-left, col-right (columns, the next one beside)."""
+        (self.draft or self.data)["opts"]["layout"] = where   # width / gap changes re-apply it
         if not self.boxes:
             return
-        if self._arrange_undo is None:
-            self._arrange_undo = {b.id: json.loads(json.dumps([b.d.get("rects", {}), b.d.get("last")]))
-                                  for b in self.boxes}
+        self._remember_places()
         gap = max(0, int(self.opt("gap")))
         groups = {}
         for b in self.boxes:
@@ -2321,19 +2348,23 @@ class BoxManager:
         for wa, group in groups.items():
             bw = max(group[0].px(PAD) * 2 + group[0].icon_px() + group[0].px(40),
                      min(int(self.opt("box_w")), wa[2] - wa[0] - 2 * gap))
-            if where.startswith("top"):
+            if where.startswith(("top", "bottom")):
+                bottom = where.startswith("bottom")              # rows from the bottom edge, opening upwards
+                side = where.split("-")[1]
                 group.sort(key=lambda b: (b.rect()[0], b.rect()[1]))       # keep their left-to-right order
                 per_row = max(1, (wa[2] - wa[0] - 2 * gap + gap) // (bw + gap))
-                y = wa[1] + gap
+                edge = wa[3] - gap if bottom else wa[1] + gap       # the free edge of the next row
                 for i in range(0, len(group), per_row):
                     row = group[i:i + per_row]
                     total = len(row) * bw + (len(row) - 1) * gap
-                    x = {"top-left": wa[0] + gap, "top-right": wa[2] - gap - total}.get(
-                        where, wa[0] + (wa[2] - wa[0] - total) // 2)
+                    x = {"left": wa[0] + gap, "right": wa[2] - gap - total}.get(side, wa[0] + (wa[2] - wa[0] - total) // 2)
+                    t = max(b.title_h() for b in row)
+                    y = edge - t if bottom else edge                # (x, y) of a box is its title
                     for b in row:
                         b.set_rect([x, y, bw, 0])
                         x += bw + gap
-                    y += max(b.rest_h() for b in row) + gap
+                    rh = max(b.rest_h() for b in row)
+                    edge = (y + t - rh - gap) if bottom else (y + rh + gap)
             else:
                 group.sort(key=lambda b: (b.rect()[1], b.rect()[0]))       # keep their top-to-bottom order
                 step = bw + gap if where == "col-left" else -(bw + gap)
@@ -2345,6 +2376,40 @@ class BoxManager:
                     b.set_rect([x, y, bw, 0])
                     y += b.rest_h() + gap
         self.redraw_all()
+
+    def _remember_places(self):
+        """Box places before the first change from Settings, for Cancel."""
+        if self._arrange_undo is None:
+            self._arrange_undo = {b.id: json.loads(json.dumps([b.d.get("rects", {}), b.d.get("last")]))
+                                  for b in self.boxes}
+
+    def _geometry_soon(self):
+        """Width / gap moved in Settings: apply shortly (a dragged slider sends many values)."""
+        if getattr(self, "_geo_job", None):
+            self.root.after_cancel(self._geo_job)
+        self._geo_job = self.root.after(30, self._apply_geometry)
+
+    def _apply_geometry(self):
+        """Live, before Save: the boxes on the desktop take the new width (and gap)."""
+        self._geo_job = None
+        if self.draft is None or not self.boxes:
+            return
+        layout = self.opt("layout")
+        if layout:
+            self.arrange(layout)                                # same place, new width / gap
+            return
+        self._remember_places()
+        bw = int(self.opt("box_w"))
+        for b in self.boxes:
+            x, y, _w, _h = b.rect()
+            b.set_rect([x, y, bw, 0])
+        self.redraw_all()
+
+    def forget_layout(self):
+        """A box was moved by hand: the boxes no longer keep the Arrange place."""
+        for src in (self.data, self.draft):
+            if src:
+                (src.get("opts") or {}).pop("layout", None)
 
     def snap_resize(self, box, right):
         """The right edge while the width is dragged (the height follows the items)."""
@@ -2958,25 +3023,23 @@ class BoxManager:
         grid = tk.Frame(body, bg=sf)
         grid.pack(fill="x", padx=pad)
         nums = tk.Frame(grid, bg=sf)
-        nums.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 4))
-        for key, lo, hi in (("box_w", 120, 1600), ("gap", 0, 300)):
-            tk.Label(nums, text=B(key) + ":", bg=sf, fg=tx, font=fonts["f"]).pack(
-                side="left", padx=(0 if key == "box_w" else 22, 6))
-            self._num_entry(nums, key, lo, hi).pack(side="left")
-            tk.Label(nums, text="px", bg=sf, fg=dim, font=fonts["sm"]).pack(side="left", padx=(4, 0))
+        nums.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        self._px_row(nums, 0, "box_w", 120, 1600, 900)
+        self._px_row(nums, 1, "gap", 0, 300, 80)
         for r, (label, places) in enumerate((("arr_top", (("left", "top-left", 1), ("center", "top-center", 2),
                                                           ("right", "top-right", 3))),
+                                             ("arr_bottom", (("left", "bottom-left", 1), ("center", "bottom-center", 2),
+                                                             ("right", "bottom-right", 3))),
                                              ("arr_col", (("left", "col-left", 1), ("right", "col-right", 3)))), 1):
             tk.Label(grid, text=B(label) + ":", bg=sf, fg=tx, font=fonts["f"]).grid(
                 row=r, column=0, sticky="w", padx=(0, 10), pady=(6, 0))
             for key, where, c in places:
-                lb = tk.Label(grid, text=B(key), bg=col["sf2"], fg=tx, font=fonts["sm"], padx=10, pady=4,
-                              cursor="hand2")
+                on = self.opt("layout") == where                 # the place the boxes keep now
+                lb = tk.Label(grid, text=B(key), bg=ac if on else col["sf2"], fg="white" if on else tx,
+                              font=fonts["sm"], padx=10, pady=4, cursor="hand2")
                 lb.grid(row=r, column=c, sticky="we", padx=(0, 2), pady=(6, 0))
-                lb.bind("<Button-1>", lambda e, w=where, l=lb: (
-                    l.configure(bg=ac, fg="white"), self.arrange(w),
-                    l.after(250, lambda: l.winfo_exists() and l.configure(bg=col["sf2"], fg=tx))))
-        tk.Label(body, text=B("arrange_note"), bg=sf, fg=dim, font=fonts["sm"], wraplength=520,
+                lb.bind("<Button-1>", lambda e, w=where: (self.arrange(w), self._build_body()))
+        tk.Label(body, text=B("arrange_note") + " " + B("up_note"), bg=sf, fg=dim, font=fonts["sm"], wraplength=520,
                  justify="left").pack(anchor="w", padx=pad, pady=(8, 0))
 
         btns = tk.Frame(body, bg=sf)
@@ -2997,13 +3060,29 @@ class BoxManager:
                 shell32.ShellExecuteW(None, "open", self.box_root, None, None, 1))
         self._refresh_preview()
 
-    def _num_entry(self, parent, key, lo, hi):
-        """A small number field for a pixel option; the mouse wheel steps it (Shift: by 10)."""
+    def _px_row(self, parent, row, key, lo, hi, smax, width=230):
+        """Label, slider and number field for a pixel option, kept in step; the boxes on the
+        desktop follow at once. The slider covers lo..smax, the field takes up to hi; the mouse
+        wheel steps it (Shift: by 10)."""
         col, fonts = self._ui["col"], self._ui["fonts"]
+        sf = col["sf"]
+        tk.Label(parent, text=B(key) + ":", bg=sf, fg=col["tx"], font=fonts["f"]).grid(
+            row=row, column=0, sticky="w", padx=(0, 10), pady=3)
+        cv = tk.Canvas(parent, width=width, height=22, bg=sf, highlightthickness=0, bd=0, cursor="hand2")
+        cv.grid(row=row, column=1, sticky="w")
         var = tk.StringVar(value=str(int(self.opt(key))))
         e = tk.Entry(parent, textvariable=var, width=5, justify="center", bg=col["sf2"], fg=col["tx"],
                      insertbackground=col["tx"], relief="flat", font=fonts["f"], highlightthickness=1,
                      highlightbackground=col["bd"], highlightcolor=col["ac"])
+        e.grid(row=row, column=2, padx=(10, 0))
+        tk.Label(parent, text="px", bg=sf, fg=col["dim"], font=fonts["sm"]).grid(row=row, column=3, padx=(4, 0))
+
+        def draw(v):
+            cv.delete("all")
+            x = 8 + (width - 16) * (min(max(v, lo), smax) - lo) / float(smax - lo)
+            cv.create_line(8, 11, width - 8, 11, fill=col["sf2"], width=4, capstyle="round")
+            cv.create_line(8, 11, x, 11, fill=col["ac"], width=4, capstyle="round")
+            cv.create_oval(x - 7, 4, x + 7, 18, fill="white", outline="")
 
         def apply(*_):
             try:
@@ -3011,7 +3090,13 @@ class BoxManager:
             except ValueError:
                 return
             if lo <= v <= hi and self.draft is not None:
-                self.draft["opts"][key] = v                    # nothing to redraw: used by Arrange / new boxes
+                draw(v)
+                if self.draft["opts"].get(key) != v:
+                    self.draft["opts"][key] = v
+                    self._geometry_soon()
+
+        def at(ev):
+            var.set(str(int(round(lo + max(0.0, min(1.0, (ev.x - 8) / float(width - 16))) * (smax - lo)))))
 
         def wheel(ev):
             try:
@@ -3022,9 +3107,12 @@ class BoxManager:
             return "break"
 
         var.trace_add("write", apply)
-        e.bind("<MouseWheel>", wheel)
+        cv.bind("<Button-1>", at)
+        cv.bind("<B1-Motion>", at)
+        for wdg in (cv, e):
+            wdg.bind("<MouseWheel>", wheel)
         e.bind("<FocusOut>", lambda ev: var.set(str(int(self.opt(key)))))
-        return e
+        draw(int(self.opt(key)))
 
     def _set_target(self, box_id):
         self.settings_target = box_id
