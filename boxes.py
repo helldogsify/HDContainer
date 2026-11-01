@@ -119,6 +119,7 @@ OPTS_DEFAULT = {"round": True, "border": False, "badge": True, "icon_size": 48, 
 PAD, RADIUS, EDGE = 8, 10, 6
 HOVER_OPEN_MS, LEAVE_CLOSE_MS, ANIM_MS, FRAME_MS = 50, 350, 170, 8
 LIFT, GLIDE = 1.1, 18.0        # a dragged item grows by 10 %; others glide aside (rate per second)
+ICON_RETRY_S = (5, 30)         # seconds before asking again for a picture the shell did not give
 HEADER_EXTRA = 48          # an open box's header is this much denser (0..255), setting it apart
 DATA_VERSION = 3
 TICK_MS = 50
@@ -300,6 +301,7 @@ _d(shell32.SHGetKnownFolderPath, HRESULT, [VP, DWORD, VP, ctypes.POINTER(ctypes.
 _d(shell32.SHParseDisplayName, HRESULT, [wintypes.LPCWSTR, VP, ctypes.POINTER(VP), ctypes.c_ulong, VP])
 _d(shell32.SHBindToParent, HRESULT, [VP, VP, ctypes.POINTER(VP), ctypes.POINTER(VP)])
 _d(shell32.SHCreateItemFromParsingName, HRESULT, [wintypes.LPCWSTR, VP, VP, ctypes.POINTER(VP)])
+_d(shell32.SHCreateItemFromIDList, HRESULT, [VP, VP, ctypes.POINTER(VP)])
 _d(shell32.ShellExecuteW, VP, [HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_int])
 _d(shell32.ILFindLastID, VP, [VP])
 _d(shell32.ILFree, None, [VP])
@@ -416,6 +418,8 @@ def desktop_host():
     found = []
 
     def cb(h, _l):
+        if _class_of(h) not in ("Progman", "WorkerW"):          # an Open/Save dialog has an icon view too
+            return True
         dv = user32.FindWindowExW(h, None, "SHELLDLL_DefView", None)
         if dv:
             found.append((h, dv))
@@ -516,8 +520,17 @@ def hbitmap_to_image(hbm):
 def shell_image(path, size):
     """Explorer's picture for a path: a thumbnail for images/documents, else its icon."""
     fac = VP()
-    if shell32.SHCreateItemFromParsingName(path, None, ctypes.byref(IID_IShellItemImageFactory),
-                                           ctypes.byref(fac)) != 0 or not fac:
+    target = link_icon_target(path) if path.lower().endswith(".lnk") else None
+    try:
+        if target:
+            hr = shell32.SHCreateItemFromIDList(target, ctypes.byref(IID_IShellItemImageFactory), ctypes.byref(fac))
+        else:
+            hr = shell32.SHCreateItemFromParsingName(path, None, ctypes.byref(IID_IShellItemImageFactory),
+                                                     ctypes.byref(fac))
+    finally:
+        if target:
+            shell32.ILFree(target)
+    if hr != 0 or not fac:
         return None
     hbm = VP()
     try:
@@ -568,17 +581,23 @@ class IconCache:
                 return self.cache[key]
             if key not in self.pending:
                 self.pending.add(key)
-                self.q.put(key)
+                self.q.put((key, 0))
         return None
 
     def _run(self):
         ole32.CoInitializeEx(None, 2)
         while True:
-            key = self.q.get()
+            key, tries = self.q.get()
             try:
                 img = shell_image(key[0], key[1])
             except Exception:
                 img = None
+            if img is None and tries < len(ICON_RETRY_S):     # right after sign-in Store apps may not answer yet
+                t = threading.Timer(ICON_RETRY_S[tries], self.q.put, ((key, tries + 1),))
+                t.daemon = True
+                t.start()
+            if img is None and tries:
+                continue                                        # failed again: nothing to redraw
             with self.lock:
                 self.cache[key] = img or False          # False: no picture, draw a placeholder
                 self.pending.discard(key)
@@ -716,6 +735,34 @@ def make_link(path, pidl_bytes):
             return False
         return _vcall(ppf, 6, HRESULT, [wintypes.LPCWSTR, BOOL], path, True) == 0     # IPersistFile::Save
     finally:
+        _release(ppf)
+        _release(psl)
+
+
+def link_icon_target(path):
+    """The ID list (the caller frees it) of what a .lnk points to when that is no file and the
+    link has no icon of its own: a Store app, This PC… Explorer's picture of such a link can be a
+    blank page (a WhatsApp link after signing in again) while its target's is right. Else None."""
+    psl, ppf = _shell_link()
+    if not psl:
+        return None
+    pidl = VP()
+    try:
+        if _vcall(ppf, 5, HRESULT, [wintypes.LPCWSTR, DWORD], path, 0) != 0:           # IPersistFile::Load
+            return None
+        icon, idx = ctypes.create_unicode_buffer(520), ctypes.c_int()
+        if _vcall(psl, 16, HRESULT, [wintypes.LPWSTR, ctypes.c_int, ctypes.POINTER(ctypes.c_int)],
+                  icon, 520, ctypes.byref(idx)) == 0 and icon.value:                 # GetIconLocation
+            return None
+        if _vcall(psl, 4, HRESULT, [ctypes.POINTER(VP)], ctypes.byref(pidl)) != 0 or not pidl:   # GetIDList
+            return None
+        if pidl_name(pidl, SIGDN_FILESYSPATH):
+            return None
+        out, pidl = pidl.value, VP()
+        return out
+    finally:
+        if pidl:
+            shell32.ILFree(pidl)
         _release(ppf)
         _release(psl)
 
