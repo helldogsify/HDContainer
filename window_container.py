@@ -91,7 +91,7 @@ except Exception:
     screenshot = None
     _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.10.0"
+VERSION = "1.10.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -288,6 +288,7 @@ ICON_SHOT, ICON_PHOTO = chr(0xE722), chr(0xE91B)      # camera, picture (tray ro
 ICON_ADD, ICON_SETTINGS, ICON_POWER = "\uE710", "\uE713", "\uE7E8"
 ICON_BOX = "\uE7B8"
 ICON_HISTORY = "\uE81C"
+ICON_DOWNLOAD = chr(0xE896)
 
 # ---------------------------------------------------------------------------
 # Настройки + язык (i18n)
@@ -2183,6 +2184,9 @@ class TrayApp:
         if self.screenshot is not None:
             self._popup_action_row(frame, ICON_PHOTO, screenshot.SS("hist_menu"), W,
                                    lambda: act(self.screenshot.open_history))
+        if self.torrents is not None:
+            self._popup_action_row(frame, ICON_DOWNLOAD, torrents.S("hist_menu"), W,
+                                   lambda: act(self.torrents.open_history))
         self._popup_action_row(frame, ICON_POWER, T("quit"), W,
                                lambda: act(self._quit))
 

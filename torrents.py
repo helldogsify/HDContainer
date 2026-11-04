@@ -40,6 +40,17 @@ TSTR = {
     "bad_file": {"en": "Can't open the torrent file", "ru": "Не удалось открыть торрент-файл", "es": "No se puede abrir el archivo torrent", "pt": "Não foi possível abrir o arquivo torrent", "de": "Torrent-Datei kann nicht geöffnet werden", "fr": "Impossible d’ouvrir le fichier torrent", "zh": "无法打开种子文件"},
     "mbs": {"en": "MB/s", "ru": "МБ/с", "es": "MB/s", "pt": "MB/s", "de": "MB/s", "fr": "Mo/s", "zh": "MB/s"},
     "kbs": {"en": "KB/s", "ru": "КБ/с", "es": "KB/s", "pt": "KB/s", "de": "KB/s", "fr": "Ko/s", "zh": "KB/s"},
+    "mb": {"en": "MB", "ru": "МБ", "es": "MB", "pt": "MB", "de": "MB", "fr": "Mo", "zh": "MB"},
+    "gb": {"en": "GB", "ru": "ГБ", "es": "GB", "pt": "GB", "de": "GB", "fr": "Go", "zh": "GB"},
+    "hist_menu": {"en": "Download history", "ru": "История загрузок", "es": "Historial de descargas", "pt": "Histórico de downloads", "de": "Download-Verlauf", "fr": "Historique des téléchargements", "zh": "下载历史"},
+    "hist_keep": {"en": "Keep download history", "ru": "Сохранять историю загрузок", "es": "Guardar el historial de descargas", "pt": "Manter histórico de downloads", "de": "Download-Verlauf speichern", "fr": "Conserver l'historique des téléchargements", "zh": "保存下载历史"},
+    "hist_open": {"en": "Open history", "ru": "Открыть историю", "es": "Abrir historial", "pt": "Abrir histórico", "de": "Verlauf öffnen", "fr": "Ouvrir l'historique", "zh": "打开历史"},
+    "hist_clear": {"en": "Clear history", "ru": "Очистить историю", "es": "Borrar historial", "pt": "Limpar histórico", "de": "Verlauf löschen", "fr": "Effacer l'historique", "zh": "清空历史"},
+    "hist_clear_q": {"en": "Clear the download history? The downloaded files stay.", "ru": "Очистить историю загрузок? Скачанные файлы останутся.", "es": "¿Borrar el historial de descargas? Los archivos descargados se conservan.", "pt": "Limpar o histórico de downloads? Os arquivos baixados permanecem.", "de": "Download-Verlauf löschen? Die geladenen Dateien bleiben erhalten.", "fr": "Effacer l'historique des téléchargements ? Les fichiers téléchargés sont conservés.", "zh": "清空下载历史？已下载的文件会保留。"},
+    "hist_search": {"en": "Search…", "ru": "Поиск…", "es": "Buscar…", "pt": "Pesquisar…", "de": "Suchen…", "fr": "Rechercher…", "zh": "搜索…"},
+    "hist_empty": {"en": "No finished downloads yet.", "ru": "Завершённых загрузок пока нет.", "es": "Aún no hay descargas terminadas.", "pt": "Ainda não há downloads concluídos.", "de": "Noch keine fertigen Downloads.", "fr": "Aucun téléchargement terminé pour l'instant.", "zh": "还没有已完成的下载。"},
+    "hist_nomatch": {"en": "Nothing matches.", "ru": "Ничего не найдено.", "es": "Sin coincidencias.", "pt": "Nada encontrado.", "de": "Keine Treffer.", "fr": "Aucun résultat.", "zh": "没有匹配项。"},
+    "hist_gone": {"en": "Files not found", "ru": "Файлы не найдены", "es": "Archivos no encontrados", "pt": "Arquivos não encontrados", "de": "Dateien nicht gefunden", "fr": "Fichiers introuvables", "zh": "找不到文件"},
 }
 
 LANG_GET = lambda: "en"
@@ -53,7 +64,7 @@ def S(key, *args):
 
 
 DEFAULTS = {"dir": "", "max_speed": True, "force_seeds": True, "merge": True,
-            "auto_stop": True, "auto_clear": True}
+            "auto_stop": True, "auto_clear": True, "history": True}
 
 LISTEN = "0.0.0.0:6881,[::]:6881"
 FORCE_EVERY = 180        # s between forced announces while seeds are scarce
@@ -62,6 +73,7 @@ RESUME_EVERY = 30        # s between resume-data snapshots of active downloads
 LOCK = "running.lock"    # exists while the app runs; left behind = the last exit was not clean
 MARKER = "format2"       # state written by a version with LOCK; older state may hold a stale snapshot
 TICK_MS = 1000
+HISTORY_MAX = 200        # finished downloads kept in the history, as many as dictations
 
 # "Maximum speed" lifts libtorrent's conservative connection defaults; rate limits
 # are always off (0 = unlimited) since the app never offers to set them.
@@ -107,6 +119,12 @@ def _fmt_rate(bps):
     return "%d %s" % (bps // 1024, S("kbs"))
 
 
+def _fmt_size(n):
+    if n >= 1 << 30:
+        return "%s %s" % (_fmt_num(n / float(1 << 30)), S("gb"))
+    return "%s %s" % (_fmt_num(n / float(1 << 20)), S("mb"))
+
+
 def _fmt_eta(sec):
     sec = int(sec)
     h, m, s = sec // 3600, sec % 3600 // 60, sec % 60
@@ -147,6 +165,9 @@ class TorrentController:
         self.order = []
         self.draft = None
         self._popup = None     # {"parent", "sig", "rows"} while the tray menu is open
+        self.history_file = os.path.join(self.dir, "history.json")
+        self.history = self._history_load()     # [{"id","t","name","path","size"}], oldest first
+        self.hist_win = None
         self._lock = os.path.join(self.dir, LOCK)
         marker = os.path.join(self.dir, MARKER)
         # versions before 1.8.2 saved snapshots only every 5 min and not at Windows shutdown,
@@ -458,6 +479,11 @@ class TorrentController:
             return
         it["done"], it["err"] = True, ""
         self.log("torrent finished: %s" % it["name"])
+        try:
+            size = h.status().total_wanted
+        except Exception:
+            size = 0
+        self._history_add(tid, it, size)
         self.app._notify(S("finished"), it["name"],
                          on_click=lambda p=it["path"], n=it["name"]: open_folder(p, n))
         if self.get("auto_stop"):
@@ -634,6 +660,150 @@ class TorrentController:
         if self.app._ask_yesno(S("delete_title"), S("delete_q", it["name"])):
             self.remove(tid, delete_files=True)
 
+    # ---- download history: history.json, oldest first, one entry per torrent ----
+    def _history_load(self):
+        try:
+            with open(self.history_file, encoding="utf-8") as f:
+                rows = json.load(f)
+            return rows if isinstance(rows, list) else []
+        except Exception:
+            return []
+
+    def _history_save(self):
+        tmp = self.history_file + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self.history, f, ensure_ascii=False)
+            os.replace(tmp, self.history_file)
+        except Exception as ex:
+            self.log("torrent history save failed: %r" % ex)
+
+    def _history_add(self, tid, it, size):
+        if not self.get("history"):
+            return
+        self.history = [e for e in self.history if e.get("id") != tid]     # downloaded again
+        self.history.append({"id": tid, "t": time.time(), "name": it["name"],
+                             "path": it["path"], "size": size})
+        del self.history[:-HISTORY_MAX]
+        self._history_save()
+        self._history_refresh()
+
+    def _history_delete(self, entry):
+        if entry in self.history:
+            self.history.remove(entry)
+            self._history_save()
+        self._history_refresh()
+
+    def _history_clear(self):
+        if self.app._ask_yesno(S("hist_menu"), S("hist_clear_q")):
+            self.history = []
+            self._history_save()
+            self._history_refresh()
+
+    def _history_refresh(self):
+        if self.hist_win and self.hist_win.winfo_exists():
+            self._history_fill()
+
+    def open_history(self):
+        if self.hist_win and self.hist_win.winfo_exists():
+            self.hist_win.lift()
+            self.hist_win.focus_force()
+            return
+        main = __import__("__main__")
+        C = lambda n, d: getattr(main, n, d)
+        c = self._hc = {"sf": C("COL_SURFACE", "#232427"), "sf2": C("COL_SURFACE2", "#2d2e31"),
+                        "bg": C("COL_BG", "#1b1b1d"), "tx": C("COL_TEXT", "#e6e8ea"),
+                        "dim": C("COL_TEXT_DIM", "#9aa0a6"), "bd": C("COL_BORDER", "#2a2b2c"),
+                        "ac": C("COL_ACCENT", "#4c8bf5"), "font": C("FONT", ("Segoe UI", 10)),
+                        "font_sm": C("FONT_SM", ("Segoe UI", 9))}
+        win = self.app._dialog(S("hist_menu"), 600, 560)
+        win.resizable(True, True)
+        win.minsize(420, 320)
+        win.attributes("-topmost", False)
+        self.hist_win = win
+
+        top = tk.Frame(win, bg=c["sf"])
+        top.pack(fill="x", padx=16, pady=(14, 6))
+        self._hist_q = tk.StringVar()
+        ent = tk.Entry(top, textvariable=self._hist_q, font=c["font"], bg=c["bg"], fg=c["dim"],
+                       insertbackground=c["tx"], relief="flat", highlightthickness=1,
+                       highlightbackground=c["bd"], highlightcolor=c["ac"])
+        ent.pack(side="left", fill="x", expand=True, ipady=5)
+        ent.insert(0, S("hist_search"))
+
+        def focus_in(_e):
+            if ent.get() == S("hist_search"):
+                ent.delete(0, "end")
+                ent.configure(fg=c["tx"])
+
+        def focus_out(_e):
+            if not ent.get():
+                ent.insert(0, S("hist_search"))
+                ent.configure(fg=c["dim"])
+        ent.bind("<FocusIn>", focus_in)
+        ent.bind("<FocusOut>", focus_out)
+        self.app._ghost_btn(top, S("hist_clear"), self._history_clear).pack(side="left", padx=(8, 0))
+
+        box = tk.Frame(win, bg=c["sf"])
+        box.pack(fill="both", expand=True, padx=(16, 8), pady=(0, 12))
+        cv = tk.Canvas(box, bg=c["sf"], highlightthickness=0, bd=0)
+        sb = self.app._dark_scrollbar(box, cv)
+        sb.pack(side="right", fill="y")
+        cv.pack(side="left", fill="both", expand=True)
+        body = tk.Frame(cv, bg=c["sf"])
+        wid = cv.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.bind("<Configure>", lambda e: (cv.itemconfigure(wid, width=e.width), self._history_rewrap(e.width)))
+        win.bind("<MouseWheel>", lambda e: cv.yview_scroll(int(-e.delta / 120) * 3, "units"))
+        win.bind("<Escape>", lambda e: win.destroy())
+        self._hist_cv, self._hist_body, self._hist_labels = cv, body, []
+        self._hist_q.trace_add("write", lambda *a: (self._history_fill(), cv.yview_moveto(0)))
+        self._history_fill()
+        win.focus_force()
+
+    def _history_rewrap(self, width):
+        for lb in self._hist_labels:
+            lb.configure(wraplength=max(200, width - 60))
+
+    def _history_fill(self):
+        body, c = self._hist_body, self._hc
+        for w in body.winfo_children():
+            w.destroy()
+        self._hist_labels = []
+        q = self._hist_q.get().strip().lower()
+        if q == S("hist_search").lower():
+            q = ""
+        items = list(reversed(self.history))
+        if q:
+            items = [e for e in items if q in e.get("name", "").lower()]
+        if not items:
+            tk.Label(body, text=S("hist_nomatch") if q else S("hist_empty"), bg=c["sf"], fg=c["dim"],
+                     font=c["font"]).pack(pady=40)
+            return
+        wrap = max(200, self._hist_cv.winfo_width() - 60)
+        for e in items:
+            name, path = e.get("name", ""), e.get("path", "")
+            gone = not os.path.exists(os.path.join(path, name))
+            card = tk.Frame(body, bg=c["sf2"])
+            card.pack(fill="x", pady=(0, 8), padx=(0, 4))
+            head = tk.Frame(card, bg=c["sf2"])
+            head.pack(fill="x", padx=12, pady=(8, 2))
+            x = tk.Label(head, text="✕", bg=c["sf2"], fg=c["dim"], font=c["font"], cursor="hand2")
+            x.pack(side="right", anchor="n")
+            x.bind("<Button-1>", lambda _ev, e=e: self._history_delete(e))
+            lb = tk.Label(head, text=name, bg=c["sf2"], fg=c["dim"] if gone else c["tx"], font=c["font"],
+                          justify="left", anchor="w", wraplength=wrap, cursor="hand2")
+            lb.pack(side="left", fill="x", expand=True)
+            lb.bind("<Button-1>", lambda _ev, p=path, n=name: open_folder(p, n))
+            parts = [time.strftime("%d.%m.%Y %H:%M", time.localtime(e.get("t", 0)))]
+            if e.get("size"):
+                parts.append(_fmt_size(e["size"]))
+            parts.append(S("hist_gone") if gone else path)
+            info = tk.Label(card, text=" · ".join(parts), bg=c["sf2"], fg=c["dim"], font=c["font_sm"],
+                            justify="left", anchor="w", wraplength=wrap)
+            info.pack(fill="x", padx=12, pady=(0, 8))
+            self._hist_labels += [lb, info]
+
     # ---- settings tab ----
     def build_into(self, parent, win, pad):
         main = __import__("__main__")
@@ -668,6 +838,10 @@ class TorrentController:
         for key in ("max_speed", "force_seeds", "merge", "auto_stop", "auto_clear"):
             self.app._setting_check(parent, S(key), self.get(key),
                                     lambda v, k=key: d.__setitem__(k, bool(v)), pad)
+        self.app._setting_check(parent, S("hist_keep"), self.get("history"),
+                                lambda v: d.__setitem__("history", bool(v)), pad)
+        self.app._ghost_btn(parent, S("hist_open"), self.open_history).pack(
+            anchor="w", padx=pad, pady=(10, 0))
 
 
 def ti_private(h):
@@ -684,7 +858,7 @@ def open_folder(path, name):
     try:
         if os.path.exists(full):
             subprocess.Popen(["explorer.exe", "/select,", full])
-        else:
+        elif os.path.isdir(path):
             subprocess.Popen(["explorer.exe", path])
     except Exception:
         pass
