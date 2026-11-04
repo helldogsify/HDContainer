@@ -764,6 +764,25 @@ def clip_set_text(text, exclude_history=False):
         user32.CloseClipboard()
 
 
+CF_DIB = 8
+
+
+def clip_set_image(dib, png=None):
+    """Picture -> clipboard: CF_DIB (a BITMAPINFOHEADER bitmap, what every app
+    pastes) plus the registered "PNG" format (lossless; browsers and messengers
+    prefer it). Used by the screenshot editor."""
+    if not _open_clip():
+        return False
+    try:
+        user32.EmptyClipboard()
+        ok = _set_bytes(CF_DIB, dib)
+        if png:
+            _set_bytes(user32.RegisterClipboardFormatW("PNG"), png)
+        return ok
+    finally:
+        user32.CloseClipboard()
+
+
 def clip_snapshot():
     """Снимок всех «переносимых» форматов буфера: [(fmt, bytes)]."""
     out = []

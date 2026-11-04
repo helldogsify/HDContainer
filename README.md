@@ -4,7 +4,7 @@
 
 # HDContainer
 
-### One small tray app for Windows that does five everyday jobs: groups a task's windows into one app, keeps your desktop tidy in boxes, turns your voice into text, converts files from the right‑click menu, and downloads torrents.
+### One small tray app for Windows that does six everyday jobs: groups a task's windows into one app, keeps your desktop tidy in boxes, turns your voice into text, takes and annotates screenshots, converts files from the right‑click menu, and downloads torrents.
 
 [![Download](https://img.shields.io/badge/Download-Setup.exe-4c8bf5?style=for-the-badge)](https://github.com/helldogsify/HDContainer/releases/latest)
 [![Release](https://img.shields.io/github/v/release/helldogsify/HDContainer?style=for-the-badge)](https://github.com/helldogsify/HDContainer/releases/latest)
@@ -21,6 +21,7 @@
 | **[Window containers](#window-containers)** | A set of windows becomes one program: one taskbar button, one Alt+Tab entry. Switch your whole workspace with a single keystroke. |
 | **[Desktop boxes](#desktop-boxes)** | Panels on the desktop that hold files and shortcuts. They roll up into a title bar, open on hover, line up with even gaps and stay under your windows. |
 | **[Voice input](#voice-input)** | Hold **Left Alt** and talk. The text appears where your cursor is, cleaned up by an LLM. Select text first and your words become an instruction for it. |
+| **[Screenshots](#screenshots)** | Press **Ctrl+Shift+A**: the screen freezes, drag to pick a region or click for the whole screen. Draw, mark and crop in a small editor, then one button puts it in the clipboard. Captures are kept for 30 days. |
 | **[Convert to](#convert-files-from-the-right-click-menu)** | Right‑click any image, audio, video, document or table in Explorer → **Convert to** → pick a format. |
 | **[Torrents](#torrents)** | Open a `.torrent` file and it starts downloading. Progress, pause and delete are in the tray menu. |
 
@@ -99,6 +100,14 @@ Everything is set up in **Settings → Voice input**:
 API keys are stored encrypted with Windows DPAPI under your user account.
 
 **One Claude Code for all your PCs.** On the computer that has Claude Code, turn on *Voice input → Share Claude Code with other computers*. On your other computers, choose *Claude on another computer* and paste the address and key it shows. Those computers then need neither Claude Code nor an API key. The shared endpoint is OpenAI‑compatible, accepts only private networks (Tailscale, LAN) and requires the key. It keeps a Claude process warmed up, and the other PC asks it to warm up as soon as you start talking.
+
+## Screenshots
+
+Press **Ctrl+Shift+A** (any key or combination can be set instead) and the screen freezes. Drag to select a region, or just click to take the whole screen. Esc cancels.
+
+The capture opens in a small editor: **pen**, **marker**, **frame**, **arrow** and **crop**, six colors, three line widths, Ctrl+Z to undo. **Copy to clipboard** (or Enter) closes the editor with the result in the clipboard, ready to paste into a chat, a document or an image editor; **Save as…** writes a PNG or JPEG file.
+
+Every capture is kept on your PC for 30 days (7 to 90 in Settings), like the dictation history: tray → **Screenshot history** shows them as thumbnails; copy one again, open it in the editor or delete it. The editor can be skipped: *Settings → Screenshots → Copy to the clipboard right away*.
 
 ## Convert files from the right-click menu
 

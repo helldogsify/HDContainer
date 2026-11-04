@@ -85,7 +85,13 @@ except Exception:
     boxes = None
     _BOXES_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.9.7"
+try:                                   # screenshots (hotkey -> frozen screen -> region -> editor -> clipboard)
+    import screenshot
+except Exception:
+    screenshot = None
+    _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.10.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -278,6 +284,7 @@ FONT_H     = ("Segoe UI Semibold", 14)
 # значки меню — из системного шрифта значков Windows 10/11 (есть везде, в отличие
 # от ⏻/⚙ в обычных шрифтах, которые на части систем рисуются пустым прямоугольником)
 ICON_FONT = "Segoe MDL2 Assets"
+ICON_SHOT, ICON_PHOTO = chr(0xE722), chr(0xE91B)      # camera, picture (tray rows)
 ICON_ADD, ICON_SETTINGS, ICON_POWER = "\uE710", "\uE713", "\uE7E8"
 ICON_BOX = "\uE7B8"
 ICON_HISTORY = "\uE81C"
@@ -1876,6 +1883,16 @@ class TrayApp:
         else:
             log("boxes import failed:\n" + globals().get("_BOXES_IMPORT_ERR", ""))
 
+        # screenshots: own keyboard hook (Ctrl+Shift+A); history in %LOCALAPPDATA%\HDContainer\screenshots
+        self.screenshot = None
+        if screenshot is not None:
+            try:
+                self.screenshot = screenshot.ScreenshotController(self, lambda: LANG, log, _local_dir())
+            except Exception:
+                log("screenshot init failed:\n" + traceback.format_exc())
+        else:
+            log("screenshot import failed:\n" + globals().get("_SCREENSHOT_IMPORT_ERR", ""))
+
         # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
         # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
         # и перезапустит только то, что не выжило. Никаких ручных действий.
@@ -2154,11 +2171,18 @@ class TrayApp:
         if self.boxes is not None:
             self._popup_action_row(frame, ICON_BOX, boxes.B("new_box"), W,
                                    lambda: act(self.boxes.new_box_dialog))
+        if self.screenshot is not None:
+            # a pause lets the menu vanish from the screen before it is captured
+            self._popup_action_row(frame, ICON_SHOT, screenshot.SS("menu"), W,
+                                   lambda: act(lambda: self.root.after(300, self.screenshot.shoot)))
         self._popup_action_row(frame, ICON_SETTINGS, T("settings"), W,
                                lambda: act(self._open_settings))
         if self.voice is not None:
             self._popup_action_row(frame, ICON_HISTORY, voice.V("hist_menu"), W,
                                    lambda: act(self.voice.open_history))
+        if self.screenshot is not None:
+            self._popup_action_row(frame, ICON_PHOTO, screenshot.SS("hist_menu"), W,
+                                   lambda: act(self.screenshot.open_history))
         self._popup_action_row(frame, ICON_POWER, T("quit"), W,
                                lambda: act(self._quit))
 
@@ -3598,6 +3622,11 @@ class TrayApp:
                 self.boxes.shutdown()
             except Exception:
                 log("boxes shutdown failed:\n" + traceback.format_exc())
+        if getattr(self, "screenshot", None) is not None:
+            try:
+                self.screenshot.shutdown()
+            except Exception:
+                log("screenshot shutdown failed:\n" + traceback.format_exc())
         for c in self.containers:
             if c.active:
                 c.sync_app_rects()   # запомнить размеры окон ДО отвязки
@@ -4163,6 +4192,8 @@ class TrayApp:
             tabs.append(("torrents", torrents.S("tab")))
         if self.boxes is not None:
             tabs.append(("boxes", boxes.B("tab")))
+        if self.screenshot is not None:
+            tabs.append(("screenshot", screenshot.SS("tab")))
         return tabs
 
     def _open_settings(self, tab=None, rebuild=False):
@@ -4196,6 +4227,8 @@ class TrayApp:
             self.torrents.begin_edit()
         if self.boxes is not None and self.boxes.draft is None:
             self.boxes.begin_edit()
+        if self.screenshot is not None and self.screenshot.draft is None:
+            self.screenshot.begin_edit()
 
         win = self._dialog(T("settings_title"), 640, 780)
         win.resizable(False, True)
@@ -4235,6 +4268,8 @@ class TrayApp:
         # the voice tab redraws itself and scrolls on the window's wheel: detach it first
         if self.voice is not None:
             self.voice.win = None
+        if self.screenshot is not None:
+            self.screenshot._tab = None
         win.unbind("<MouseWheel>")
         for w in bar.winfo_children() + body.winfo_children():
             w.destroy()
@@ -4259,6 +4294,8 @@ class TrayApp:
             self.torrents.build_into(body, win, pad)
         elif tab == "boxes":
             self.boxes.build_into(body, win, pad)
+        elif tab == "screenshot":
+            self.screenshot.build_into(body, win, pad)
         else:
             self._build_general(body, pad)
 
@@ -4327,6 +4364,8 @@ class TrayApp:
                 self.torrents.commit()
             if self.boxes is not None:
                 self.boxes.commit()
+            if self.screenshot is not None:
+                self.screenshot.commit()
         except Exception:
             log("settings save failed:\n" + traceback.format_exc())
         self._settings_close_win()
@@ -4338,6 +4377,8 @@ class TrayApp:
             self.torrents.discard()
         if self.boxes is not None:
             self.boxes.discard()
+        if self.screenshot is not None:
+            self.screenshot.discard()
         self._settings_close_win()
 
     def _info(self, title, prompt):
