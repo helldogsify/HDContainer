@@ -85,6 +85,7 @@ SSTR = {
     "h_text": {"en": "Click where the text goes", "ru": "Кликни, где нужен текст", "es": "Haz clic donde va el texto", "pt": "Clique onde vai o texto", "de": "Klicke, wo der Text stehen soll", "fr": "Clique là où placer le texte", "zh": "点击要放置文字的位置"},
     "h_typing": {"en": "Enter — done  ·  Shift+Enter — new line  ·  Esc — cancel", "ru": "Enter — готово  ·  Shift+Enter — новая строка  ·  Esc — отмена", "es": "Enter — listo  ·  Shift+Enter — nueva línea  ·  Esc — cancelar", "pt": "Enter — pronto  ·  Shift+Enter — nova linha  ·  Esc — cancelar", "de": "Enter — fertig  ·  Umschalt+Enter — neue Zeile  ·  Esc — abbrechen", "fr": "Entrée — terminé  ·  Maj+Entrée — nouvelle ligne  ·  Échap — annuler", "zh": "Enter — 完成  ·  Shift+Enter — 换行  ·  Esc — 取消"},
     "h_crop": {"en": "Select what to keep", "ru": "Выдели, что оставить", "es": "Selecciona lo que quieres conservar", "pt": "Selecione o que manter", "de": "Wähle aus, was bleiben soll", "fr": "Sélectionne ce qu'il faut garder", "zh": "选择要保留的区域"},
+    "h_mark": {"en": "Drag — move  ·  cross or Delete — remove", "ru": "Тяни — подвинуть  ·  крестик или Delete — удалить", "es": "Arrastra — mover  ·  cruz o Supr — eliminar", "pt": "Arraste — mover  ·  cruz ou Delete — excluir", "de": "Ziehen — verschieben  ·  Kreuz oder Entf — löschen", "fr": "Glisse — déplacer  ·  croix ou Suppr — supprimer", "zh": "拖动 — 移动  ·  叉号或 Delete — 删除"},
     "copy": {"en": "Copy to clipboard", "ru": "Скопировать в буфер", "es": "Copiar al portapapeles", "pt": "Copiar para a área de transferência", "de": "In die Zwischenablage", "fr": "Copier dans le presse-papiers", "zh": "复制到剪贴板"},
     "copy_short": {"en": "Copy", "ru": "Копировать", "es": "Copiar", "pt": "Copiar", "de": "Kopieren", "fr": "Copier", "zh": "复制"},
     "save_as": {"en": "Save as…", "ru": "Сохранить как…", "es": "Guardar como…", "pt": "Salvar como…", "de": "Speichern unter…", "fr": "Enregistrer sous…", "zh": "另存为…"},
@@ -133,6 +134,8 @@ COLORS = ("#ff3b30", "#ffd60a", "#30d158", "#0a84ff", "#ffffff", "#111111")
 WIDTHS = (2, 4, 8)
 TEXT_SIZES = {2: 18, 4: 28, 8: 44}  # text height in picture pixels for each width button
 TEXT_PAD = 3
+HIT_TOL = 6                         # how close to a mark the pointer counts, screen pixels
+HOVER_GRACE = 450                   # ms the cross stays after the pointer leaves the mark
 SS_DRAW = 3                         # supersampling of strokes on the picture
 STAGE = "#141416"                   # behind the picture, darker than the bars
 HAIRLINE = "#37383c"
@@ -796,6 +799,9 @@ class Capture:
         cv.bind("<ButtonPress-1>", self._press)
         cv.bind("<B1-Motion>", self._drag)
         cv.bind("<ButtonRelease-1>", self._release)
+        cv.bind("<Motion>", self._motion)
+        cv.bind("<Leave>", lambda e: self._hover_later())
+        win.bind("<Delete>", lambda e: self._delete(self.hover) if self.hover is not None and not self.txt else None)
         cv.bind("<ButtonPress-3>", lambda e: self.cancel())
         top.bind("<Escape>", lambda e: self.cancel())
         top.bind("<FocusOut>", self._focus_out)
@@ -1051,6 +1057,79 @@ def constrain(tool, a, b):
 
 
 # ---------------------------------------------------------------------------
+#  Marks are objects over the untouched picture, so they stay movable and deletable.
+#  A mark is a dict: k (stroke, arrow, rect, ellipse, text), pts, rgb, w and, by kind,
+#  a (alpha), dims (arrow), text, px. Marks are never changed in place: undo keeps lists
+# ---------------------------------------------------------------------------
+def paint_mark(img, o):
+    k, pts, rgb = o["k"], o["pts"], o["rgb"]
+    if k == "stroke":
+        draw_stroke(img, pts, rgb, o["w"], o.get("a", 255))
+    elif k == "arrow":
+        draw_arrow(img, pts[0], pts[1], rgb, o["w"], o["dims"])
+    elif k == "rect":
+        draw_rect(img, pts[0], pts[1], rgb, o["w"])
+    elif k == "ellipse":
+        draw_ellipse(img, pts[0], pts[1], rgb, o["w"])
+    elif k == "text":
+        draw_text(img, pts[0][0], pts[0][1], o["text"], rgb, o["px"])
+
+
+def mark_bbox(o):
+    pts = o["pts"]
+    if o["k"] == "text":
+        font = _font(o["px"])
+        asc, desc = font.getmetrics()
+        lines = o["text"].split("\n")
+        x, y = pts[0]
+        return x, y, x + max(font.getlength(t) for t in lines), y + (asc + desc) * len(lines)
+    pad = o["dims"][2] if o["k"] == "arrow" else o["w"] / 2 + 1
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad
+
+
+def _seg_dist(p, a, b):
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    n = dx * dx + dy * dy
+    t = 0.0 if n == 0 else max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / n))
+    return math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy)
+
+
+def mark_hit(o, p, tol):
+    """Is p on the mark? Frames and circles count by their line only: inside them
+    the picture stays free for drawing."""
+    l, t, r, b = mark_bbox(o)
+    if not (l - tol <= p[0] <= r + tol and t - tol <= p[1] <= b + tol):
+        return False
+    k, pts, w = o["k"], o["pts"], o["w"]
+    if k == "text":
+        return True
+    if k == "stroke":
+        seq = pts if len(pts) > 1 else list(pts) * 2
+        return any(_seg_dist(p, seq[i], seq[i + 1]) <= w / 2 + tol for i in range(len(seq) - 1))
+    if k == "arrow":
+        a, c = pts
+        n = math.hypot(c[0] - a[0], c[1] - a[1]) or 1.0
+        fit = min(1.0, n * 0.6 / o["dims"][1])
+        neck = (c[0] - (c[0] - a[0]) / n * o["dims"][1] * fit, c[1] - (c[1] - a[1]) / n * o["dims"][1] * fit)
+        return _seg_dist(p, a, c) <= w / 2 + tol or _seg_dist(p, neck, c) <= o["dims"][2] * fit + tol
+    x1, y1, x2, y2 = _box(pts[0], pts[1])
+    if k == "rect":
+        return not (x1 + w + tol < p[0] < x2 - w - tol and y1 + w + tol < p[1] < y2 - w - tol)
+    cx, cy, ra, rb = (x1 + x2) / 2, (y1 + y2) / 2, max((x2 - x1) / 2, 1.0), max((y2 - y1) / 2, 1.0)
+    dx, dy = p[0] - cx, p[1] - cy
+    rel = math.hypot(dx / ra, dy / rb)
+    if rel < 0.001:
+        return False
+    gap = abs(rel - 1) * math.hypot(dx, dy) / rel                 # along the ray from the centre
+    return gap <= w + tol
+
+
+def mark_moved(o, dx, dy):
+    return dict(o, pts=[(x + dx, y + dy) for x, y in o["pts"]])
+
+
+# ---------------------------------------------------------------------------
 #  Toolbar graphics: authored icons on a 24-unit grid, one stroke weight, drawn
 #  by Pillow at 4x. Tk canvas shapes have no antialiasing
 # ---------------------------------------------------------------------------
@@ -1174,7 +1253,10 @@ class Editor:
     def __init__(self, ctl, img, path):
         self.ctl, self.path = ctl, path
         self.img = img.convert("RGB")
+        self.base, self.marks = self.img, []     # self.img = base + marks, always in step
         self.undo, self.redo = [], []
+        self.hover = self.mv = self._hover_job = self.mv_photo = None
+        self.badge_at = (0, 0)
         self.tool, self.color, self.width = "pen", COLORS[0], WIDTHS[1]
         self.scale, self.ox, self.oy = 1.0, 0, 0
         self.photo = None
@@ -1257,6 +1339,10 @@ class Editor:
         self.shadow_item = cv.create_image(0, 0, anchor="nw")
         self.img_item = cv.create_image(0, 0, anchor="nw")
         self.edge_item = cv.create_rectangle(0, 0, 0, 0, outline=HAIRLINE, width=1)
+        self.mv_item = cv.create_image(0, 0, anchor="nw", state="hidden")
+        self.hl_item = cv.create_rectangle(0, 0, 0, 0, outline=th["ac"], width=1, dash=(4, 3), state="hidden")
+        self.badge_item = cv.create_image(0, 0, state="hidden")
+        self.badge_imgs = {st: ImageTk.PhotoImage(self._badge_img(st), master=cv) for st in ("idle", "hover")}
         cv.bind("<Configure>", lambda e: self._schedule_render())
         cv.bind("<ButtonPress-1>", self._press)
         cv.bind("<B1-Motion>", self._drag)
@@ -1349,7 +1435,8 @@ class Editor:
         self._show_hint()
 
     def _show_hint(self):
-        text = self.hover_hint or (SS("h_typing") if self.txt else self._tool_hint(self.tool))
+        text = self.hover_hint or (SS("h_typing") if self.txt else
+                                   SS("h_mark") if self.hover is not None else self._tool_hint(self.tool))
         self.hint_lbl.configure(text=text)
 
     def _set_tool(self, key):
@@ -1362,8 +1449,10 @@ class Editor:
         if was_text != (key == "text"):
             for b in self.width_btns.values():
                 b.repaint()
-        self.cv.configure(cursor="xterm" if key == "text" else "crosshair")
-        self._show_hint()
+        self._hover_clear()
+
+    def _tool_cursor(self):
+        return "xterm" if self.tool == "text" else "crosshair"
 
     def _set_color(self, c):
         self.color = c
@@ -1462,6 +1551,138 @@ class Editor:
     def _to_disp(self, x, y):
         return (self.ox + x * self.scale, self.oy + y * self.scale)
 
+    # ---- marks: hover, cross, move ----
+    def _badge_img(self, st):
+        k = self.k
+        n = round(24 * k)
+        fill = "#e5484d" if st == "hover" else "#1d1e21"
+        rgba = Image.new("RGBA", (n, n), _hex_rgb(fill) + (0,))
+        mid, r = n / 2, 10.5 * k
+
+        def disc(rad):
+            return lambda d, s: d.ellipse([(mid - rad) * s, (mid - rad) * s, (mid + rad) * s, (mid + rad) * s], fill=255)
+
+        def cross(d, s):
+            q = 3.6 * k
+            for a, b in (((mid - q, mid - q), (mid + q, mid + q)), ((mid - q, mid + q), (mid + q, mid - q))):
+                d.line([(a[0] * s, a[1] * s), (b[0] * s, b[1] * s)], fill=255, width=round(1.8 * k * s))
+        rgba.putalpha(_aa_mask(n, n, disc(r + 1)))
+        rgba.paste(_hex_rgb("#ffffff" if st == "idle" else fill), (0, 0, n, n), _aa_mask(n, n, disc(r + 1)))
+        rgba.paste(_hex_rgb(fill), (0, 0, n, n), _aa_mask(n, n, disc(r)))
+        rgba.paste((255, 255, 255), (0, 0, n, n), _aa_mask(n, n, cross))
+        return rgba
+
+    def _hit(self, p):
+        if self.tool == "crop":
+            return None
+        tol = HIT_TOL / self.scale
+        return next((o for o in reversed(self.marks) if mark_hit(o, p, tol)), None)
+
+    def _on_badge(self, x, y):
+        return math.hypot(x - self.badge_at[0], y - self.badge_at[1]) <= 13 * self.k
+
+    def _motion(self, e):
+        if self.photo is None or self.item is not None or self.mv or self.txt:
+            return
+        if self.hover is not None and self._on_badge(e.x, e.y):
+            self._hover_stay()
+            self.cv.itemconfigure(self.badge_item, image=self.badge_imgs["hover"])
+            self.cv.configure(cursor="hand2")
+            return
+        o = self._hit(self._to_img(e.x, e.y))
+        if self.hover is not None:
+            self.cv.itemconfigure(self.badge_item, image=self.badge_imgs["idle"])
+        if o is None:
+            self.cv.configure(cursor=self._tool_cursor())
+            self._hover_later()
+            return
+        self._hover_stay()
+        self._hover_set(o, e.x, e.y)
+        self.cv.configure(cursor="fleur")
+
+    def _hover_stay(self):
+        if self._hover_job:
+            self.cv.after_cancel(self._hover_job)
+            self._hover_job = None
+
+    def _hover_later(self):
+        # the pointer needs a moment to travel from the mark to its cross
+        if self.hover is not None and not self._hover_job:
+            self._hover_job = self.cv.after(HOVER_GRACE, self._hover_clear)
+
+    def _hover_set(self, o, x, y):
+        k, cv = self.k, self.cv
+        l, t, r, b = mark_bbox(o)
+        (l, t), (r, b) = self._to_disp(l, t), self._to_disp(r, b)
+        small = max(r - l, b - t) <= 200 * k
+        if o is self.hover and (small or math.hypot(x - self.badge_at[0], y - self.badge_at[1]) <= 140 * k):
+            return
+        self.hover = o
+        # a compact mark gets the cross at its corner, a long one next to the pointer
+        bx, by = (r + 8 * k, t - 8 * k) if small else (x + 24 * k, y - 24 * k)
+        m = 15 * k
+        self.badge_at = (max(m, min(cv.winfo_width() - m, bx)), max(m, min(cv.winfo_height() - m, by)))
+        cv.coords(self.hl_item, l - 4, t - 4, r + 4, b + 4)
+        cv.coords(self.badge_item, *self.badge_at)
+        cv.itemconfigure(self.hl_item, state="normal")
+        cv.itemconfigure(self.badge_item, state="normal", image=self.badge_imgs["idle"])
+        self._show_hint()
+
+    def _hover_clear(self):
+        self._hover_stay()
+        self.hover = None
+        self.cv.itemconfigure(self.hl_item, state="hidden")
+        self.cv.itemconfigure(self.badge_item, state="hidden")
+        self.cv.configure(cursor=self._tool_cursor())
+        self._show_hint()
+
+    def _delete(self, o):
+        self._push()
+        self.marks = [m for m in self.marks if m is not o]
+        self._hover_clear()
+        self._apply()
+
+    def _move_begin(self, o, p):
+        """The picture without the mark goes to the canvas once and the mark rides above
+        it as one image: a move only changes its coordinates, so it stays smooth."""
+        self._hover_clear()
+        iw, ih = self.img.size
+        l, t, r, b = mark_bbox(o)
+        pad = 3
+        box = (max(0, int(l) - pad), max(0, int(t) - pad), min(iw, int(r) + pad + 1), min(ih, int(b) + pad + 1))
+        self.mv = {"o": o, "p": p, "d": (0.0, 0.0), "at": self._to_disp(box[0], box[1])}
+        if box[2] > box[0] and box[3] > box[1]:
+            layer = Image.new("RGBA", self.img.size, o["rgb"] + (0,))
+            paint_mark(layer, o)
+            layer = layer.crop(box)
+            if self.scale < 1.0:
+                layer = layer.resize((max(1, round(layer.width * self.scale)), max(1, round(layer.height * self.scale))),
+                                     Image.BILINEAR)
+            self.mv_photo = ImageTk.PhotoImage(layer, master=self.cv)
+            self.cv.itemconfigure(self.mv_item, image=self.mv_photo, state="normal")
+            self.cv.coords(self.mv_item, *self.mv["at"])
+        self._compose(skip=o)
+        self._render()
+        self.cv.configure(cursor="fleur")
+
+    def _move_drag(self, e):
+        mv = self.mv
+        p = self._to_img(e.x, e.y)
+        mv["d"] = (p[0] - mv["p"][0], p[1] - mv["p"][1])
+        self.cv.coords(self.mv_item, mv["at"][0] + mv["d"][0] * self.scale, mv["at"][1] + mv["d"][1] * self.scale)
+
+    def _move_end(self, e):
+        self._move_drag(e)
+        mv, self.mv = self.mv, None
+        self.cv.itemconfigure(self.mv_item, state="hidden")
+        self.mv_photo = None
+        if math.hypot(*mv["d"]) >= 1:
+            self._push()
+            moved = mark_moved(mv["o"], *mv["d"])
+            self.marks = [moved if m is mv["o"] else m for m in self.marks]
+        self._apply()
+        self.cv.configure(cursor=self._tool_cursor())
+
     # ---- drawing ----
     def _press(self, e):
         if self.photo is None:
@@ -1469,10 +1690,19 @@ class Editor:
         if self.txt:                      # a click outside the box finishes the text
             self._text_commit()
             return
-        if self.tool == "text":
-            self._text_begin(self._to_img(e.x, e.y))
+        if self.hover is not None and self._on_badge(e.x, e.y):
+            self._delete(self.hover)
             return
-        self.pts = [self._to_img(e.x, e.y)]
+        p = self._to_img(e.x, e.y)
+        o = self._hit(p)
+        if o is not None:
+            self._move_begin(o, p)
+            return
+        self._hover_clear()
+        if self.tool == "text":
+            self._text_begin(p)
+            return
+        self.pts = [p]
         x, y = self._to_disp(*self.pts[0])
         cv = self.cv
         w = max(1.0, self.width * self.scale)
@@ -1496,6 +1726,9 @@ class Editor:
             self.item = cv.create_rectangle(x, y, x, y, outline="#ffffff", width=1, dash=(6, 4))
 
     def _drag(self, e):
+        if self.mv:
+            self._move_drag(e)
+            return
         if self.item is None:
             return
         p = self._to_img(e.x, e.y)
@@ -1519,6 +1752,9 @@ class Editor:
             self._show_size((abs(p[0] - self.pts[0][0]), abs(p[1] - self.pts[0][1])))
 
     def _release(self, e):
+        if self.mv:
+            self._move_end(e)
+            return
         if self.item is None:
             return
         self._drag(e)
@@ -1538,28 +1774,45 @@ class Editor:
         head = 8 + 5 * w
         return (head * 0.72, head, 4 + 2.4 * w)             # also Tk arrowshape: d1, d2, d3 (image pixels)
 
+    def _compose(self, skip=None):
+        img = self.base.copy()
+        for o in self.marks:
+            if o is not skip:
+                paint_mark(img, o)
+        self.img = img
+
+    def _apply(self):
+        self._compose()
+        self._render()
+
     def _push(self):
-        self.undo.append(self.img)
+        self.undo.append((self.base, self.marks))
         del self.undo[:-UNDO_MAX]
         self.redo = []
-        self.img = self.img.copy()
         self._history_btns()
+
+    def _add(self, mark):
+        self._push()
+        self.marks = self.marks + [mark]
+        self._apply()
 
     def _undo(self):
         if not self.undo:
             return
-        self.redo.append(self.img)
-        self.img = self.undo.pop()
+        self.redo.append((self.base, self.marks))
+        self.base, self.marks = self.undo.pop()
+        self._hover_clear()
         self._history_btns()
-        self._render()
+        self._apply()
 
     def _redo(self):
         if not self.redo:
             return
-        self.undo.append(self.img)
-        self.img = self.redo.pop()
+        self.undo.append((self.base, self.marks))
+        self.base, self.marks = self.redo.pop()
+        self._hover_clear()
         self._history_btns()
-        self._render()
+        self._apply()
 
     def _commit(self):
         pts = self.pts
@@ -1567,36 +1820,31 @@ class Editor:
             return
         rgb = _hex_rgb(self.color)
         w = self.width
-        if self.tool in ("pen", "marker"):
-            self._push()
-            if self.tool == "pen":
-                draw_stroke(self.img, pts, rgb, w)
-            else:
-                draw_stroke(self.img, pts, rgb, w * 3, MARKER_ALPHA)
-            self._render()
+        if self.tool == "pen":
+            self._add({"k": "stroke", "pts": list(pts), "rgb": rgb, "w": w})
+            return
+        if self.tool == "marker":
+            self._add({"k": "stroke", "pts": list(pts), "rgb": rgb, "w": w * 3, "a": MARKER_ALPHA})
             return
         if len(pts) < 2 or pts[0] == pts[1]:
             return
-        p1, p2 = pts
         if self.tool == "crop":
             iw, ih = self.img.size
-            x1, y1, x2, y2 = _box(p1, p2)
+            x1, y1, x2, y2 = _box(pts[0], pts[1])
             box = (max(0, int(x1)), max(0, int(y1)), min(iw, int(round(x2))), min(ih, int(round(y2))))
             if box[2] - box[0] < 2 or box[3] - box[1] < 2:
                 return
             self._push()
-            self.img = self.img.crop(box)
+            self.base = self.base.crop(box)
+            self.marks = [mark_moved(o, -box[0], -box[1]) for o in self.marks]
+            self._apply()
+            return
+        mark = {"pts": list(pts), "rgb": rgb, "w": w}
+        if self.tool == "arrow":
+            mark.update(k="arrow", dims=self._arrow_dims())
         else:
-            self._push()
-            if self.tool == "line":
-                draw_stroke(self.img, pts, rgb, w)
-            elif self.tool == "rect":
-                draw_rect(self.img, p1, p2, rgb, w)
-            elif self.tool == "ellipse":
-                draw_ellipse(self.img, p1, p2, rgb, w)
-            elif self.tool == "arrow":
-                draw_arrow(self.img, p1, p2, rgb, w, self._arrow_dims())
-        self._render()
+            mark["k"] = {"line": "stroke", "rect": "rect", "ellipse": "ellipse"}[self.tool]
+        self._add(mark)
 
     # ---- text: a real tk.Text over the picture (caret, selection, IME, paste),
     #      drawn into the image with the same font when it is finished ----
@@ -1705,9 +1953,8 @@ class Editor:
         text = self.txt.get("1.0", "end-1c").rstrip()
         self._text_close()
         if text.strip():
-            self._push()
-            draw_text(self.img, self.txt_pos[0], self.txt_pos[1], text, _hex_rgb(self.color), TEXT_SIZES[self.width])
-            self._render()
+            self._add({"k": "text", "pts": [self.txt_pos], "rgb": _hex_rgb(self.color), "w": 0, "text": text,
+                       "px": TEXT_SIZES[self.width]})
 
     # ---- results ----
     def copy(self):
@@ -1743,12 +1990,14 @@ class Editor:
         self.ctl.app._notify(SS("editor_title"), SS("saved"), kind="done")
 
     def close(self):
+        if self._hover_job:
+            self.cv.after_cancel(self._hover_job)
         try:
             self.win.destroy()
         except Exception:
             pass
         self.undo, self.redo = [], []
-        self.photo = self.shadow = None
+        self.photo = self.shadow = self.mv_photo = None
 
 
 def _lum(rgb):
