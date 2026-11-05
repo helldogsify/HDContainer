@@ -976,7 +976,8 @@ def draw_ellipse(img, p1, p2, rgb, width):
 
 
 def draw_arrow(img, p1, p2, rgb, width, dims):
-    """Line from p1 to p2 with a filled triangular head at p2 (image coordinates)."""
+    """Arrow from p1 to p2 as one rounded shape: the shaft swells from a thin tail to the
+    neck, the head is swept back with a notch. dims = (neck, head length, half width)."""
     (x1, y1), (x2, y2) = p1, p2
     dx, dy = x2 - x1, y2 - y1
     length = math.hypot(dx, dy)
@@ -984,19 +985,28 @@ def draw_arrow(img, p1, p2, rgb, width, dims):
         draw_stroke(img, [p2], rgb, width * 2)
         return
     ux, uy = dx / length, dy / length
-    head_len, head_w = min(dims[1], length), dims[2] * 2
-    bx, by = x2 - ux * head_len, y2 - uy * head_len          # base centre of the head
-    px, py = -uy, ux                                        # perpendicular
-    wing = [(bx + px * head_w, by + py * head_w), (bx - px * head_w, by - py * head_w)]
-    pad = width + 2
-    xs, ys = [x1, x2, wing[0][0], wing[1][0]], [y1, y2, wing[0][1], wing[1][1]]
+    fit = min(1.0, length * 0.6 / dims[1])          # a short arrow gets a smaller head
+    neck, head, half = dims[0] * fit, dims[1] * fit, dims[2] * fit
+    edge = max(0.8, width * 0.3)                    # rounding of every corner
+    shaft = width * 0.62 * max(fit, 0.5)
+    tail = width * 0.28
+    end = length - edge                             # the rounding must not overshoot p2
+
+    def at(u, v):
+        return x1 + ux * u - uy * v, y1 + uy * u + ux * v
+
+    shape = [at(edge, tail), at(end - neck, shaft), at(end - head, half), at(end, 0),
+             at(end - head, -half), at(end - neck, -shaft), at(edge, -tail)]
+    pad = edge + 2
+    xs, ys = [p[0] for p in shape], [p[1] for p in shape]
 
     def paint(d, to):
-        a, b = to((x1, y1)), to((bx, by))
-        d.line([a, b], fill=255, width=max(1, round(width * SS_DRAW)))
-        r = width * SS_DRAW / 2
-        d.ellipse([a[0] - r, a[1] - r, a[0] + r, a[1] + r], fill=255)
-        d.polygon([to((x2, y2)), to(wing[0]), to(wing[1])], fill=255)
+        q = [to(p) for p in shape]
+        d.polygon(q, fill=255)
+        d.line(q + q[:1], fill=255, width=max(1, round(edge * 2 * SS_DRAW)))
+        r = edge * SS_DRAW
+        for x, y in q:
+            d.ellipse([x - r, y - r, x + r, y + r], fill=255)
     _stamp(img, (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad), paint, rgb)
 
 
@@ -1525,7 +1535,8 @@ class Editor:
 
     def _arrow_dims(self):
         w = self.width
-        return (10 + 3 * w, 12 + 3.5 * w, 4 + 1.5 * w)      # Tk arrowshape: d1, d2, d3 (image pixels)
+        head = 8 + 5 * w
+        return (head * 0.72, head, 4 + 2.4 * w)             # also Tk arrowshape: d1, d2, d3 (image pixels)
 
     def _push(self):
         self.undo.append(self.img)
