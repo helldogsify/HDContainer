@@ -208,6 +208,25 @@ def window_pid(h):
     return pid.value
 
 
+WNDENUMPROC = ctypes.WINFUNCTYPE(BOOL, ctypes.c_void_p, ctypes.c_void_p)
+_decl(user32.EnumChildWindows, BOOL, [ctypes.c_void_p, WNDENUMPROC, ctypes.c_void_p])
+
+
+def hosts_process(fg, pid):
+    """Does window fg embed a child window of process pid? WebView2 and similar hosts
+    keep the page in another process, so the focused field has a different pid."""
+    found = []
+
+    def visit(h, _):
+        if window_pid(h) == pid:
+            found.append(h)
+            return False
+        return True
+
+    user32.EnumChildWindows(fg, WNDENUMPROC(visit), None)
+    return bool(found)
+
+
 # ---------------------------------------------------------------------------
 #  Горячая клавиша через низкоуровневый хук клавиатуры (WH_KEYBOARD_LL)
 #
@@ -990,7 +1009,7 @@ def uia_probe(fg):
                 or not el.value:
             return res
         pid = _prop(el.value, UIA_ProcessIdPropertyId)
-        if fg and pid and pid != window_pid(fg):
+        if fg and pid and pid != window_pid(fg) and not hosts_process(fg, pid):
             return res                                  # фокус не в окне, где нажали хоткей
         res["uia"] = True
         ctrl = _prop(el.value, UIA_ControlTypePropertyId) or 0

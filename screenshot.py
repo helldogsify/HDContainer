@@ -4,7 +4,7 @@
 The hotkey (Ctrl+Shift+A by default) freezes the screen: the capture is shown
 darkened on a full-screen overlay and the mouse selects a region (a plain click
 takes the whole monitor under the cursor). The region opens in a small editor:
-pen, marker, frame, arrow, crop; "Copy to clipboard" puts the result in the
+pen, marker, line, arrow, frame, circle, text, crop; "Copy to clipboard" puts the result in the
 clipboard (CF_DIB + PNG) and closes the editor, "Save as…" writes a file.
 
 Every capture is kept in %LOCALAPPDATA%\\HDContainer\\screenshots for N days
@@ -17,6 +17,7 @@ one worker thread so a capture and its later edit never interleave.
 """
 import io
 import os
+import math
 import time
 import queue
 import ctypes
@@ -24,9 +25,10 @@ import threading
 import traceback
 from ctypes import wintypes
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import filedialog
 
-from PIL import Image, ImageDraw, ImageGrab, ImageTk
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageGrab, ImageTk
 
 import voice_sys as vs
 
@@ -73,6 +75,16 @@ SSTR = {
     "t_arrow": {"en": "Arrow", "ru": "Стрелка", "es": "Flecha", "pt": "Seta", "de": "Pfeil", "fr": "Flèche", "zh": "箭头"},
     "t_crop": {"en": "Crop", "ru": "Обрезать", "es": "Recortar", "pt": "Recortar", "de": "Zuschneiden", "fr": "Recadrer", "zh": "裁剪"},
     "t_undo": {"en": "Undo", "ru": "Отменить", "es": "Deshacer", "pt": "Desfazer", "de": "Rückgängig", "fr": "Annuler", "zh": "撤销"},
+    "t_line": {"en": "Line", "ru": "Линия", "es": "Línea", "pt": "Linha", "de": "Linie", "fr": "Ligne", "zh": "直线"},
+    "t_ellipse": {"en": "Circle", "ru": "Круг", "es": "Círculo", "pt": "Círculo", "de": "Kreis", "fr": "Cercle", "zh": "圆形"},
+    "t_text": {"en": "Text", "ru": "Текст", "es": "Texto", "pt": "Texto", "de": "Text", "fr": "Texte", "zh": "文字"},
+    "t_redo": {"en": "Redo", "ru": "Повторить", "es": "Rehacer", "pt": "Refazer", "de": "Wiederholen", "fr": "Rétablir", "zh": "重做"},
+    "h_angle": {"en": "Shift — 45° steps", "ru": "Shift — шаг 45°", "es": "Shift — pasos de 45°", "pt": "Shift — passos de 45°", "de": "Umschalt — 45°-Schritte", "fr": "Maj — pas de 45°", "zh": "Shift — 45° 步进"},
+    "h_square": {"en": "Shift — square", "ru": "Shift — квадрат", "es": "Shift — cuadrado", "pt": "Shift — quadrado", "de": "Umschalt — Quadrat", "fr": "Maj — carré", "zh": "Shift — 正方形"},
+    "h_circle": {"en": "Shift — perfect circle", "ru": "Shift — ровный круг", "es": "Shift — círculo perfecto", "pt": "Shift — círculo perfeito", "de": "Umschalt — exakter Kreis", "fr": "Maj — cercle parfait", "zh": "Shift — 正圆"},
+    "h_text": {"en": "Click where the text goes", "ru": "Кликни, где нужен текст", "es": "Haz clic donde va el texto", "pt": "Clique onde vai o texto", "de": "Klicke, wo der Text stehen soll", "fr": "Clique là où placer le texte", "zh": "点击要放置文字的位置"},
+    "h_typing": {"en": "Enter — done  ·  Shift+Enter — new line  ·  Esc — cancel", "ru": "Enter — готово  ·  Shift+Enter — новая строка  ·  Esc — отмена", "es": "Enter — listo  ·  Shift+Enter — nueva línea  ·  Esc — cancelar", "pt": "Enter — pronto  ·  Shift+Enter — nova linha  ·  Esc — cancelar", "de": "Enter — fertig  ·  Umschalt+Enter — neue Zeile  ·  Esc — abbrechen", "fr": "Entrée — terminé  ·  Maj+Entrée — nouvelle ligne  ·  Échap — annuler", "zh": "Enter — 完成  ·  Shift+Enter — 换行  ·  Esc — 取消"},
+    "h_crop": {"en": "Select what to keep", "ru": "Выдели, что оставить", "es": "Selecciona lo que quieres conservar", "pt": "Selecione o que manter", "de": "Wähle aus, was bleiben soll", "fr": "Sélectionne ce qu'il faut garder", "zh": "选择要保留的区域"},
     "copy": {"en": "Copy to clipboard", "ru": "Скопировать в буфер", "es": "Copiar al portapapeles", "pt": "Copiar para a área de transferência", "de": "In die Zwischenablage", "fr": "Copier dans le presse-papiers", "zh": "复制到剪贴板"},
     "copy_short": {"en": "Copy", "ru": "Копировать", "es": "Copiar", "pt": "Copiar", "de": "Kopieren", "fr": "Copier", "zh": "复制"},
     "save_as": {"en": "Save as…", "ru": "Сохранить как…", "es": "Guardar como…", "pt": "Salvar como…", "de": "Speichern unter…", "fr": "Enregistrer sous…", "zh": "另存为…"},
@@ -111,12 +123,23 @@ UNDO_MAX = 15
 PAGE = 60                           # history cards shown per "Show more"
 DARK = 45                           # brightness (%) of the frozen screen outside the selection
 
-ICON_FONT = "Segoe MDL2 Assets"
-TOOLS = (("pen", "", "t_pen"), ("marker", "", "t_marker"), ("rect", "", "t_rect"),
-         ("arrow", "", "t_arrow"), ("crop", "", "t_crop"))
-GLYPH_UNDO = ""
+# key, name, shortcut (a Latin letter, matched by key code)
+TOOLS = (("pen", "t_pen", "P"), ("marker", "t_marker", "M"), ("line", "t_line", "L"),
+         ("arrow", "t_arrow", "A"), ("rect", "t_rect", "R"), ("ellipse", "t_ellipse", "O"),
+         ("text", "t_text", "T"), ("crop", "t_crop", "C"))
+TOOL_HINTS = {"line": "h_angle", "arrow": "h_angle", "rect": "h_square", "ellipse": "h_circle",
+              "text": "h_text", "crop": "h_crop"}
 COLORS = ("#ff3b30", "#ffd60a", "#30d158", "#0a84ff", "#ffffff", "#111111")
 WIDTHS = (2, 4, 8)
+TEXT_SIZES = {2: 18, 4: 28, 8: 44}  # text height in picture pixels for each width button
+TEXT_PAD = 3
+SS_DRAW = 3                         # supersampling of strokes on the picture
+STAGE = "#141416"                   # behind the picture, darker than the bars
+HAIRLINE = "#37383c"
+HAIRLINE_LIGHT = "#5a5b60"
+SELECTED = "#3d3e43"
+ICON_IDLE = "#c4c7cc"
+ICON_OFF = "#55565a"
 MARKER_ALPHA = 120
 
 # ---------------------------------------------------------------------------
@@ -186,7 +209,7 @@ def _theme():
     main = __import__("__main__")
     C = lambda n, d: getattr(main, n, d)
     return {"bg": C("COL_BG", "#1b1b1d"), "sf": C("COL_SURFACE", "#232427"), "sf2": C("COL_SURFACE2", "#2d2e31"),
-            "bd": C("COL_BORDER", "#2a2b2c"), "hv": C("COL_HOVER", "#303236"), "ac": C("COL_ACCENT", "#4c8bf5"),
+            "bd": C("COL_BORDER", "#2a2b2c"), "hv": C("COL_HOVER", "#303236"), "ac": C("COL_ACCENT", "#4c8bf5"), "ac2": C("COL_ACCENT_HI", "#629bff"),
             "tx": C("COL_TEXT", "#e6e8ea"), "dim": C("COL_TEXT_DIM", "#9aa0a6"), "err": C("COL_DANGER", "#ff453a"),
             "font": C("FONT", ("Segoe UI", 10)), "font_sm": C("FONT_SM", ("Segoe UI", 9))}
 
@@ -895,130 +918,469 @@ class Capture:
 
 
 # ---------------------------------------------------------------------------
-#  Editor: pen, marker, frame, arrow, crop → clipboard / file
+#  Drawing on the picture. Every stroke is rasterised SS times larger on a mask of
+#  its own bounding box and reduced, so edges are smooth at any size
+# ---------------------------------------------------------------------------
+def _stamp(img, bbox, paint, rgb, alpha=255):
+    iw, ih = img.size
+    l, t = max(0, int(math.floor(bbox[0]))), max(0, int(math.floor(bbox[1])))
+    r, b = min(iw, int(math.ceil(bbox[2]))), min(ih, int(math.ceil(bbox[3])))
+    if r <= l or b <= t:
+        return
+    m = Image.new("L", ((r - l) * SS_DRAW, (b - t) * SS_DRAW), 0)
+    paint(ImageDraw.Draw(m), lambda p: ((p[0] - l) * SS_DRAW, (p[1] - t) * SS_DRAW))
+    m = m.reduce(SS_DRAW)
+    if alpha < 255:
+        m = m.point(lambda v: v * alpha // 255)
+    img.paste(rgb, (l, t, r, b), m)
+
+
+def _box(p1, p2):
+    return min(p1[0], p2[0]), min(p1[1], p2[1]), max(p1[0], p2[0]), max(p1[1], p2[1])
+
+
+def draw_stroke(img, pts, rgb, width, alpha=255):
+    """Freehand or straight stroke with round ends and joints."""
+    seq = [tuple(p) for p in (pts if len(pts) > 1 else list(pts) * 2)]
+    pad = width + 2
+    bbox = (min(p[0] for p in seq) - pad, min(p[1] for p in seq) - pad,
+            max(p[0] for p in seq) + pad, max(p[1] for p in seq) + pad)
+
+    def paint(d, to):
+        q = [to(p) for p in seq]
+        d.line(q, fill=255, width=max(1, round(width * SS_DRAW)), joint="curve")
+        r = width * SS_DRAW / 2
+        for x, y in q:
+            d.ellipse([x - r, y - r, x + r, y + r], fill=255)
+    _stamp(img, bbox, paint, rgb, alpha)
+
+
+def draw_rect(img, p1, p2, rgb, width):
+    x1, y1, x2, y2 = _box(p1, p2)
+    rad = min(width * 1.5, (x2 - x1) / 2, (y2 - y1) / 2)
+
+    def paint(d, to):
+        a, b = to((x1, y1)), to((x2, y2))
+        d.rounded_rectangle([a, (b[0] - 1, b[1] - 1)], radius=rad * SS_DRAW, outline=255,
+                            width=max(1, round(width * SS_DRAW)))
+    _stamp(img, (x1, y1, x2, y2), paint, rgb)
+
+
+def draw_ellipse(img, p1, p2, rgb, width):
+    x1, y1, x2, y2 = _box(p1, p2)
+
+    def paint(d, to):
+        a, b = to((x1, y1)), to((x2, y2))
+        d.ellipse([a, (b[0] - 1, b[1] - 1)], outline=255, width=max(1, round(width * SS_DRAW)))
+    _stamp(img, (x1, y1, x2, y2), paint, rgb)
+
+
+def draw_arrow(img, p1, p2, rgb, width, dims):
+    """Line from p1 to p2 with a filled triangular head at p2 (image coordinates)."""
+    (x1, y1), (x2, y2) = p1, p2
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy)
+    if length < 1:
+        draw_stroke(img, [p2], rgb, width * 2)
+        return
+    ux, uy = dx / length, dy / length
+    head_len, head_w = min(dims[1], length), dims[2] * 2
+    bx, by = x2 - ux * head_len, y2 - uy * head_len          # base centre of the head
+    px, py = -uy, ux                                        # perpendicular
+    wing = [(bx + px * head_w, by + py * head_w), (bx - px * head_w, by - py * head_w)]
+    pad = width + 2
+    xs, ys = [x1, x2, wing[0][0], wing[1][0]], [y1, y2, wing[0][1], wing[1][1]]
+
+    def paint(d, to):
+        a, b = to((x1, y1)), to((bx, by))
+        d.line([a, b], fill=255, width=max(1, round(width * SS_DRAW)))
+        r = width * SS_DRAW / 2
+        d.ellipse([a[0] - r, a[1] - r, a[0] + r, a[1] + r], fill=255)
+        d.polygon([to((x2, y2)), to(wing[0]), to(wing[1])], fill=255)
+    _stamp(img, (min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad), paint, rgb)
+
+
+_FONTS = {}
+
+
+def _font(px, bold=True):
+    key = (px, bold)
+    if key not in _FONTS:
+        fonts = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
+        names = ("seguisb.ttf", "segoeuib.ttf", "arial.ttf") if bold else ("segoeui.ttf", "arial.ttf")
+        for n in names:
+            try:
+                _FONTS[key] = ImageFont.truetype(os.path.join(fonts, n), px)
+                break
+            except OSError:
+                continue
+        else:
+            _FONTS[key] = ImageFont.load_default(px)
+    return _FONTS[key]
+
+
+def draw_text(img, x, y, text, rgb, px):
+    """Text with its top-left corner at (x, y); lines are spaced like the Tk text box."""
+    font = _font(px)
+    asc, desc = font.getmetrics()
+    d = ImageDraw.Draw(img)
+    for i, line in enumerate(text.split("\n")):
+        d.text((x, y + i * (asc + desc)), line, font=font, fill=rgb, anchor="la")
+
+
+def constrain(tool, a, b):
+    """Shift held: 45-degree steps for lines, equal sides for boxes and circles."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    if tool in ("line", "arrow"):
+        step = math.pi / 4
+        ang = round(math.atan2(dy, dx) / step) * step
+        n = math.hypot(dx, dy)
+        return a[0] + n * math.cos(ang), a[1] + n * math.sin(ang)
+    n = max(abs(dx), abs(dy))
+    return a[0] + math.copysign(n, dx), a[1] + math.copysign(n, dy)
+
+
+# ---------------------------------------------------------------------------
+#  Toolbar graphics: authored icons on a 24-unit grid, one stroke weight, drawn
+#  by Pillow at 4x. Tk canvas shapes have no antialiasing
+# ---------------------------------------------------------------------------
+def _aa_mask(w, h, paint):
+    m = Image.new("L", (w * 4, h * 4), 0)
+    paint(ImageDraw.Draw(m), 4)
+    return m.reduce(4)
+
+
+def _pill(w, h, bg, fill, radius):
+    base = Image.new("RGB", (w, h), _hex_rgb(bg))
+    if fill:
+        base.paste(_hex_rgb(fill), (0, 0, w, h), _aa_mask(
+            w, h, lambda d, s: d.rounded_rectangle([0, 0, w * s - 1, h * s - 1], radius=radius * s, fill=255)))
+    return base
+
+
+def _icon_mask(name, n):
+    if name == "redo":
+        return _icon_mask("undo", n).transpose(Image.FLIP_LEFT_RIGHT)
+
+    def paint(d, s):
+        u = n * s / 24.0
+        sw = 1.7 * u
+
+        def path(*pts, closed=False):
+            q = [(x * u, y * u) for x, y in pts]
+            if closed:
+                q.append(q[0])
+            d.line(q, fill=255, width=max(1, round(sw)), joint="curve")
+            for x, y in q:
+                d.ellipse([x - sw / 2, y - sw / 2, x + sw / 2, y + sw / 2], fill=255)
+
+        def dot(x, y, r):
+            d.ellipse([(x - r) * u, (y - r) * u, (x + r) * u, (y + r) * u], fill=255)
+
+        if name == "pen":
+            path((4.5, 19.5), (5.5, 14.5), (15.5, 4.5), (19.5, 8.5), (9.5, 18.5), closed=True)
+            path((13, 7), (17, 11))
+        elif name == "marker":
+            path((13.5, 3.5), (20.5, 10.5), (12.5, 18), (6, 11.5), closed=True)
+            path((7.5, 13), (4, 17), (7, 20), (11, 16.5))
+            path((13.5, 20.5), (20.5, 20.5))
+        elif name == "line":
+            path((5.5, 18.5), (18.5, 5.5))
+            dot(5.5, 18.5, 2.3)
+            dot(18.5, 5.5, 2.3)
+        elif name == "arrow":
+            path((5, 19), (18.5, 5.5))
+            path((10.5, 5.5), (18.5, 5.5), (18.5, 13.5))
+        elif name == "rect":
+            d.rounded_rectangle([4 * u, 6 * u, 20 * u, 18 * u], radius=2 * u, outline=255, width=max(1, round(sw)))
+        elif name == "ellipse":
+            d.ellipse([4 * u, 4 * u, 20 * u, 20 * u], outline=255, width=max(1, round(sw)))
+        elif name == "text":
+            path((5.5, 8), (5.5, 5), (18.5, 5), (18.5, 8))
+            path((12, 5), (12, 19))
+            path((9.5, 19), (14.5, 19))
+        elif name == "crop":
+            path((7, 3), (7, 17), (21, 17))
+            path((3, 7), (17, 7), (17, 21))
+        elif name == "undo":
+            arc = [(15 + 5 * math.cos(math.radians(a)), 14 + 5 * math.sin(math.radians(a)))
+                   for a in range(-90, 91, 10)]
+            path((4, 9), *arc, (9, 19))
+            path((8, 5), (4, 9), (8, 13))
+    return _aa_mask(n, n, paint)
+
+
+class ImgBtn:
+    """A button whose every state is a picture: paint(state) -> PIL image, where state
+    is idle, hover, on or off. The pictures are built once and kept for tk."""
+
+    def __init__(self, parent, paint, bg, click=None, hint=None, on_hint=None):
+        self.paint, self.click, self.hint, self.on_hint = paint, click, hint, on_hint
+        self.on, self.enabled, self.over = False, True, False
+        self.cache = {}
+        self.w = tk.Label(parent, bg=bg, bd=0, padx=0, pady=0, highlightthickness=0, cursor="hand2")
+        self.w.bind("<Button-1>", self._click)
+        self.w.bind("<Enter>", lambda _e: self._over(True))
+        self.w.bind("<Leave>", lambda _e: self._over(False))
+        self.show()
+
+    def _click(self, _e):
+        if self.enabled and self.click:
+            self.click()
+
+    def _over(self, v):
+        self.over = v
+        self.show()
+        if self.on_hint and self.hint:
+            self.on_hint(self.hint() if v else None)
+
+    def state(self):
+        if not self.enabled:
+            return "off"
+        return "on" if self.on else ("hover" if self.over else "idle")
+
+    def show(self):
+        st = self.state()
+        if st not in self.cache:
+            self.cache[st] = ImageTk.PhotoImage(self.paint(st), master=self.w)
+        self.w.configure(image=self.cache[st], cursor="hand2" if self.enabled else "arrow")
+
+    def set(self, on=None, enabled=None):
+        if on is not None:
+            self.on = on
+        if enabled is not None:
+            self.enabled = enabled
+        self.show()
+
+    def repaint(self):
+        self.cache = {}
+        self.show()
+
+
+# ---------------------------------------------------------------------------
+#  Editor: pen, marker, line, arrow, frame, circle, text, crop → clipboard / file
 # ---------------------------------------------------------------------------
 class Editor:
     def __init__(self, ctl, img, path):
         self.ctl, self.path = ctl, path
         self.img = img.convert("RGB")
-        self.undo = []
+        self.undo, self.redo = [], []
         self.tool, self.color, self.width = "pen", COLORS[0], WIDTHS[1]
         self.scale, self.ox, self.oy = 1.0, 0, 0
         self.photo = None
         self.pts = []
-        self.item = None
+        self.item = self.item_under = None
+        self.txt = self.txt_item = self.txt_font = self.txt_pos = None
+        self.hover_hint = None
         self._render_job = None
+        self._shadow_key = None
+        self.shadow = None
         th = self.th = _theme()
         app = ctl.app
 
+        win = self.win = app._dialog(SS("editor_title"), 800, 600)
+        k = self.k = max(1.0, win.winfo_fpixels("1i") / 96.0)
         pt = wintypes.POINT()
         user32.GetCursorPos(ctypes.byref(pt))
         wl, wt, wr, wb = monitor_at(pt.x, pt.y, work=True)
         iw, ih = self.img.size
-        w = max(640, min(iw + 40, int((wr - wl) * 0.92)))
-        h = max(440, min(ih + 40 + 52 + 60, int((wb - wt) * 0.9)))
-        win = self.win = app._dialog(SS("editor_title"), w, h)
+        margin = self.margin = round(24 * k)
+        w = max(round(760 * k), min(iw + 2 * margin, int((wr - wl) * 0.92)))
+        h = max(round(460 * k), min(ih + 2 * margin + round(120 * k), int((wb - wt) * 0.9)))
         win.resizable(True, True)
-        win.minsize(560, 380)
+        win.minsize(round(760 * k), round(380 * k))
         win.attributes("-topmost", False)
         # centre on the monitor where the mouse is
-        win.geometry("+%d+%d" % (wl + (wr - wl - w) // 2, wt + (wb - wt - h) // 2))
+        win.geometry("%dx%d+%d+%d" % (w, h, wl + (wr - wl - w) // 2, wt + (wb - wt - h) // 2))
+        _dark_title(win, th["sf"])
 
-        bar = tk.Frame(win, bg=th["sf"])
-        bar.pack(fill="x", padx=12, pady=(10, 6))
+        sf = th["sf"]
+        top = tk.Frame(win, bg=sf)
+        top.pack(side="top", fill="x")
+        row = tk.Frame(top, bg=sf)
+        row.pack(fill="x", padx=round(10 * k), pady=round(8 * k))
+        tk.Frame(top, bg=HAIRLINE, height=1).pack(fill="x")
+
+        def sep():
+            tk.Frame(row, bg=HAIRLINE, width=1).pack(side="left", fill="y", padx=round(9 * k), pady=round(6 * k))
+
         self.tool_btns = {}
-        for key, glyph, name in TOOLS:
-            b = tk.Label(bar, text=glyph, bg=th["sf"], fg=th["dim"], font=(ICON_FONT, 13), padx=9, pady=5,
-                         cursor="hand2")
-            b.pack(side="left")
-            b.bind("<Button-1>", lambda _e, k=key: self._set_tool(k))
-            b.bind("<Enter>", lambda _e, b=b, n=name: self._hover(b, SS(n)))
-            b.bind("<Leave>", lambda _e, b=b: self._hover(b, None))
+        for key, name, letter in TOOLS:
+            b = ImgBtn(row, lambda st, key=key: self._icon_img(key, st), sf, lambda key=key: self._set_tool(key),
+                       lambda key=key: self._tool_hint(key), self._on_hint)
+            b.w.pack(side="left", padx=1)
             self.tool_btns[key] = b
-        tk.Frame(bar, bg=th["bd"], width=1).pack(side="left", fill="y", padx=10, pady=6)
+        sep()
         self.color_btns = {}
         for c in COLORS:
-            cv = tk.Canvas(bar, width=22, height=22, bg=th["sf"], highlightthickness=0, bd=0, cursor="hand2")
-            cv.create_oval(4, 4, 18, 18, fill=c, outline=c)
-            cv.pack(side="left", padx=2)
-            cv.bind("<Button-1>", lambda _e, c=c: self._set_color(c))
-            self.color_btns[c] = cv
-        tk.Frame(bar, bg=th["bd"], width=1).pack(side="left", fill="y", padx=10, pady=6)
+            b = ImgBtn(row, lambda st, c=c: self._swatch_img(c, st), sf, lambda c=c: self._set_color(c))
+            b.w.pack(side="left")
+            self.color_btns[c] = b
+        sep()
         self.width_btns = {}
         for wd in WIDTHS:
-            cv = tk.Canvas(bar, width=26, height=22, bg=th["sf"], highlightthickness=0, bd=0, cursor="hand2")
-            r = 2 + wd // 2
-            cv.create_oval(13 - r, 11 - r, 13 + r, 11 + r, fill=th["tx"], outline=th["tx"])
-            cv.pack(side="left", padx=1)
-            cv.bind("<Button-1>", lambda _e, v=wd: self._set_width(v))
-            self.width_btns[wd] = cv
-        tk.Frame(bar, bg=th["bd"], width=1).pack(side="left", fill="y", padx=10, pady=6)
-        u = tk.Label(bar, text=GLYPH_UNDO, bg=th["sf"], fg=th["dim"], font=(ICON_FONT, 13), padx=9, pady=5,
-                     cursor="hand2")
-        u.pack(side="left")
-        u.bind("<Button-1>", lambda _e: self._undo())
-        u.bind("<Enter>", lambda _e: self._hover(u, SS("t_undo")))
-        u.bind("<Leave>", lambda _e: self._hover(u, None))
-        self.tip = tk.Label(bar, text="", bg=th["sf"], fg=th["dim"], font=th["font_sm"])
-        self.tip.pack(side="left", padx=12)
+            b = ImgBtn(row, lambda st, wd=wd: self._width_img(wd, st), sf, lambda wd=wd: self._set_width(wd))
+            b.w.pack(side="left", padx=1)
+            self.width_btns[wd] = b
+        self.redo_btn = ImgBtn(row, lambda st: self._icon_img("redo", st), sf, self._redo,
+                               lambda: "%s  ·  Ctrl+Y" % SS("t_redo"), self._on_hint)
+        self.redo_btn.w.pack(side="right", padx=1)
+        self.undo_btn = ImgBtn(row, lambda st: self._icon_img("undo", st), sf, self._undo,
+                               lambda: "%s  ·  Ctrl+Z" % SS("t_undo"), self._on_hint)
+        self.undo_btn.w.pack(side="right", padx=1)
 
-        bottom = tk.Frame(win, bg=th["sf"])
+        bottom = tk.Frame(win, bg=sf)
         bottom.pack(side="bottom", fill="x")
-        tk.Frame(bottom, bg=th["bd"], height=1).pack(fill="x")
-        brow = tk.Frame(bottom, bg=th["sf"])
-        brow.pack(fill="x", padx=16, pady=10)
-        self.size_lbl = tk.Label(brow, text="", bg=th["sf"], fg=th["dim"], font=th["font_sm"])
+        tk.Frame(bottom, bg=HAIRLINE, height=1).pack(fill="x")
+        brow = tk.Frame(bottom, bg=sf)
+        brow.pack(fill="x", padx=round(14 * k), pady=round(9 * k))
+        ImgBtn(brow, lambda st: self._label_img(SS("copy"), True, st), sf, self.copy).w.pack(side="right")
+        ImgBtn(brow, lambda st: self._label_img(SS("save_as"), False, st), sf,
+               self.save_as).w.pack(side="right", padx=(0, round(8 * k)))
+        self.size_lbl = tk.Label(brow, text="", bg=sf, fg=th["tx"], font=th["font_sm"])
         self.size_lbl.pack(side="left")
-        app._accent_btn(brow, SS("copy"), self.copy).pack(side="right")
-        app._ghost_btn(brow, SS("save_as"), self.save_as).pack(side="right", padx=(0, 8))
+        self.hint_lbl = tk.Label(brow, text="", bg=sf, fg=th["dim"], font=th["font_sm"], anchor="w")
+        self.hint_lbl.pack(side="left", fill="x", expand=True, padx=(round(14 * k), round(10 * k)))
 
-        cv = self.cv = tk.Canvas(win, bg=th["bg"], highlightthickness=0, bd=0, cursor="crosshair")
-        cv.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+        cv = self.cv = tk.Canvas(win, bg=STAGE, highlightthickness=0, bd=0, cursor="crosshair")
+        cv.pack(fill="both", expand=True)
+        self.shadow_item = cv.create_image(0, 0, anchor="nw")
         self.img_item = cv.create_image(0, 0, anchor="nw")
+        self.edge_item = cv.create_rectangle(0, 0, 0, 0, outline=HAIRLINE, width=1)
         cv.bind("<Configure>", lambda e: self._schedule_render())
         cv.bind("<ButtonPress-1>", self._press)
         cv.bind("<B1-Motion>", self._drag)
         cv.bind("<ButtonRelease-1>", self._release)
         win.bind("<Control-Key>", self._ctrl_key)
+        win.bind("<Key>", self._key)
         win.bind("<Return>", lambda e: self.copy())
         win.bind("<Escape>", lambda e: self.close())
         self._set_tool("pen")
         self._set_color(self.color)
         self._set_width(self.width)
+        self._history_btns()
         win.focus_force()
 
-    # ---- toolbar ----
-    def _hover(self, b, text):
-        th = self.th
-        on = b is self.tool_btns.get(self.tool)
-        b.configure(bg=th["hv"] if text else (th["sf2"] if on else th["sf"]))
-        self.tip.configure(text=text or "")
+    # ---- toolbar pictures ----
+    def _icon_img(self, name, st):
+        th, k = self.th, self.k
+        b = round(34 * k)
+        fill = {"on": th["ac"], "hover": th["hv"]}.get(st)
+        ink = {"on": "#ffffff", "hover": th["tx"], "off": ICON_OFF}.get(st, ICON_IDLE)
+        base = _pill(b, b, th["sf"], fill, round(8 * k))
+        n = round(20 * k)
+        o = (b - n) // 2
+        base.paste(_hex_rgb(ink), (o, o, o + n, o + n), _icon_mask(name, n))
+        return base
+
+    def _swatch_img(self, c, st):
+        th, k = self.th, self.k
+        n = round(28 * k)
+        ring = {"on": th["tx"], "hover": th["dim"]}.get(st)
+        base = Image.new("RGB", (n, n), _hex_rgb(th["sf"]))
+        mid, r = n / 2, 8 * k
+
+        def disc(rad):
+            return lambda d, s: d.ellipse([(mid - rad) * s, (mid - rad) * s, (mid + rad) * s, (mid + rad) * s], fill=255)
+
+        def circle(d, s):
+            rad = 12 * k
+            d.ellipse([(mid - rad) * s, (mid - rad) * s, (mid + rad) * s, (mid + rad) * s], outline=255,
+                      width=round(1.7 * k * s))
+        if ring:
+            base.paste(_hex_rgb(ring), (0, 0, n, n), _aa_mask(n, n, circle))
+        base.paste(_hex_rgb(HAIRLINE_LIGHT), (0, 0, n, n), _aa_mask(n, n, disc(r + 0.7)))
+        base.paste(_hex_rgb(c), (0, 0, n, n), _aa_mask(n, n, disc(r)))
+        return base
+
+    def _width_img(self, wd, st):
+        th, k = self.th, self.k
+        h, w = round(34 * k), round(36 * k)
+        fill = {"on": SELECTED, "hover": th["hv"]}.get(st)
+        base = _pill(w, h, th["sf"], fill, round(8 * k))
+        ink = _hex_rgb(th["tx"] if st != "idle" else ICON_IDLE)
+        if self.tool == "text":
+            px = round({WIDTHS[0]: 12, WIDTHS[1]: 16, WIDTHS[2]: 21}[wd] * k)
+            ImageDraw.Draw(base).text((w / 2, h / 2), "A", font=_font(px), fill=ink, anchor="mm")
+            return base
+        t = {WIDTHS[0]: 1.5, WIDTHS[1]: 3.0, WIDTHS[2]: 6.0}[wd] * k
+
+        def bar(d, s):
+            x1, x2, y = 10 * k * s, (w - 10 * k) * s, h / 2 * s
+            d.line([(x1, y), (x2, y)], fill=255, width=round(t * s))
+            for x in (x1, x2):
+                d.ellipse([x - t * s / 2, y - t * s / 2, x + t * s / 2, y + t * s / 2], fill=255)
+        base.paste(ink, (0, 0, w, h), _aa_mask(w, h, bar))
+        return base
+
+    def _label_img(self, text, primary, st):
+        th, k = self.th, self.k
+        font = _font(round(13 * k))
+        h = round(34 * k)
+        w = round(font.getlength(text)) + round(32 * k)
+        fill = ((th["ac2"] if st == "hover" else th["ac"]) if primary
+                else (th["hv"] if st == "hover" else th["sf2"]))
+        base = _pill(w, h, th["sf"], fill, round(8 * k))
+        ImageDraw.Draw(base).text((w / 2, h / 2), text, font=font, anchor="mm",
+                                  fill=_hex_rgb("#ffffff" if primary else th["tx"]))
+        return base
+
+    # ---- toolbar state ----
+    def _tool_hint(self, key):
+        name, letter = next((n, l) for k, n, l in TOOLS if k == key)
+        parts = [SS(name), letter]
+        extra = TOOL_HINTS.get(key)
+        if extra:
+            parts.append(SS(extra))
+        return "  ·  ".join(parts)
+
+    def _on_hint(self, text):
+        self.hover_hint = text
+        self._show_hint()
+
+    def _show_hint(self):
+        text = self.hover_hint or (SS("h_typing") if self.txt else self._tool_hint(self.tool))
+        self.hint_lbl.configure(text=text)
 
     def _set_tool(self, key):
+        if self.txt:
+            self._text_commit()
+        was_text = self.tool == "text"
         self.tool = key
-        th = self.th
         for k, b in self.tool_btns.items():
-            on = k == key
-            b.configure(bg=th["sf2"] if on else th["sf"], fg=th["ac"] if on else th["dim"])
+            b.set(on=k == key)
+        if was_text != (key == "text"):
+            for b in self.width_btns.values():
+                b.repaint()
+        self.cv.configure(cursor="xterm" if key == "text" else "crosshair")
+        self._show_hint()
 
     def _set_color(self, c):
         self.color = c
-        th = self.th
-        for k, cv in self.color_btns.items():
-            cv.delete("ring")
-            if k == c:
-                cv.create_oval(1, 1, 21, 21, outline=th["tx"], width=2, tags="ring")
+        for k, b in self.color_btns.items():
+            b.set(on=k == c)
+        if self.txt:
+            self._text_style()
 
     def _set_width(self, w):
         self.width = w
-        th = self.th
-        for k, cv in self.width_btns.items():
-            cv.configure(bg=th["sf2"] if k == w else th["sf"])
+        for k, b in self.width_btns.items():
+            b.set(on=k == w)
+        if self.txt:
+            self._text_style()
+
+    def _history_btns(self):
+        self.undo_btn.set(enabled=bool(self.undo))
+        self.redo_btn.set(enabled=bool(self.redo))
 
     def _ctrl_key(self, e):
+        if self.txt:
+            return None                   # the text box has its own Ctrl keys
         code = e.keycode
         if code == 0x5A:                  # Ctrl+Z
             self._undo()
+        elif code == 0x59:                # Ctrl+Y
+            self._redo()
         elif code == 0x53:                # Ctrl+S
             self.save_as()
         elif code == 0x43:                # Ctrl+C
@@ -1026,6 +1388,15 @@ class Editor:
         else:
             return None
         return "break"
+
+    def _key(self, e):
+        # by key code, not by letter: the shortcuts must work on a Russian layout too
+        if self.txt or e.state & 0x20004:              # typing, Ctrl or Alt
+            return
+        for key, _name, letter in TOOLS:
+            if e.keycode == ord(letter):
+                self._set_tool(key)
+                return
 
     # ---- display ----
     def _schedule_render(self):
@@ -1040,14 +1411,39 @@ class Editor:
         if cw < 20 or ch < 20:
             return
         iw, ih = self.img.size
-        self.scale = min(1.0, (cw - 16) / iw, (ch - 16) / ih)
+        m = self.margin
+        self.scale = max(0.02, min(1.0, (cw - 2 * m) / iw, (ch - 2 * m) / ih))
         dw, dh = max(1, round(iw * self.scale)), max(1, round(ih * self.scale))
         disp = self.img if self.scale >= 1.0 else self.img.resize((dw, dh), Image.BILINEAR)
-        self.photo = ImageTk.PhotoImage(disp)
+        self.photo = ImageTk.PhotoImage(disp, master=cv)
         self.ox, self.oy = (cw - dw) // 2, (ch - dh) // 2
         cv.coords(self.img_item, self.ox, self.oy)
         cv.itemconfigure(self.img_item, image=self.photo)
-        self.size_lbl.configure(text="%d × %d" % (iw, ih) + ("" if self.scale >= 1.0 else "   ·   %d %%" % round(self.scale * 100)))
+        cv.coords(self.edge_item, self.ox - 1, self.oy - 1, self.ox + dw, self.oy + dh)
+        self._render_shadow(dw, dh)
+        self._show_size()
+
+    def _render_shadow(self, dw, dh):
+        k = self.k
+        p, drop = round(30 * k), round(8 * k)
+        if self._shadow_key != (dw, dh):
+            self._shadow_key = (dw, dh)
+            mask = Image.new("L", (dw + 2 * p, dh + 2 * p), 0)
+            mask.paste(170, (p, p + drop, p + dw, p + dh + drop))
+            mask = mask.filter(ImageFilter.GaussianBlur(14 * k))
+            base = Image.new("RGB", mask.size, _hex_rgb(STAGE))
+            base.paste((0, 0, 0), (0, 0), mask)
+            self.shadow = ImageTk.PhotoImage(base, master=self.cv)
+            self.cv.itemconfigure(self.shadow_item, image=self.shadow)
+        self.cv.coords(self.shadow_item, self.ox - p, self.oy - p)
+
+    def _show_size(self, box=None):
+        iw, ih = self.img.size
+        if box:
+            text = "%d × %d" % box
+        else:
+            text = "%d × %d" % (iw, ih) + ("" if self.scale >= 1.0 else "  ·  %d %%" % round(self.scale * 100))
+        self.size_lbl.configure(text=text)
 
     def _to_img(self, x, y):
         iw, ih = self.img.size
@@ -1060,22 +1456,33 @@ class Editor:
     def _press(self, e):
         if self.photo is None:
             return
+        if self.txt:                      # a click outside the box finishes the text
+            self._text_commit()
+            return
+        if self.tool == "text":
+            self._text_begin(self._to_img(e.x, e.y))
+            return
         self.pts = [self._to_img(e.x, e.y)]
         x, y = self._to_disp(*self.pts[0])
-        cv, th = self.cv, self.th
+        cv = self.cv
         w = max(1.0, self.width * self.scale)
         if self.tool == "pen":
             self.item = cv.create_line(x, y, x, y, fill=self.color, width=w, capstyle="round", joinstyle="round")
         elif self.tool == "marker":
             self.item = cv.create_line(x, y, x, y, fill=self.color, width=w * 3, capstyle="round",
                                        joinstyle="round", stipple="gray50")
+        elif self.tool == "line":
+            self.item = cv.create_line(x, y, x, y, fill=self.color, width=w, capstyle="round")
         elif self.tool == "rect":
             self.item = cv.create_rectangle(x, y, x, y, outline=self.color, width=w)
+        elif self.tool == "ellipse":
+            self.item = cv.create_oval(x, y, x, y, outline=self.color, width=w)
         elif self.tool == "arrow":
             a = self._arrow_dims()
             self.item = cv.create_line(x, y, x, y, fill=self.color, width=w, arrow="last", capstyle="round",
                                        arrowshape=tuple(v * self.scale for v in a))
         elif self.tool == "crop":
+            self.item_under = cv.create_rectangle(x, y, x, y, outline="#000000", width=1)
             self.item = cv.create_rectangle(x, y, x, y, outline="#ffffff", width=1, dash=(6, 4))
 
     def _drag(self, e):
@@ -1089,23 +1496,32 @@ class Editor:
             for q in self.pts:
                 flat.extend(self._to_disp(*q))
             self.cv.coords(self.item, *flat)
-        else:
-            self.pts = [self.pts[0], p]
-            x1, y1 = self._to_disp(*self.pts[0])
-            x2, y2 = self._to_disp(*p)
-            self.cv.coords(self.item, x1, y1, x2, y2)
+            return
+        if getattr(e, "state", 0) & 0x1:                     # Shift
+            p = constrain(self.tool, self.pts[0], p)
+        self.pts = [self.pts[0], p]
+        x1, y1 = self._to_disp(*self.pts[0])
+        x2, y2 = self._to_disp(*p)
+        self.cv.coords(self.item, x1, y1, x2, y2)
+        if self.item_under:
+            self.cv.coords(self.item_under, x1, y1, x2, y2)
+        if self.tool in ("rect", "ellipse", "crop"):
+            self._show_size((abs(p[0] - self.pts[0][0]), abs(p[1] - self.pts[0][1])))
 
     def _release(self, e):
         if self.item is None:
             return
         self._drag(e)
         self.cv.delete(self.item)
-        self.item = None
+        if self.item_under:
+            self.cv.delete(self.item_under)
+        self.item = self.item_under = None
         try:
             self._commit()
         except Exception:
             self.ctl.log("screenshot edit failed:\n" + traceback.format_exc())
         self.pts = []
+        self._show_size()
 
     def _arrow_dims(self):
         w = self.width
@@ -1114,12 +1530,24 @@ class Editor:
     def _push(self):
         self.undo.append(self.img)
         del self.undo[:-UNDO_MAX]
+        self.redo = []
         self.img = self.img.copy()
+        self._history_btns()
 
     def _undo(self):
         if not self.undo:
             return
+        self.redo.append(self.img)
         self.img = self.undo.pop()
+        self._history_btns()
+        self._render()
+
+    def _redo(self):
+        if not self.redo:
+            return
+        self.undo.append(self.img)
+        self.img = self.redo.pop()
+        self._history_btns()
         self._render()
 
     def _commit(self):
@@ -1128,54 +1556,158 @@ class Editor:
             return
         rgb = _hex_rgb(self.color)
         w = self.width
+        if self.tool in ("pen", "marker"):
+            self._push()
+            if self.tool == "pen":
+                draw_stroke(self.img, pts, rgb, w)
+            else:
+                draw_stroke(self.img, pts, rgb, w * 3, MARKER_ALPHA)
+            self._render()
+            return
+        if len(pts) < 2 or pts[0] == pts[1]:
+            return
+        p1, p2 = pts
         if self.tool == "crop":
-            if len(pts) < 2:
-                return
-            x1, y1 = pts[0]
-            x2, y2 = pts[1]
-            box = (int(min(x1, x2)), int(min(y1, y2)), int(round(max(x1, x2))), int(round(max(y1, y2))))
+            iw, ih = self.img.size
+            x1, y1, x2, y2 = _box(p1, p2)
+            box = (max(0, int(x1)), max(0, int(y1)), min(iw, int(round(x2))), min(ih, int(round(y2))))
             if box[2] - box[0] < 2 or box[3] - box[1] < 2:
                 return
             self._push()
             self.img = self.img.crop(box)
-            self._render()
-            return
-        self._push()
-        if self.tool == "pen":
-            d = ImageDraw.Draw(self.img)
-            seq = [tuple(p) for p in (pts if len(pts) > 1 else pts * 2)]
-            d.line(seq, fill=rgb, width=w, joint="curve")
-            r = w / 2
-            for (x, y) in (seq[0], seq[-1]):
-                d.ellipse([x - r, y - r, x + r, y + r], fill=rgb)
-        elif self.tool == "marker":
-            layer = Image.new("RGBA", self.img.size, (0, 0, 0, 0))
-            ld = ImageDraw.Draw(layer)
-            seq = [tuple(p) for p in (pts if len(pts) > 1 else pts * 2)]
-            mw = w * 3
-            ld.line(seq, fill=rgb + (MARKER_ALPHA,), width=mw, joint="curve")
-            r = mw / 2
-            for (x, y) in (seq[0], seq[-1]):
-                ld.ellipse([x - r, y - r, x + r, y + r], fill=rgb + (MARKER_ALPHA,))
-            self.img = Image.alpha_composite(self.img.convert("RGBA"), layer).convert("RGB")
-        elif self.tool == "rect":
-            if len(pts) < 2:
-                return
-            (x1, y1), (x2, y2) = pts
-            d = ImageDraw.Draw(self.img)
-            d.rectangle([min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)], outline=rgb, width=w)
-        elif self.tool == "arrow":
-            if len(pts) < 2:
-                return
-            draw_arrow(self.img, pts[0], pts[1], rgb, w, self._arrow_dims())
+        else:
+            self._push()
+            if self.tool == "line":
+                draw_stroke(self.img, pts, rgb, w)
+            elif self.tool == "rect":
+                draw_rect(self.img, p1, p2, rgb, w)
+            elif self.tool == "ellipse":
+                draw_ellipse(self.img, p1, p2, rgb, w)
+            elif self.tool == "arrow":
+                draw_arrow(self.img, p1, p2, rgb, w, self._arrow_dims())
         self._render()
+
+    # ---- text: a real tk.Text over the picture (caret, selection, IME, paste),
+    #      drawn into the image with the same font when it is finished ----
+    def _text_begin(self, p):
+        self.txt_pos = p
+        self.txt_font = tkfont.Font(family="Segoe UI Semibold", size=-self._text_px())
+        ac = self.th["ac"]
+        t = self.txt = tk.Text(self.cv, font=self.txt_font, bd=0, padx=TEXT_PAD, pady=TEXT_PAD, wrap="none",
+                               undo=True, width=1, height=1, insertwidth=2, highlightthickness=1,
+                               highlightbackground=ac, highlightcolor=ac, selectbackground=ac,
+                               selectforeground="#ffffff")
+        x, y = self._to_disp(*p)
+        self.txt_item = self.cv.create_window(x - TEXT_PAD - 1, y - TEXT_PAD - 1, window=t, anchor="nw")
+        self._text_style()
+        t.bind("<Return>", self._text_enter)
+        t.bind("<Shift-Return>", self._text_newline)
+        t.bind("<Escape>", self._text_escape)
+        t.bind("<Control-Key>", self._text_ctrl)
+        t.bind("<<Modified>>", self._text_changed)
+        t.focus_set()
+        self._show_hint()
+
+    def _text_px(self):
+        return max(8, round(TEXT_SIZES[self.width] * self.scale))
+
+    def _text_style(self):
+        t = self.txt
+        self.txt_font.configure(size=-self._text_px())
+        bg = self._text_bg()
+        t.configure(fg=self.color, insertbackground=self._text_caret(bg), bg="#%02x%02x%02x" % bg)
+        self._text_fit()
+
+    def _text_bg(self):
+        """The box takes the colour of the picture under it, so the text looks as it will
+        when finished: always the chosen palette colour, never replaced or backed."""
+        x, y = self.txt_pos
+        px = TEXT_SIZES[self.width]
+        iw, ih = self.img.size
+        box = (int(min(x, iw - 1)), int(min(y, ih - 1)), int(min(iw, x + px * 6)) or 1, int(min(ih, y + px * 1.4)) or 1)
+        if box[2] <= box[0] or box[3] <= box[1]:
+            box = (0, 0, 1, 1)
+        return self.img.crop(box).resize((1, 1), Image.BOX).getpixel((0, 0))
+
+    def _text_caret(self, bg):
+        """Only the caret may differ from the text colour: it must stay visible."""
+        if abs(_lum(bg) - _lum(_hex_rgb(self.color))) >= 0.3:
+            return self.color
+        return "#101012" if _lum(bg) > 0.5 else "#f4f4f5"
+
+    def _text_fit(self):
+        lines = self.txt.get("1.0", "end-1c").split("\n")
+        f = self.txt_font
+        w = max([f.measure(s) for s in lines] + [f.measure("00")]) + f.measure("0") + 2 * TEXT_PAD + 2
+        h = f.metrics("linespace") * len(lines) + 2 * TEXT_PAD + 2
+        self.cv.itemconfigure(self.txt_item, width=w, height=h)
+
+    def _text_changed(self, _e):
+        if self.txt and self.txt.edit_modified():
+            self.txt.edit_modified(False)
+            self._text_fit()
+
+    def _text_enter(self, _e):
+        self._text_commit()
+        return "break"
+
+    def _text_newline(self, _e):
+        self.txt.insert("insert", "\n")
+        return "break"
+
+    def _text_escape(self, _e):
+        self._text_close()
+        return "break"
+
+    def _text_ctrl(self, e):
+        # by key code: Tk's own Ctrl+V / Ctrl+C do not fire on a Russian layout
+        t, code = self.txt, e.keycode
+        try:
+            if code == 0x41:
+                t.tag_add("sel", "1.0", "end-1c")
+            elif code == 0x43:
+                t.event_generate("<<Copy>>")
+            elif code == 0x56:
+                t.event_generate("<<Paste>>")
+            elif code == 0x58:
+                t.event_generate("<<Cut>>")
+            elif code == 0x5A:
+                t.edit_undo()
+            elif code == 0x59:
+                t.edit_redo()
+            elif code == 0x53:
+                self.save_as()
+            else:
+                return None
+        except tk.TclError:               # nothing to undo
+            pass
+        return "break"
+
+    def _text_close(self):
+        self.cv.delete(self.txt_item)
+        self.txt.destroy()
+        self.txt = self.txt_item = None
+        self.win.focus_set()
+        self._show_hint()
+
+    def _text_commit(self):
+        text = self.txt.get("1.0", "end-1c").rstrip()
+        self._text_close()
+        if text.strip():
+            self._push()
+            draw_text(self.img, self.txt_pos[0], self.txt_pos[1], text, _hex_rgb(self.color), TEXT_SIZES[self.width])
+            self._render()
 
     # ---- results ----
     def copy(self):
+        if self.txt:
+            self._text_commit()
         if self.ctl.copy_image(self.img, self.path):
             self.close()
 
     def save_as(self):
+        if self.txt:
+            self._text_commit()
         init_dir = self.ctl.get("save_dir") or os.path.join(os.path.expanduser("~"), "Pictures")
         if not os.path.isdir(init_dir):
             init_dir = os.path.expanduser("~")
@@ -1204,27 +1736,24 @@ class Editor:
             self.win.destroy()
         except Exception:
             pass
-        self.undo = []
-        self.photo = None
+        self.undo, self.redo = [], []
+        self.photo = self.shadow = None
 
 
-def draw_arrow(img, p1, p2, rgb, width, dims):
-    """Line from p1 to p2 with a filled triangular head at p2 (image coordinates)."""
-    import math
-    (x1, y1), (x2, y2) = p1, p2
-    dx, dy = x2 - x1, y2 - y1
-    length = math.hypot(dx, dy)
-    d = ImageDraw.Draw(img)
-    if length < 1:
-        r = width
-        d.ellipse([x2 - r, y2 - r, x2 + r, y2 + r], fill=rgb)
-        return
-    ux, uy = dx / length, dy / length
-    head_len, head_w = dims[1], dims[2] * 2
-    head_len = min(head_len, length)
-    bx, by = x2 - ux * head_len, y2 - uy * head_len          # base centre of the head
-    px, py = -uy, ux                                        # perpendicular
-    d.line([(x1, y1), (bx, by)], fill=rgb, width=width)
-    r = width / 2
-    d.ellipse([x1 - r, y1 - r, x1 + r, y1 + r], fill=rgb)
-    d.polygon([(x2, y2), (bx + px * head_w, by + py * head_w), (bx - px * head_w, by - py * head_w)], fill=rgb)
+def _lum(rgb):
+    return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255.0
+
+
+def _dark_title(win, colour):
+    """Dark title bar in the colour of the toolbar (the colour needs Windows 11)."""
+    try:
+        win.update_idletasks()
+        hwnd = wintypes.HWND(user32.GetParent(win.winfo_id()) or win.winfo_id())
+        dwm = ctypes.WinDLL("dwmapi")
+        on = ctypes.c_int(1)
+        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), 4)      # DWMWA_USE_IMMERSIVE_DARK_MODE
+        r, g, b = _hex_rgb(colour)
+        rgb = ctypes.c_uint(r | g << 8 | b << 16)
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(rgb), 4)     # DWMWA_CAPTION_COLOR
+    except Exception:
+        pass
