@@ -217,10 +217,11 @@ STATE_COLORS = {
     "error": ((255, 84, 72), (255, 160, 60)),
     "setup": ((255, 176, 48), (255, 84, 72)),
     "done": ((64, 232, 160), (255, 204, 92)),     # a torrent download finished
+    "started": ((0, 224, 255), (120, 150, 255)),  # a .torrent was opened
 }
-LABEL_STATES = {"error", "setup", "done"}
+LABEL_STATES = {"error", "setup", "done", "started"}
 HIDE_AFTER = {"pasted": 2.2, "copied": 3.0, "answer": 4.0, "nothing": 1.6, "cancel": 1.0,
-              "error": 7.0, "setup": 8.0, "done": 6.0}
+              "error": 7.0, "setup": 8.0, "done": 6.0, "started": 4.0}
 
 # ---------------------------------------------------------------------------
 #  Win32 для оверлея
@@ -599,6 +600,18 @@ class Overlay:
                 rw = oc - 7.5 * u + 5 * u * wave
                 d.ellipse((oc - rw, oc - rw, oc + rw, oc + rw), outline=c2 + (int(200 * (1 - wave)),),
                           width=max(1, int(1.6 * u)))
+        elif st == "started":
+            # a download began: arrows keep dropping into the tray, no ring (that means done)
+            u = s * k
+            w = max(2, int(2.8 * u))
+            d.line([(oc - 9 * u, oc + 1.5 * u), (oc - 9 * u, oc + 8 * u), (oc + 9 * u, oc + 8 * u),
+                    (oc + 9 * u, oc + 1.5 * u)], fill=c1 + (255,), width=w, joint="curve")
+            q = (time.time() - self.t_state) % 1.0
+            y = oc - 13 * u + 11.5 * u * q
+            a = int(255 * min(1.0, q * 5, (1 - q) * 5))
+            d.line((oc, y - 9 * u, oc, y + 3 * u), fill=c2 + (a,), width=w)
+            d.line([(oc - 5 * u, y - 2 * u), (oc, y + 3 * u), (oc + 5 * u, y - 2 * u)],
+                   fill=c2 + (a,), width=w, joint="curve")
         else:                                                  # error / setup
             d.line((oc, oc - 9 * s * k, oc, oc + 2 * s * k), fill=c1 + (255,), width=int(3.4 * s * k))
             r = 2.2 * s * k

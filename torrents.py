@@ -37,6 +37,8 @@ TSTR = {
     "delete_title": {"en": "Delete download", "ru": "Удаление", "es": "Eliminar descarga", "pt": "Excluir download", "de": "Download löschen", "fr": "Supprimer le téléchargement", "zh": "删除下载"},
     "delete_q": {"en": "Delete “%s” and the files downloaded so far?", "ru": "Точно удалить «%s» вместе с уже скачанными файлами?", "es": "¿Eliminar «%s» y los archivos ya descargados?", "pt": "Excluir “%s” e os arquivos já baixados?", "de": "„%s“ und die bereits geladenen Dateien löschen?", "fr": "Supprimer « %s » et les fichiers déjà téléchargés ?", "zh": "删除“%s”及已下载的文件？"},
     "finished": {"en": "Downloaded", "ru": "Скачано", "es": "Descargado", "pt": "Baixado", "de": "Heruntergeladen", "fr": "Téléchargé", "zh": "下载完成"},
+    "started": {"en": "Download started", "ru": "Скачивание началось", "es": "Descarga iniciada", "pt": "Download iniciado", "de": "Download gestartet", "fr": "Téléchargement lancé", "zh": "开始下载"},
+    "already": {"en": "Already downloading", "ru": "Уже скачивается", "es": "Ya se está descargando", "pt": "Já está baixando", "de": "Wird bereits geladen", "fr": "Déjà en cours", "zh": "已在下载中"},
     "bad_file": {"en": "Can't open the torrent file", "ru": "Не удалось открыть торрент-файл", "es": "No se puede abrir el archivo torrent", "pt": "Não foi possível abrir o arquivo torrent", "de": "Torrent-Datei kann nicht geöffnet werden", "fr": "Impossible d’ouvrir le fichier torrent", "zh": "无法打开种子文件"},
     "mbs": {"en": "MB/s", "ru": "МБ/с", "es": "MB/s", "pt": "MB/s", "de": "MB/s", "fr": "Mo/s", "zh": "MB/s"},
     "kbs": {"en": "KB/s", "ru": "КБ/с", "es": "KB/s", "pt": "KB/s", "de": "KB/s", "fr": "Ko/s", "zh": "KB/s"},
@@ -334,6 +336,7 @@ class TorrentController:
         it = self.items.get(tid)
         if it is not None and it["h"] is not None:
             self._merge(it, ti)
+            self._notice_opened(S("finished") if it["done"] else S("already"), it)
             return
         if it is not None:                 # finished entry kept in the list: start over
             self.items.pop(tid)
@@ -343,9 +346,15 @@ class TorrentController:
                 dst.write(src.read())
         except Exception as ex:
             self.log("torrent copy failed: %r" % ex)
-        self._add(ti, self.folder())
+        it = self._add(ti, self.folder())
         self._save_list()
         self._repopup()
+        self._notice_opened(S("started"), it)
+
+    def _notice_opened(self, title, it):
+        """A .torrent was opened: the user sees at once that it was taken."""
+        self.app._notify(title, it["name"], kind="started",
+                         on_click=lambda p=it["path"], n=it["name"]: open_folder(p, n))
 
     def _merge(self, it, ti):
         """Same torrent from another place: add its trackers and web seeds to the running one."""
