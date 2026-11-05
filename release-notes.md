@@ -1,3 +1,4 @@
-## Screenshot editor
+## Screenshots
 
-- A right click on a drawn mark deletes it; the cross on hover is gone. Delete still works, and Ctrl+Z brings the mark back.
+- Fixed: a right click on a drawn mark now deletes it, and hovering a mark highlights it. The mouse handlers had been attached to the wrong window.
+- Fixed: Esc and right click cancel the region selection again (broken in 1.10.5).
