@@ -85,7 +85,7 @@ SSTR = {
     "h_text": {"en": "Click where the text goes", "ru": "Кликни, где нужен текст", "es": "Haz clic donde va el texto", "pt": "Clique onde vai o texto", "de": "Klicke, wo der Text stehen soll", "fr": "Clique là où placer le texte", "zh": "点击要放置文字的位置"},
     "h_typing": {"en": "Enter — done  ·  Shift+Enter — new line  ·  Esc — cancel", "ru": "Enter — готово  ·  Shift+Enter — новая строка  ·  Esc — отмена", "es": "Enter — listo  ·  Shift+Enter — nueva línea  ·  Esc — cancelar", "pt": "Enter — pronto  ·  Shift+Enter — nova linha  ·  Esc — cancelar", "de": "Enter — fertig  ·  Umschalt+Enter — neue Zeile  ·  Esc — abbrechen", "fr": "Entrée — terminé  ·  Maj+Entrée — nouvelle ligne  ·  Échap — annuler", "zh": "Enter — 完成  ·  Shift+Enter — 换行  ·  Esc — 取消"},
     "h_crop": {"en": "Select what to keep", "ru": "Выдели, что оставить", "es": "Selecciona lo que quieres conservar", "pt": "Selecione o que manter", "de": "Wähle aus, was bleiben soll", "fr": "Sélectionne ce qu'il faut garder", "zh": "选择要保留的区域"},
-    "h_mark": {"en": "Drag — move  ·  cross or Delete — remove", "ru": "Тяни — подвинуть  ·  крестик или Delete — удалить", "es": "Arrastra — mover  ·  cruz o Supr — eliminar", "pt": "Arraste — mover  ·  cruz ou Delete — excluir", "de": "Ziehen — verschieben  ·  Kreuz oder Entf — löschen", "fr": "Glisse — déplacer  ·  croix ou Suppr — supprimer", "zh": "拖动 — 移动  ·  叉号或 Delete — 删除"},
+    "h_mark": {"en": "Drag — move  ·  right click — delete", "ru": "Тяни — подвинуть  ·  правый клик — удалить", "es": "Arrastra — mover  ·  clic derecho — eliminar", "pt": "Arraste — mover  ·  clique direito — excluir", "de": "Ziehen — verschieben  ·  Rechtsklick — löschen", "fr": "Glisse — déplacer  ·  clic droit — supprimer", "zh": "拖动 — 移动  ·  右键 — 删除"},
     "copy": {"en": "Copy to clipboard", "ru": "Скопировать в буфер", "es": "Copiar al portapapeles", "pt": "Copiar para a área de transferência", "de": "In die Zwischenablage", "fr": "Copier dans le presse-papiers", "zh": "复制到剪贴板"},
     "copy_short": {"en": "Copy", "ru": "Копировать", "es": "Copiar", "pt": "Copiar", "de": "Kopieren", "fr": "Copier", "zh": "复制"},
     "save_as": {"en": "Save as…", "ru": "Сохранить как…", "es": "Guardar como…", "pt": "Salvar como…", "de": "Speichern unter…", "fr": "Enregistrer sous…", "zh": "另存为…"},
@@ -135,7 +135,6 @@ WIDTHS = (2, 4, 8)
 TEXT_SIZES = {2: 18, 4: 28, 8: 44}  # text height in picture pixels for each width button
 TEXT_PAD = 3
 HIT_TOL = 6                         # how close to a mark the pointer counts, screen pixels
-HOVER_GRACE = 450                   # ms the cross stays after the pointer leaves the mark
 SS_DRAW = 3                         # supersampling of strokes on the picture
 STAGE = "#141416"                   # behind the picture, darker than the bars
 HAIRLINE = "#37383c"
@@ -800,7 +799,8 @@ class Capture:
         cv.bind("<B1-Motion>", self._drag)
         cv.bind("<ButtonRelease-1>", self._release)
         cv.bind("<Motion>", self._motion)
-        cv.bind("<Leave>", lambda e: self._hover_later())
+        cv.bind("<ButtonPress-3>", self._right_click)
+        cv.bind("<Leave>", lambda e: self._hover_clear())
         win.bind("<Delete>", lambda e: self._delete(self.hover) if self.hover is not None and not self.txt else None)
         cv.bind("<ButtonPress-3>", lambda e: self.cancel())
         top.bind("<Escape>", lambda e: self.cancel())
@@ -1255,8 +1255,7 @@ class Editor:
         self.img = img.convert("RGB")
         self.base, self.marks = self.img, []     # self.img = base + marks, always in step
         self.undo, self.redo = [], []
-        self.hover = self.mv = self._hover_job = self.mv_photo = None
-        self.badge_at = (0, 0)
+        self.hover = self.mv = self.mv_photo = None
         self.tool, self.color, self.width = "pen", COLORS[0], WIDTHS[1]
         self.scale, self.ox, self.oy = 1.0, 0, 0
         self.photo = None
@@ -1341,8 +1340,6 @@ class Editor:
         self.edge_item = cv.create_rectangle(0, 0, 0, 0, outline=HAIRLINE, width=1)
         self.mv_item = cv.create_image(0, 0, anchor="nw", state="hidden")
         self.hl_item = cv.create_rectangle(0, 0, 0, 0, outline=th["ac"], width=1, dash=(4, 3), state="hidden")
-        self.badge_item = cv.create_image(0, 0, state="hidden")
-        self.badge_imgs = {st: ImageTk.PhotoImage(self._badge_img(st), master=cv) for st in ("idle", "hover")}
         cv.bind("<Configure>", lambda e: self._schedule_render())
         cv.bind("<ButtonPress-1>", self._press)
         cv.bind("<B1-Motion>", self._drag)
@@ -1551,88 +1548,42 @@ class Editor:
     def _to_disp(self, x, y):
         return (self.ox + x * self.scale, self.oy + y * self.scale)
 
-    # ---- marks: hover, cross, move ----
-    def _badge_img(self, st):
-        k = self.k
-        n = round(24 * k)
-        fill = "#e5484d" if st == "hover" else "#1d1e21"
-        rgba = Image.new("RGBA", (n, n), _hex_rgb(fill) + (0,))
-        mid, r = n / 2, 10.5 * k
-
-        def disc(rad):
-            return lambda d, s: d.ellipse([(mid - rad) * s, (mid - rad) * s, (mid + rad) * s, (mid + rad) * s], fill=255)
-
-        def cross(d, s):
-            q = 3.6 * k
-            for a, b in (((mid - q, mid - q), (mid + q, mid + q)), ((mid - q, mid + q), (mid + q, mid - q))):
-                d.line([(a[0] * s, a[1] * s), (b[0] * s, b[1] * s)], fill=255, width=round(1.8 * k * s))
-        rgba.putalpha(_aa_mask(n, n, disc(r + 1)))
-        rgba.paste(_hex_rgb("#ffffff" if st == "idle" else fill), (0, 0, n, n), _aa_mask(n, n, disc(r + 1)))
-        rgba.paste(_hex_rgb(fill), (0, 0, n, n), _aa_mask(n, n, disc(r)))
-        rgba.paste((255, 255, 255), (0, 0, n, n), _aa_mask(n, n, cross))
-        return rgba
-
+    # ---- marks: hover, delete, move ----
     def _hit(self, p):
         if self.tool == "crop":
             return None
         tol = HIT_TOL / self.scale
         return next((o for o in reversed(self.marks) if mark_hit(o, p, tol)), None)
 
-    def _on_badge(self, x, y):
-        return math.hypot(x - self.badge_at[0], y - self.badge_at[1]) <= 13 * self.k
-
     def _motion(self, e):
         if self.photo is None or self.item is not None or self.mv or self.txt:
             return
-        if self.hover is not None and self._on_badge(e.x, e.y):
-            self._hover_stay()
-            self.cv.itemconfigure(self.badge_item, image=self.badge_imgs["hover"])
-            self.cv.configure(cursor="hand2")
+        o = self._hit(self._to_img(e.x, e.y))
+        if o is None:
+            if self.hover is not None:
+                self._hover_clear()
+        elif o is not self.hover:
+            self._hover_set(o)
+
+    def _right_click(self, e):
+        if self.photo is None or self.item is not None or self.mv or self.txt:
             return
         o = self._hit(self._to_img(e.x, e.y))
-        if self.hover is not None:
-            self.cv.itemconfigure(self.badge_item, image=self.badge_imgs["idle"])
-        if o is None:
-            self.cv.configure(cursor=self._tool_cursor())
-            self._hover_later()
-            return
-        self._hover_stay()
-        self._hover_set(o, e.x, e.y)
-        self.cv.configure(cursor="fleur")
+        if o is not None:
+            self._delete(o)
 
-    def _hover_stay(self):
-        if self._hover_job:
-            self.cv.after_cancel(self._hover_job)
-            self._hover_job = None
-
-    def _hover_later(self):
-        # the pointer needs a moment to travel from the mark to its cross
-        if self.hover is not None and not self._hover_job:
-            self._hover_job = self.cv.after(HOVER_GRACE, self._hover_clear)
-
-    def _hover_set(self, o, x, y):
-        k, cv = self.k, self.cv
+    def _hover_set(self, o):
+        self.hover = o
         l, t, r, b = mark_bbox(o)
         (l, t), (r, b) = self._to_disp(l, t), self._to_disp(r, b)
-        small = max(r - l, b - t) <= 200 * k
-        if o is self.hover and (small or math.hypot(x - self.badge_at[0], y - self.badge_at[1]) <= 140 * k):
-            return
-        self.hover = o
-        # a compact mark gets the cross at its corner, a long one next to the pointer
-        bx, by = (r + 8 * k, t - 8 * k) if small else (x + 24 * k, y - 24 * k)
-        m = 15 * k
-        self.badge_at = (max(m, min(cv.winfo_width() - m, bx)), max(m, min(cv.winfo_height() - m, by)))
-        cv.coords(self.hl_item, l - 4, t - 4, r + 4, b + 4)
-        cv.coords(self.badge_item, *self.badge_at)
-        cv.itemconfigure(self.hl_item, state="normal")
-        cv.itemconfigure(self.badge_item, state="normal", image=self.badge_imgs["idle"])
+        self.cv.coords(self.hl_item, l - 4, t - 4, r + 4, b + 4)
+        self.cv.itemconfigure(self.hl_item, state="normal")
+        self.cv.configure(cursor="fleur")
         self._show_hint()
 
     def _hover_clear(self):
-        self._hover_stay()
         self.hover = None
         self.cv.itemconfigure(self.hl_item, state="hidden")
-        self.cv.itemconfigure(self.badge_item, state="hidden")
         self.cv.configure(cursor=self._tool_cursor())
         self._show_hint()
 
@@ -1689,9 +1640,6 @@ class Editor:
             return
         if self.txt:                      # a click outside the box finishes the text
             self._text_commit()
-            return
-        if self.hover is not None and self._on_badge(e.x, e.y):
-            self._delete(self.hover)
             return
         p = self._to_img(e.x, e.y)
         o = self._hit(p)
@@ -1990,8 +1938,6 @@ class Editor:
         self.ctl.app._notify(SS("editor_title"), SS("saved"), kind="done")
 
     def close(self):
-        if self._hover_job:
-            self.cv.after_cancel(self._hover_job)
         try:
             self.win.destroy()
         except Exception:
