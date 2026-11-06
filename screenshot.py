@@ -11,6 +11,12 @@ Every capture is kept in %LOCALAPPDATA%\\HDContainer\\screenshots for N days
 (30 by default), like the dictation history: tray → "Screenshot history" shows
 them as thumbnails, each one can be copied again, edited or deleted.
 
+The overlay is a picture over the screen and nothing else: it never takes the focus
+(a game would minimise), it is left out of screen capture (a stream keeps showing the
+live screen), and mouse and Esc come through low-level hooks. When a game holds the
+mouse, moves are kept from it too and the capture goes straight to the clipboard,
+because the editor window would take the focus.
+
 Everything runs on the tk thread. The keyboard hook (its own voice_sys.KeyHook
 instance) only queues events; a tk timer handles them. File writes go through
 one worker thread so a capture and its later edit never interleave.
@@ -23,6 +29,7 @@ import queue
 import ctypes
 import threading
 import traceback
+from collections import namedtuple
 from ctypes import wintypes
 import tkinter as tk
 import tkinter.font as tkfont
@@ -122,6 +129,8 @@ THUMB_W, THUMB_H = 232, 140
 MIN_DRAG = 4                        # a shorter drag is a click = whole monitor
 UNDO_MAX = 15
 PAGE = 60                           # history cards shown per "Show more"
+OVERLAY_ALPHA = 1.0
+OVERLAY_TIMEOUT = 120               # s: the mouse is grabbed, so the overlay never stays forever
 DARK = 45                           # brightness (%) of the frozen screen outside the selection
 
 # key, name, shortcut (a Latin letter, matched by key code)
@@ -180,6 +189,123 @@ def monitor_at(x, y, work=False):
         return r.left, r.top, r.right, r.bottom
     vx, vy, vw, vh = virtual_screen()
     return vx, vy, vx + vw, vy + vh
+
+
+class CURSORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("flags", wintypes.DWORD), ("hCursor", ctypes.c_void_p),
+                ("ptScreenPos", wintypes.POINT)]
+
+
+class MSLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [("pt", wintypes.POINT), ("mouseData", wintypes.DWORD), ("flags", wintypes.DWORD),
+                ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+
+
+user32.GetCursorInfo.argtypes = [ctypes.POINTER(CURSORINFO)]
+user32.GetClipCursor.argtypes = [ctypes.POINTER(wintypes.RECT)]
+user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.RECT)]
+user32.GetForegroundWindow.restype = ctypes.c_void_p
+user32.GetAncestor.restype = ctypes.c_void_p
+user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+user32.GetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+user32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+user32.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
+user32.SetWindowDisplayAffinity.restype = wintypes.BOOL
+user32.SetWindowDisplayAffinity.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+GWL_EXSTYLE = -20
+WS_EX_NOACTIVATE = 0x08000000
+WDA_EXCLUDEFROMCAPTURE = 0x11       # Windows 10 2004+
+WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONUP = 0x200, 0x201, 0x202, 0x205
+LLMHF_INJECTED = 1
+SHELL_CLASSES = ("Progman", "WorkerW", "Shell_TrayWnd")
+
+
+def foreground_fullscreen():
+    """Does the foreground window cover its whole monitor (a game, a video)?"""
+    fg = user32.GetForegroundWindow()
+    if not fg or vs.class_name(fg) in SHELL_CLASSES:
+        return False
+    r = wintypes.RECT()
+    if not user32.GetWindowRect(fg, ctypes.byref(r)):
+        return False
+    l, t, rt, b = monitor_at((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+    return r.left <= l and r.top <= t and r.right >= rt and r.bottom >= b
+
+
+def game_has_mouse():
+    """The foreground app holds the pointer: it confines it, or hides it over a whole
+    monitor. Hidden alone proves nothing: Windows hides the pointer while typing."""
+    clip = wintypes.RECT()
+    if user32.GetClipCursor(ctypes.byref(clip)):
+        vx, vy, vw, vh = virtual_screen()
+        if clip.left > vx or clip.top > vy or clip.right < vx + vw or clip.bottom < vy + vh:
+            return True
+    ci = CURSORINFO()
+    ci.cbSize = ctypes.sizeof(ci)
+    return bool(user32.GetCursorInfo(ctypes.byref(ci))) and not ci.flags & 1 and foreground_fullscreen()
+
+
+class MouseGrab:
+    """Low-level mouse hook for the overlay, which must get no real input: a window that
+    is clicked could take the focus. Buttons and the wheel are swallowed. With lock=True
+    moves are swallowed as well, so a game does not turn its camera; the position is then
+    counted here, because the real pointer stands still. Events go to self.events;
+    the callback touches nothing else."""
+
+    def __init__(self, lock, x, y, log):
+        self.lock, self.x, self.y, self.log = lock, x, y, log
+        self.accept_injected = False       # the game's own SetCursorPos is not the user's mouse
+        self.events = queue.Queue()
+        self._tid = 0
+        self._hook = None
+        self._proc = vs._HOOKPROC(self._cb)
+
+    def _cb(self, code, wp, lp):
+        try:
+            if code == 0:
+                ms = MSLLHOOKSTRUCT.from_address(lp)
+                if wp != WM_MOUSEMOVE:
+                    self.events.put(("btn", wp, self.x, self.y))
+                    return 1
+                if not self.lock:
+                    self.x, self.y = ms.pt.x, ms.pt.y
+                    self.events.put(("move", self.x, self.y))
+                elif self.accept_injected or not ms.flags & LLMHF_INJECTED:
+                    cur = wintypes.POINT()
+                    user32.GetCursorPos(ctypes.byref(cur))
+                    vx, vy, vw, vh = virtual_screen()
+                    self.x = max(vx, min(vx + vw - 1, self.x + ms.pt.x - cur.x))
+                    self.y = max(vy, min(vy + vh - 1, self.y + ms.pt.y - cur.y))
+                    self.events.put(("move", self.x, self.y))
+                    return 1
+        except Exception:
+            pass
+        return vs.user32.CallNextHookEx(None, code, wp, lp)
+
+    def start(self):
+        ready = threading.Event()
+
+        def run():
+            self._tid = vs.kernel32.GetCurrentThreadId()
+            self._hook = vs.user32.SetWindowsHookExW(14, self._proc, vs.kernel32.GetModuleHandleW(None), 0)
+            if not self._hook:
+                self.log("screenshot: mouse hook failed: %d" % ctypes.get_last_error())
+            ready.set()
+            msg = vs._MSG()
+            while vs.user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                pass
+            if self._hook:
+                vs.user32.UnhookWindowsHookEx(self._hook)
+                self._hook = None
+        threading.Thread(target=run, daemon=True, name="hdc-shot-mouse").start()
+        ready.wait(2.0)
+        return bool(self._hook)
+
+    def stop(self):
+        if self._tid:
+            vs.user32.PostThreadMessageW(self._tid, vs.WM_QUIT, 0, 0)
+            self._tid = 0
 
 
 def grab_screen():
@@ -304,6 +430,9 @@ class ScreenshotController:
                     break
                 if ev[0] == "press":
                     self.shoot()
+                elif ev[0] == "esc":
+                    if self.capture is not None:
+                        self.capture.cancel()
                 elif ev[0] in ("captured", "capture_cancel"):
                     self._capture_done(ev)
             while True:
@@ -332,13 +461,14 @@ class ScreenshotController:
         except Exception:
             self.capture = None
             self.log("capture overlay failed:\n" + traceback.format_exc())
+            self.app._notify(SS("editor_title"), SS("err_capture"), kind="error")
 
-    def _on_region(self, img):
+    def _on_region(self, img, quiet=False):
         self.capture = None
         path = self._new_path() if self.get("history") else None
         if path:
             self._io(lambda: self._write(path, img))
-        if self.get("editor"):
+        if self.get("editor") and not quiet:
             Editor(self, img, path)
         else:
             self.copy_image(img, path)
@@ -756,14 +886,31 @@ class ScreenshotController:
 # ---------------------------------------------------------------------------
 #  Full-screen overlay: the frozen screen, region selection
 # ---------------------------------------------------------------------------
+_Point = namedtuple("_Point", "x y")
+
+
 class Capture:
     def __init__(self, ctl, img, origin):
         self.ctl, self.img = ctl, img
         self.ox, self.oy = origin
+        self.top = self.grab = None
+        self.done = False
+        try:
+            self._build()
+        except Exception:
+            self.close()
+            raise
+
+    def _build(self):
+        ctl, img = self.ctl, self.img
         w, h = img.size
+        # taken before the overlay exists: it must describe the app under it
+        lock = game_has_mouse()
+        self.quiet = lock or foreground_fullscreen()
         top = tk.Toplevel(ctl.root)
         self.top = top
         top.overrideredirect(True)
+        top.attributes("-alpha", 0.0)      # stays invisible until it is safe from capture
         top.attributes("-topmost", True)
         top.configure(bg="black")
         top.geometry("%dx%d+%d+%d" % (w, h, self.ox, self.oy))
@@ -793,38 +940,61 @@ class Capture:
         self.start = None
         self.cur = None
         self._pending = False
-        self.done = False
-        cv.bind("<Motion>", self._motion)
-        cv.bind("<ButtonPress-1>", self._press)
-        cv.bind("<B1-Motion>", self._drag)
-        cv.bind("<ButtonRelease-1>", self._release)
-        cv.bind("<ButtonPress-3>", lambda e: self.cancel())
-        top.bind("<Escape>", lambda e: self.cancel())
-        top.bind("<FocusOut>", self._focus_out)
         self._crosshair(pt.x - self.ox, pt.y - self.oy)
-        top.lift()
-        top.after(30, self._grab_focus)
+        top.update()
+        hwnd = user32.GetAncestor(top.winfo_id(), 2)                  # GA_ROOT
+        user32.SetWindowLongPtrW(hwnd, GWL_EXSTYLE, user32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_NOACTIVATE)
+        if not user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE):
+            ctl.log("screenshot: overlay stays visible to capture (Windows older than 10 2004?)")
+        self.grab = MouseGrab(lock, pt.x, pt.y, ctl.log)
+        if not self.grab.start():
+            raise OSError("no mouse hook")
+        ctl.hook.recording = True          # Esc arrives through the keyboard hook: no focus here
+        top.attributes("-alpha", OVERLAY_ALPHA)
+        self.deadline = time.time() + OVERLAY_TIMEOUT
+        self._pump()
 
-    def _grab_focus(self):
-        try:
-            if self.top.winfo_exists() and not self.done:
-                self.top.focus_force()
-        except Exception:
-            pass
-
-    def _focus_out(self, _e):
-        # another window took the focus (an alert, a game...): take it back so Esc
-        # keeps working while the overlay is up; the mouse works either way.
-        # focus_get() is None only when the focus left this application: moving
-        # between our own widgets must not start a focus ping-pong.
-        def check():
+    def _pump(self):
+        if self.done:
+            return
+        if time.time() > self.deadline:
+            self.cancel()
+            return
+        last = None
+        while not self.done:
             try:
-                if not self.done and self.top.winfo_exists() and self.top.focus_get() is None:
-                    self._grab_focus()
-            except Exception:
-                pass
+                ev = self.grab.events.get_nowait()
+            except queue.Empty:
+                break
+            if ev[0] == "move":
+                last = ev
+                continue
+            if last:
+                self._moved(last)
+                last = None
+            self._button(ev)
+        if last and not self.done:
+            self._moved(last)
         if not self.done:
-            self.top.after(150, check)
+            self.top.after(8, self._pump)
+
+    def _at(self, ev):
+        return _Point(ev[-2] - self.ox, ev[-1] - self.oy)
+
+    def _moved(self, ev):
+        p = self._at(ev)
+        if self.start is None:
+            self._motion(p)
+        else:
+            self._drag(p)
+
+    def _button(self, ev):
+        if ev[1] == WM_LBUTTONDOWN:
+            self._press(self._at(ev))
+        elif ev[1] == WM_LBUTTONUP:
+            self._release(self._at(ev))
+        elif ev[1] == WM_RBUTTONUP:        # on release: the up event must not reach the app below
+            self.cancel()
 
     def _crosshair(self, x, y):
         w, h = self.img.size
@@ -901,7 +1071,7 @@ class Capture:
         region = self.img.crop((x1, y1, x2, y2))
         self.close()
         try:
-            self.ctl._on_region(region)
+            self.ctl._on_region(region, self.quiet)
         except Exception:
             self.ctl.capture = None
             self.ctl.log("screenshot region failed:\n" + traceback.format_exc())
@@ -912,8 +1082,12 @@ class Capture:
 
     def close(self):
         self.done = True
+        self.ctl.hook.recording = False
+        if self.grab:
+            self.grab.stop()
         try:
-            self.top.destroy()
+            if self.top:
+                self.top.destroy()
         except Exception:
             pass
         self.sel_photo = self.dark = None
