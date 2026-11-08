@@ -54,6 +54,7 @@ import urllib.request
 import ctypes
 from ctypes import wintypes
 import tkinter as tk
+import tkinter.font as tkfont
 
 try:                                   # Pillow: аватар из любой картинки + чёткие иконки
     from PIL import Image, ImageDraw, ImageTk
@@ -91,7 +92,7 @@ except Exception:
     screenshot = None
     _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.10.8"
+VERSION = "1.10.9"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -4277,12 +4278,22 @@ class TrayApp:
         win.unbind("<MouseWheel>")
         for w in bar.winfo_children() + body.winfo_children():
             w.destroy()
-        for key, label in self._settings_tabs():
+        tabs = self._settings_tabs()
+        # every tab must fit the bar (6 tabs in 12 pt cut the last one): shrink type and gaps, not the window
+        win.update_idletasks()
+        avail = bar.winfo_width() if bar.winfo_width() > 1 else win.winfo_width() - 48
+        size, gap = 9, 8
+        for s_, g_ in ((12, 22), (11, 18), (11, 14), (10, 12), (10, 9)):
+            f_ = tkfont.Font(root=win, family="Segoe UI Semibold", size=s_)
+            if sum(f_.measure(lb_) for _k, lb_ in tabs) + g_ * (len(tabs) - 1) + 4 <= avail:
+                size, gap = s_, g_
+                break
+        for key, label in tabs:
             cell = tk.Frame(bar, bg=COL_SURFACE)
-            cell.pack(side="left", padx=(0, 22))
+            cell.pack(side="left", padx=(0, gap))
             on = key == tab
             lb = tk.Label(cell, text=label, bg=COL_SURFACE, fg=COL_TEXT if on else COL_TEXT_DIM,
-                          font=("Segoe UI Semibold", 12), cursor="hand2", pady=6)
+                          font=("Segoe UI Semibold", size), cursor="hand2", pady=6)
             lb.pack()
             tk.Frame(cell, bg=COL_ACCENT if on else COL_SURFACE, height=2).pack(fill="x")
             if not on:
