@@ -1,5 +1,12 @@
 ## Screenshots
 
-- Taking a screenshot no longer disturbs what is running. The region overlay never takes the focus, so games do not minimise, and it is left out of screen capture, so a stream keeps showing the live screen.
-- While a region is selected, clicks do not reach the windows below. A game that holds the mouse gets no mouse movement either.
-- Over a game or another fullscreen window the capture skips the editor and goes straight to the clipboard and the history.
+- The editor now opens with the keyboard focus, so Ctrl+C (copy and close), Enter and the tool letters work right away. Before, Windows kept the focus on the program below and the keys went there.
+- New in Settings → Screenshots: "Not in these programs". While one of the listed programs is in front (a game that uses the same keys), the hotkey is left to it and no screenshot is taken. Add a program from the list of running ones or pick its .exe file.
+
+## Boxes
+
+- Icons no longer show up as grey squares first. Box pictures are kept on disk and shown at once after a restart, then checked with Windows in the background; the pictures are also prepared before a box opens. A picture still on its way leaves an empty spot instead of a grey square.
+
+## Stability
+
+- If the program stops responding, the state of all its threads is written to the crash log, so the cause can be found.

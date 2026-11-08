@@ -18,7 +18,9 @@ import time
 import queue
 import shutil
 import ctypes
+import hashlib
 import threading
+import collections
 import configparser
 from ctypes import wintypes
 import tkinter as tk
@@ -564,15 +566,57 @@ def image_to_hbitmap(img):
 
 
 class IconCache:
-    """Pictures made on one background STA thread; the UI only reads the cache."""
+    """Pictures made on one background STA thread; the UI only reads the cache.
+    Every picture the shell gave is also kept as a PNG on disk: after a restart it is shown
+    at once (the shell is slow then, Store apps answer only after seconds) and asked from
+    the shell again in the background, replaced only if it changed."""
 
     def __init__(self):
         self.cache, self.pending = {}, set()
         self.lock = threading.Lock()
         self.q = queue.Queue()
+        self.recheck = collections.deque()      # keys shown from disk, to ask the shell when idle
         self.dirty = False
         self.gen = 0                    # bumped with every new picture: drawn item layers go stale
+        self.dir = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "HDContainer", "box_icons")
         threading.Thread(target=self._run, daemon=True, name="hdc-box-icons").start()
+
+    def _file(self, key):
+        h = hashlib.sha1(("%s|%d|%r" % key).encode("utf-8", "surrogatepass")).hexdigest()
+        return os.path.join(self.dir, h + ".png")
+
+    def _disk_load(self, key):
+        try:
+            with Image.open(self._file(key)) as im:
+                return im.convert("RGBA")
+        except Exception:
+            return None
+
+    def _disk_save(self, key, img):
+        f = self._file(key)
+        try:
+            os.makedirs(self.dir, exist_ok=True)
+            img.save(f + ".tmp", "PNG")
+            os.replace(f + ".tmp", f)
+        except Exception:
+            pass
+
+    def _prune(self):
+        """Keep the disk cache small: pictures not used for 60 days go."""
+        try:
+            old = time.time() - 60 * 86400
+            for e in os.scandir(self.dir):
+                if e.stat().st_mtime < old:
+                    os.remove(e.path)
+        except Exception:
+            pass
+
+    def _put(self, key, img):
+        with self.lock:
+            self.cache[key] = img
+            self.pending.discard(key)
+            self.gen += 1
+        self.dirty = True
 
     def get(self, path, size, mtime):
         key = (path, size, mtime)
@@ -586,8 +630,24 @@ class IconCache:
 
     def _run(self):
         ole32.CoInitializeEx(None, 2)
+        t = threading.Timer(120, self._prune)
+        t.daemon = True
+        t.start()
         while True:
-            key, tries = self.q.get()
+            if self.recheck:
+                try:
+                    key, tries = self.q.get_nowait()             # new requests first
+                except queue.Empty:                             # idle: ask the shell about a disk picture
+                    self._recheck(self.recheck.popleft())
+                    continue
+            else:
+                key, tries = self.q.get()
+            if tries == 0:
+                img = self._disk_load(key)
+                if img is not None:
+                    self._put(key, img)
+                    self.recheck.append(key)
+                    continue
             try:
                 img = shell_image(key[0], key[1])
             except Exception:
@@ -598,11 +658,27 @@ class IconCache:
                 t.start()
             if img is None and tries:
                 continue                                        # failed again: nothing to redraw
-            with self.lock:
-                self.cache[key] = img or False          # False: no picture, draw a placeholder
-                self.pending.discard(key)
-                self.gen += 1
-            self.dirty = True
+            if img is not None:
+                self._disk_save(key, img)
+            self._put(key, img or False)                        # False: no picture, draw a placeholder
+
+    def _recheck(self, key):
+        try:
+            img = shell_image(key[0], key[1])
+        except Exception:
+            img = None
+        if img is None:
+            return                                              # keep the disk picture
+        with self.lock:
+            cur = self.cache.get(key)
+        if cur and cur.size == img.size and cur.tobytes() == img.convert("RGBA").tobytes():
+            try:
+                os.utime(self._file(key))                       # still in use: not pruned
+            except OSError:
+                pass
+            return
+        self._disk_save(key, img)
+        self._put(key, img)
 
 
 # ---------------------------------------------------------------------------
@@ -1342,11 +1418,20 @@ class Box:
         if sig != self.sig:
             self.items = out or []
             self.sig = sig
+            self._prefetch_icons()
             self.sel = {i for i in self.sel if i < len(self.items)}
             if out is not None and "seen" not in self.d:
                 self.d["seen"] = [n for n, *_ in out]
             return True
         return False
+
+    def _prefetch_icons(self):
+        try:
+            size = self.icon_px()
+            for _n, path, _d, mtime in self.items:
+                self.mgr.icons.get(self.mgr.moved_target(path) or path, size, mtime)
+        except Exception:
+            pass
 
     def badge(self):
         seen = set(self.d.get("seen") or [])
@@ -1498,7 +1583,7 @@ class Box:
         ix, iy = cx + (cell - icon) // 2, cy + self.px(7)
         if pic:                                           # bottom-aligned, like Explorer: labels start on one line
             img.alpha_composite(pic, (ix + (icon - pic.width) // 2, iy + icon - pic.height))
-        else:
+        elif pic is False:                                # the shell gave none; still coming: an empty spot
             aa_fill(img, (ix + icon // 6, iy + self.px(4), ix + icon - icon // 6, iy + icon - self.px(2)),
                     self.px(4), (210, 214, 222, 160), outline=self.px(2))
         ly = iy + icon + self.px(4)

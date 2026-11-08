@@ -91,7 +91,7 @@ except Exception:
     screenshot = None
     _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.10.7"
+VERSION = "1.10.8"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -4398,7 +4398,46 @@ class TrayApp:
 
     # ===================================================================
     def run(self):
+        self._hang_watch()
         self.root.mainloop()
+
+    def _hang_watch(self):
+        """A frozen UI thread leaves no trace (Windows just kills the 'not responding'
+        program): a tk timer beats every second, a thread writes the stacks of all
+        threads into the crash log when the beat stops for HANG_S."""
+        HANG_S = 20
+        self._beat = time.monotonic()
+
+        def beat():
+            self._beat = time.monotonic()
+            self.root.after(1000, beat)
+        beat()
+
+        def watch():
+            reported, last = False, time.monotonic()
+            while True:
+                time.sleep(2)
+                now = time.monotonic()
+                if now - last > 10:            # the PC slept: not a hang
+                    self._beat = now
+                last = now
+                stale = now - self._beat
+                if stale > HANG_S and not reported:
+                    reported = True
+                    log("UI thread not responding for %ds: stacks in the crash log" % stale)
+                    f = globals().get("_CRASHF")
+                    if f:
+                        try:
+                            f.write("\n==== UI HANG %ds at %s ====\n" % (stale, time.strftime("%Y-%m-%d %H:%M:%S")))
+                            f.flush()
+                            faulthandler.dump_traceback(f, all_threads=True)
+                            f.flush()
+                        except Exception:
+                            pass
+                elif reported and stale < 3:
+                    reported = False
+                    log("UI thread responding again")
+        threading.Thread(target=watch, daemon=True, name="hdc-hang-watch").start()
 
 
 def _read_recovery_snapshot():

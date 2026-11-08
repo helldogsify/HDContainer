@@ -23,6 +23,7 @@ one worker thread so a capture and its later edit never interleave.
 """
 import io
 import os
+import sys
 import math
 import time
 import queue
@@ -101,6 +102,12 @@ SSTR = {
     "err_capture": {"en": "Could not capture the screen", "ru": "Не удалось снять экран", "es": "No se pudo capturar la pantalla", "pt": "Não foi possível capturar a tela", "de": "Bildschirm konnte nicht aufgenommen werden", "fr": "Impossible de capturer l'écran", "zh": "无法截取屏幕"},
     "err_clip": {"en": "Could not write to the clipboard", "ru": "Не удалось записать в буфер обмена", "es": "No se pudo escribir en el portapapeles", "pt": "Não foi possível gravar na área de transferência", "de": "Zwischenablage konnte nicht beschrieben werden", "fr": "Impossible d'écrire dans le presse-papiers", "zh": "无法写入剪贴板"},
     "delete": {"en": "Delete", "ru": "Удалить", "es": "Eliminar", "pt": "Excluir", "de": "Löschen", "fr": "Supprimer", "zh": "删除"},
+    "sec_exclude": {"en": "Not in these programs", "ru": "Не срабатывать в программах", "es": "No en estos programas", "pt": "Não nestes programas", "de": "Nicht in diesen Programmen", "fr": "Pas dans ces programmes", "zh": "在这些程序中不触发"},
+    "exclude_note": {"en": "While one of them is in front, the hotkey goes to it as usual — for games that use the same keys.", "ru": "Пока такая программа на переднем плане, сочетание достаётся ей, как обычно, — для игр, где эти клавиши заняты.", "es": "Mientras una de ellas está delante, el atajo le llega a ella como siempre: para juegos que usan las mismas teclas.", "pt": "Enquanto uma delas estiver em primeiro plano, o atalho vai para ela como sempre — para jogos que usam as mesmas teclas.", "de": "Solange eines davon im Vordergrund ist, geht der Hotkey wie gewohnt an das Programm — für Spiele, die dieselben Tasten nutzen.", "fr": "Tant que l'un d'eux est au premier plan, le raccourci lui revient comme d'habitude — pour les jeux qui utilisent les mêmes touches.", "zh": "当其中某个程序在前台时，快捷键照常交给它——适用于占用同样按键的游戏。"},
+    "exclude_add": {"en": "Add a program…", "ru": "Добавить программу…", "es": "Añadir programa…", "pt": "Adicionar programa…", "de": "Programm hinzufügen…", "fr": "Ajouter un programme…", "zh": "添加程序…"},
+    "exclude_file": {"en": "Choose an .exe file…", "ru": "Выбрать файл .exe…", "es": "Elegir un archivo .exe…", "pt": "Escolher um arquivo .exe…", "de": ".exe-Datei wählen…", "fr": "Choisir un fichier .exe…", "zh": "选择 .exe 文件…"},
+    "exclude_none": {"en": "No other programs with windows are running", "ru": "Других программ с окнами сейчас нет", "es": "No hay otros programas con ventanas", "pt": "Não há outros programas com janelas", "de": "Keine anderen Programme mit Fenstern", "fr": "Aucun autre programme avec fenêtre", "zh": "没有其他带窗口的程序在运行"},
+    "exe_files": {"en": "Programs", "ru": "Программы", "es": "Programas", "pt": "Programas", "de": "Programme", "fr": "Programmes", "zh": "程序"},
     "png": {"en": "PNG image", "ru": "Изображение PNG", "es": "Imagen PNG", "pt": "Imagem PNG", "de": "PNG-Bild", "fr": "Image PNG", "zh": "PNG 图片"},
     "jpg": {"en": "JPEG image", "ru": "Изображение JPEG", "es": "Imagen JPEG", "pt": "Imagem JPEG", "de": "JPEG-Bild", "fr": "Image JPEG", "zh": "JPEG 图片"},
 }
@@ -120,6 +127,7 @@ DEFAULTS = {
     "editor": True,                 # False: the capture goes to the clipboard at once
     "history": True, "keep_days": 30,
     "save_dir": "",                 # last "Save as…" folder
+    "exclude": [],                  # 'game.exe' names: the hotkey is left to them while they are in front
 }
 # keys allowed as the hotkey WITHOUT a modifier: F1-F24, Pause, ScrollLock, PrtSc.
 # A single modifier is refused: it would fire on every Ctrl / Shift press.
@@ -205,6 +213,16 @@ user32.GetCursorInfo.argtypes = [ctypes.POINTER(CURSORINFO)]
 user32.GetClipCursor.argtypes = [ctypes.POINTER(wintypes.RECT)]
 user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.RECT)]
 user32.GetForegroundWindow.restype = ctypes.c_void_p
+user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+user32.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+user32.BringWindowToTop.argtypes = [ctypes.c_void_p]
+user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+user32.IsWindowVisible.argtypes = [ctypes.c_void_p]
+user32.GetWindowTextLengthW.argtypes = [ctypes.c_void_p]
+user32.GetWindow.restype = ctypes.c_void_p
+user32.GetWindow.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+user32.EnumWindows.argtypes = [vs.WNDENUMPROC, ctypes.c_void_p]
 user32.GetAncestor.restype = ctypes.c_void_p
 user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
 user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
@@ -231,6 +249,44 @@ def foreground_fullscreen():
         return False
     l, t, rt, b = monitor_at((r.left + r.right) // 2, (r.top + r.bottom) // 2)
     return r.left <= l and r.top <= t and r.right >= rt and r.bottom >= b
+
+
+def foreground_exe():
+    return vs.process_exe(vs.window_pid(user32.GetForegroundWindow()))
+
+
+def running_programs():
+    """Sorted exe names of the programs that have a visible titled top-level window."""
+    names = set()
+
+    def cb(h, _l):
+        if user32.IsWindowVisible(h) and user32.GetWindowTextLengthW(h) > 0 and not user32.GetWindow(h, 4):
+            n = vs.process_exe(vs.window_pid(h))
+            if n:
+                names.add(n)
+        return True
+    user32.EnumWindows(vs.WNDENUMPROC(cb), None)
+    me = os.path.basename(sys.executable).lower()
+    return sorted(names - {me, "explorer.exe", "applicationframehost.exe", "textinputhost.exe",
+                           "shellexperiencehost.exe", "searchhost.exe", "startmenuexperiencehost.exe"})
+
+
+def take_foreground(hwnd):
+    """Bring our own new window to the front WITH the keyboard. Windows gives the foreground
+    only to the process that got the last input, and the hotkey went to a hook and the
+    overlay's clicks were swallowed: so borrow the input state of the window in front."""
+    fg = user32.GetForegroundWindow()
+    if not hwnd or fg == hwnd:
+        return
+    me = vs.kernel32.GetCurrentThreadId()
+    ft = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+    attached = bool(ft and ft != me and user32.AttachThreadInput(ft, me, True))
+    try:
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+    finally:
+        if attached:
+            user32.AttachThreadInput(ft, me, False)
 
 
 def game_has_mouse():
@@ -368,6 +424,7 @@ class ScreenshotController:
         self._ui_q = queue.Queue()      # callables for the tk thread, posted by the worker
         threading.Thread(target=self._io_worker, daemon=True, name="hdc-shot-io").start()
         self.hook = vs.KeyHook(log)
+        self.hook.block = self._excluded_now
         self.hook.start()
         self.register_hotkey()
         self.root.after(25, self._loop)
@@ -416,6 +473,11 @@ class ScreenshotController:
         self.hook.configure(self.get("hk_mods"), self.get("hk_vk"), self.get("enabled"))
         self.hook.mask_taps = False
         self.log("screenshot hotkey %s hook=%s" % (self.hotkey_text(), "ok" if self.hook._hook else "FAILED"))
+
+    def _excluded_now(self):
+        """Keyboard-hook thread: is a program from the exclusion list in front? (saved settings only)"""
+        ex = self.app.settings.get("screenshot", {}).get("exclude")
+        return bool(ex) and foreground_exe() in {x.lower() for x in ex}
 
     def hotkey_text(self):
         return vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk"))
@@ -809,6 +871,20 @@ class ScreenshotController:
                  padx=12, pady=5).pack(side="left")
         a._ghost_btn(row, SS("change"), self._capture_hotkey).pack(side="left", padx=10)
 
+        header(SS("sec_exclude"))
+        note(SS("exclude_note"))
+        for exe in self.get("exclude"):
+            row = tk.Frame(parent, bg=th["sf"])
+            row.pack(fill="x", padx=pad, pady=1)
+            tk.Label(row, text=exe, bg=th["sf2"], fg=th["tx"], font=th["font"], padx=10, pady=3).pack(side="left")
+            x = tk.Label(row, text="✕", bg=th["sf"], fg=th["dim"], font=th["font"], padx=8, cursor="hand2")
+            x.pack(side="left")
+            x.bind("<Button-1>", lambda _e, n=exe: self._exclude_set([v for v in self.get("exclude") if v != n]))
+        row = tk.Frame(parent, bg=th["sf"])
+        row.pack(fill="x", padx=pad, pady=(6, 2))
+        add = a._ghost_btn(row, SS("exclude_add"), lambda: self._exclude_menu(add))
+        add.pack(side="left")
+
         header(SS("sec_after"))
         radio([(True, SS("open_editor")), (False, SS("copy_now"))], "editor")
 
@@ -830,6 +906,31 @@ class ScreenshotController:
         row.pack(fill="x", padx=pad, pady=(4, 2))
         a._ghost_btn(row, SS("hist_open"), self.open_history).pack(side="left")
         tk.Frame(parent, bg=th["sf"], height=16).pack()
+
+    def _exclude_set(self, names):
+        self.set("exclude", sorted({n.lower() for n in names if n}))
+        self._rebuild()
+
+    def _exclude_menu(self, btn):
+        cur = set(self.get("exclude"))
+        m = tk.Menu(btn, tearoff=0)
+        progs = [n for n in running_programs() if n not in cur]
+        for n in progs:
+            m.add_command(label=n, command=lambda n=n: self._exclude_set(self.get("exclude") + [n]))
+        if not progs:
+            m.add_command(label=SS("exclude_none"), state="disabled")
+        m.add_separator()
+        m.add_command(label=SS("exclude_file"), command=self._exclude_browse)
+        try:
+            m.tk_popup(btn.winfo_rootx(), btn.winfo_rooty() + btn.winfo_height())
+        finally:
+            m.grab_release()
+
+    def _exclude_browse(self):
+        tab = self._tab
+        p = filedialog.askopenfilename(parent=tab[1] if tab else None, filetypes=[(SS("exe_files"), "*.exe")])
+        if p:
+            self._exclude_set(self.get("exclude") + [os.path.basename(p)])
 
     def _rebuild(self):
         tab = self._tab
@@ -1526,6 +1627,8 @@ class Editor:
         self._set_color(self.color)
         self._set_width(self.width)
         self._history_btns()
+        win.update_idletasks()
+        take_foreground(user32.GetAncestor(win.winfo_id(), 2))    # else Ctrl+C / Enter go to the app below
         win.focus_force()
 
     # ---- toolbar pictures ----

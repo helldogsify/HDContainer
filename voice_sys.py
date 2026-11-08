@@ -208,6 +208,37 @@ def window_pid(h):
     return pid.value
 
 
+_decl(kernel32.OpenProcess, HANDLE, [DWORD, BOOL, DWORD])
+_decl(kernel32.CloseHandle, BOOL, [HANDLE])
+_decl(kernel32.QueryFullProcessImageNameW, BOOL, [HANDLE, DWORD, ctypes.c_wchar_p, ctypes.POINTER(DWORD)])
+_EXE_CACHE = {}
+
+
+def process_exe(pid):
+    """Lower-case file name of a process ('game.exe'), '' when Windows does not tell.
+    Cached by pid for 30 s: called from the keyboard hook, which must answer fast."""
+    if not pid:
+        return ""
+    hit = _EXE_CACHE.get(pid)
+    now = time.monotonic()
+    if hit and now - hit[1] < 30:                          # pids get reused: forget after a while
+        return hit[0]
+    name = ""
+    hp = kernel32.OpenProcess(0x1000, False, pid)            # PROCESS_QUERY_LIMITED_INFORMATION
+    if hp:
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = DWORD(1024)
+            if kernel32.QueryFullProcessImageNameW(hp, 0, buf, ctypes.byref(size)):
+                name = buf.value.replace("/", "\\").rsplit("\\", 1)[-1].lower()
+        finally:
+            kernel32.CloseHandle(hp)
+    if len(_EXE_CACHE) > 500:
+        _EXE_CACHE.clear()
+    _EXE_CACHE[pid] = (name, now)
+    return name
+
+
 WNDENUMPROC = ctypes.WINFUNCTYPE(BOOL, ctypes.c_void_p, ctypes.c_void_p)
 _decl(user32.EnumChildWindows, BOOL, [ctypes.c_void_p, WNDENUMPROC, ctypes.c_void_p])
 
@@ -293,6 +324,7 @@ class KeyHook:
         self.arm_delay = 0.2             # дольше этого удержание — это запись, а не обычный Alt
         self._press_t = 0.0
         self.capture = False
+        self.block = None                # callable: True → the hotkey is not ours now, let it through
         self._down = set()
         self._active = False
         self._chorded = False
@@ -408,7 +440,7 @@ class KeyHook:
             if not up:
                 if self._active:
                     return True                  # автоповтор — глотаем (никаких «+++»)
-                if self._mods_now(vk) == self.mods:
+                if self._mods_now(vk) == self.mods and not self._blocked():
                     self._active = True
                     self.events.put(("press",))
                     return True
@@ -421,6 +453,14 @@ class KeyHook:
             self.events.put(("esc",))
             return True
         return False
+
+    def _blocked(self):
+        if self.block is None:
+            return False
+        try:
+            return bool(self.block())
+        except Exception:
+            return False
 
     def _mods_down(self, exclude):
         # в режиме записи сочетания клавиши глотаются, и GetAsyncKeyState их не видит —
