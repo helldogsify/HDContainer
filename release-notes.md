@@ -1,3 +1,3 @@
-## Voice input: no more Gemini stalls
+## Always runs at normal rights
 
-- The fast mode asks two Gemini models at once and takes the first good answer. One of them sometimes hung for 5-20 seconds; now recognition takes about 1.5 seconds every time.
+- When HDContainer is started as administrator, it restarts itself at normal rights. Elevated, programs launched from the boxes were elevated too, and voice input could not type into them (The Sims 4); drag-and-drop into the boxes failed as well.

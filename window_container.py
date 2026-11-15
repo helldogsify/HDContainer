@@ -92,7 +92,7 @@ except Exception:
     screenshot = None
     _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.11.1"
+VERSION = "1.11.2"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -4583,6 +4583,38 @@ def _run_watchdog(args):
         pass
 
 
+def _is_elevated():
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def _relaunch_unelevated():
+    """Started as administrator (e.g. by an elevated Claude session): start again at
+    normal rights through the shell and exit. Elevated, the boxes refuse drag-and-drop
+    from Explorer (UIPI) and every program started from a box is elevated too, so voice
+    input could not reach it (The Sims 4, 2026-11-15). A marker file stops a loop on
+    PCs where the shell itself runs elevated (UAC off)."""
+    if not getattr(sys, "frozen", False) or not _is_elevated():
+        return False
+    mark = os.path.join(tempfile.gettempdir(), "HDContainer_unelevate.mark")
+    try:
+        if time.time() - os.path.getmtime(mark) < 60:
+            log("elevated start: relaunched a moment ago, staying elevated")
+            return False
+    except OSError:
+        pass
+    try:
+        open(mark, "w").close()
+        subprocess.Popen(["explorer.exe", sys.executable], creationflags=CREATE_NO_WINDOW)
+        log("elevated start: relaunching at normal rights through explorer")
+        return True
+    except Exception as ex:
+        log("elevated start: relaunch failed: %r" % ex)
+        return False
+
+
 def _parse_launch(argv):
     if "--launch" in argv:
         i = argv.index("--launch")
@@ -4633,6 +4665,9 @@ def main():
             if not [p for p in _pids_of_exe(os.path.basename(_app_exe())) if p != me]:
                 break
             time.sleep(0.25)
+        return
+
+    if not args and _relaunch_unelevated():
         return
 
     launch_name = _parse_launch(args)
