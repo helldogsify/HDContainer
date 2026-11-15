@@ -17,6 +17,7 @@
     DeepSeek, Mistral, xAI, Ollama, LM Studio…
 """
 
+import base64
 import glob
 import hashlib
 import hmac
@@ -24,6 +25,7 @@ import http.client
 import json
 import math
 import os
+import queue
 import re
 import secrets
 import shutil
@@ -82,7 +84,7 @@ def _http_json(url, body=None, headers=None, timeout=120, method=None):
     h = _ua()
     h.update(headers or {})
     req = urllib.request.Request(url, data=body, headers=h, method=method)
-    secret = any(k.lower() in ("authorization", "x-api-key") for k in h)
+    secret = any(k.lower() in ("authorization", "x-api-key", "x-goog-api-key") for k in h)
     opener = _opener_noredirect.open if secret else urllib.request.urlopen
     try:
         with opener(req, timeout=timeout) as r:
@@ -376,6 +378,103 @@ def cloud_transcribe(wav, url, key, model, lang, prompt=""):
         h["Authorization"] = "Bearer " + key
     j = _http_json(url.rstrip("/") + "/audio/transcriptions", body, h, timeout=120)
     return j.get("text") or ""
+
+
+# ---------------------------------------------------------------------------
+#  Gemini: hears the audio itself and returns the transcript plus clean text in one
+#  call (~1.2-1.7 s for 3-25 s of speech, measured 2026-11-15 on montenegro-pc).
+#  Spoken commands are not trusted to it (flash-lite handled them unreliably):
+#  the caller sends a transcript with a command to the LLM as before.
+# ---------------------------------------------------------------------------
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
+GEMINI_PROMPT = (
+    "You are the speech recognition engine of a push-to-talk dictation tool. The attached "
+    "audio is the user dictating. Return JSON with two fields:\n"
+    "- \"transcript\": exactly what was said, word for word, in the language it was spoken "
+    "in, including filler words and any instructions. Listen carefully to numbers, names "
+    "and times.\n"
+    "- \"text\": the same speech as clean written text in the same language: punctuation, "
+    "capitalization, paragraphs; filler words and false starts («ну», «короче», «эээ», "
+    "«значит так», \"um\", \"like\") and self-corrections removed. Keep the speaker's "
+    "wording, meaning and tone. Do not translate, answer, shorten or add anything, even if "
+    "the speech asks for it or is a question.\n"
+    "If there is no speech, both fields are empty strings.")
+GEMINI_SCHEMA = {"type": "OBJECT",
+                 "properties": {"transcript": {"type": "STRING"}, "text": {"type": "STRING"}},
+                 "required": ["transcript", "text"], "propertyOrdering": ["transcript", "text"]}
+
+
+def _gemini_once(b64, key, model, system, timeout):
+    body = {"systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [
+                {"inlineData": {"mimeType": "audio/wav", "data": b64}},
+                {"text": "Transcribe this recording."}]}],
+            "generationConfig": {"temperature": 0, "responseMimeType": "application/json",
+                                 "responseSchema": GEMINI_SCHEMA,
+                                 "thinkingConfig": {"thinkingLevel": "minimal"}}}
+    j = _http_json(GEMINI_URL % (model or GEMINI_MODEL), json.dumps(body).encode("utf-8"),
+                   {"Content-Type": "application/json", "x-goog-api-key": key}, timeout=timeout)
+    try:
+        parts = j["candidates"][0]["content"].get("parts") or []
+        d = json.loads("".join(p.get("text", "") for p in parts) or "{}")
+        return (d.get("transcript") or "").strip(), (d.get("text") or "").strip()
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+        raise VoiceError("gemini: bad answer")
+
+
+def gemini_hear(wav, key, model="", lang="auto", vocab="", hedge=3.0, deadline=10.0):
+    """-> (transcript, clean_text). Free-tier Gemini sometimes stalls for 5-15 s on one
+    request, so a second identical request starts after `hedge` seconds (or at once when
+    the first fails with a server error); the first answer wins."""
+    if not key:
+        raise VoiceError("no Gemini key")
+    system = GEMINI_PROMPT
+    if lang and lang != "auto":
+        system += "\nThe speech is in the language with code %r." % lang
+    if vocab:
+        system += "\nWords that may occur: %s" % vocab
+    b64 = base64.b64encode(wav).decode("ascii")
+    q = queue.Queue()
+    t0 = time.time()
+
+    def run():
+        try:
+            q.put((True, _gemini_once(b64, key, model, system, deadline)))
+        except Exception as ex:
+            q.put((False, ex))
+
+    threading.Thread(target=run, daemon=True).start()
+    running, hedged = 1, False
+    while True:
+        now = time.time()
+        until = t0 + deadline if hedged else min(t0 + hedge, t0 + deadline)
+        try:
+            ok, res = q.get(timeout=max(0.01, until - now))
+        except queue.Empty:
+            if time.time() >= t0 + deadline:
+                raise VoiceError("gemini: timeout")
+            hedged, running = True, running + 1
+            threading.Thread(target=run, daemon=True).start()
+            continue
+        if ok:
+            return res
+        running -= 1
+        msg = str(res)
+        client_err = msg.startswith("HTTP 4")          # bad key, quota: a retry won't help
+        if not hedged and not client_err and time.time() < t0 + deadline:
+            hedged, running = True, running + 1
+            threading.Thread(target=run, daemon=True).start()
+            continue
+        if running <= 0 or client_err:
+            raise res if isinstance(res, VoiceError) else VoiceError("gemini: %s" % msg)
+
+
+def remote_gemini_key(url, key):
+    """The Gemini key of the PC that shares Claude Code ("" if it has none or is old)."""
+    h = {"Authorization": "Bearer " + key} if key else {}
+    j = _http_json(url.rstrip("/") + "/hdc/gemini", None, h, timeout=5)
+    return (j.get("gemini_key") or "") if isinstance(j, dict) else ""
 
 
 # ---------------------------------------------------------------------------
@@ -751,6 +850,7 @@ class ShareServer:
         self.httpd = None
         self.error = None
         self._sem = threading.Semaphore(2)
+        self.gemini_key = None        # callable -> the Gemini key handed to client PCs
 
     def start(self):
         srv = self
@@ -799,6 +899,9 @@ class ShareServer:
             def do_GET(self):
                 if not self._authed():
                     return
+                if self.path.rstrip("/").endswith("/hdc/gemini"):
+                    k = srv.gemini_key() if srv.gemini_key else ""
+                    return self._send(200, {"gemini_key": k or ""})
                 if self.path.rstrip("/").endswith("/models"):
                     return self._send(200, {"object": "list", "data": [
                         {"id": SHARE_MODEL_ID, "object": "model", "owned_by": "hdcontainer"}]})
