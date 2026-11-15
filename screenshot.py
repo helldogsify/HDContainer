@@ -139,6 +139,7 @@ UNDO_MAX = 15
 PAGE = 60                           # history cards shown per "Show more"
 OVERLAY_ALPHA = 1.0
 OVERLAY_TIMEOUT = 120               # s: the mouse is grabbed, so the overlay never stays forever
+GRAB_GRACE = 5                      # s after OVERLAY_TIMEOUT the mouse hook releases itself
 DARK = 45                           # brightness (%) of the frozen screen outside the selection
 
 # key, name, shortcut (a Latin letter, matched by key code)
@@ -314,12 +315,21 @@ class MouseGrab:
         self.accept_injected = False       # the game's own SetCursorPos is not the user's mouse
         self.events = queue.Queue()
         self._tid = 0
+        self._hook_tid = 0
         self._hook = None
+        # the hook's own safety net, independent of tk: past it nothing is swallowed and
+        # the hook thread unhooks itself (the overlay's own timeout is OVERLAY_TIMEOUT)
+        self.deadline = time.time() + OVERLAY_TIMEOUT + GRAB_GRACE
+        self._expired = False
         self._proc = vs._HOOKPROC(self._cb)
 
     def _cb(self, code, wp, lp):
         try:
-            if code == 0:
+            if self._expired or time.time() > self.deadline:
+                if not self._expired:
+                    self._expired = True
+                    vs.user32.PostThreadMessageW(self._hook_tid, vs.WM_QUIT, 0, 0)
+            elif code == 0:
                 ms = MSLLHOOKSTRUCT.from_address(lp)
                 if wp != WM_MOUSEMOVE:
                     self.events.put(("btn", wp, self.x, self.y))
@@ -343,8 +353,8 @@ class MouseGrab:
         ready = threading.Event()
 
         def run():
-            self._tid = vs.kernel32.GetCurrentThreadId()
-            self._hook = vs.user32.SetWindowsHookExW(14, self._proc, vs.kernel32.GetModuleHandleW(None), 0)
+            self._tid = self._hook_tid = vs.kernel32.GetCurrentThreadId()
+            self._hook =vs.user32.SetWindowsHookExW(14, self._proc, vs.kernel32.GetModuleHandleW(None), 0)
             if not self._hook:
                 self.log("screenshot: mouse hook failed: %d" % ctypes.get_last_error())
             ready.set()
@@ -368,10 +378,8 @@ def grab_screen():
     """Frozen picture of the whole virtual screen + its origin in screen pixels.
     The process is per-monitor DPI aware, so pixels here are physical pixels and
     match GetSystemMetrics / the mouse."""
-    vx, vy, vw, vh = virtual_screen()
-    img = ImageGrab.grab(all_screens=True)
-    if img.size != (vw, vh):            # Pillow and Windows disagree: trust the picture
-        vw, vh = img.size
+    vx, vy, _vw, _vh = virtual_screen()
+    img = ImageGrab.grab(all_screens=True)      # its size wins if Pillow and Windows disagree
     return img.convert("RGB"), (vx, vy)
 
 
@@ -420,6 +428,8 @@ class ScreenshotController:
         self._capture_dlg = None
         self._hist = {}
         self._thumb_jobs = set()
+        self._reserved = set()          # history names given out (see _new_path)
+        self._refresh_due = False       # a debounced history-window refresh is scheduled
         self._io_q = queue.Queue()
         self._ui_q = queue.Queue()      # callables for the tk thread, posted by the worker
         threading.Thread(target=self._io_worker, daemon=True, name="hdc-shot-io").start()
@@ -528,12 +538,12 @@ class ScreenshotController:
     def _on_region(self, img, quiet=False):
         self.capture = None
         path = self._new_path() if self.get("history") else None
-        if path:
-            self._io(lambda: self._write(path, img))
         if self.get("editor") and not quiet:
+            if path:
+                self._io(lambda: self._write(path, img))
             Editor(self, img, path)
         else:
-            self.copy_image(img, path)
+            self.copy_image(img, path)      # writes the history file itself (once)
 
     def _on_cancel(self):
         self.capture = None
@@ -559,9 +569,14 @@ class ScreenshotController:
         base = time.strftime("Screenshot_%Y-%m-%d_%H-%M-%S")
         path = os.path.join(self.dir, base + ".png")
         n = 2
-        while os.path.exists(path):
+        # the file is written later by the worker: names handed out but not on disk yet
+        # are reserved, so two captures within one second do not share a name
+        while os.path.exists(path) or path in self._reserved:
             path = os.path.join(self.dir, "%s_%d.png" % (base, n))
             n += 1
+        self._reserved.add(path)
+        if len(self._reserved) > 200:
+            self._reserved = {p for p in self._reserved if not os.path.exists(p)} | {path}
         return path
 
     def _thumb_path(self, path):
@@ -584,7 +599,7 @@ class ScreenshotController:
         img.save(tmp, "PNG")
         os.replace(tmp, path)
         self._make_thumb(path, img)
-        self._ui_q.put(self._history_refresh)
+        self._ui_q.put(self._history_refresh_soon)
 
     def _make_thumb(self, path, img=None):
         os.makedirs(self.thumb_dir, exist_ok=True)
@@ -642,7 +657,7 @@ class ScreenshotController:
             pass
         if gone:
             self.log("screenshot history: removed %d old files" % gone)
-            self._ui_q.put(self._history_refresh)
+            self._ui_q.put(self._history_refresh_soon)
 
     def delete_file(self, path):
         for p in (path, self._thumb_path(path)):
@@ -742,6 +757,17 @@ class ScreenshotController:
             self.root.after(3100, lambda: btn.winfo_exists() and time.time() - h.get("sure_at", 0) >= 3.0
                             and btn.configure(text=SS("hist_clear")))
 
+    def _history_refresh_soon(self):
+        """tk thread: one refresh for a batch of finished thumbnails / writes."""
+        if self._refresh_due:
+            return
+        self._refresh_due = True
+
+        def run():
+            self._refresh_due = False
+            self._history_refresh()
+        self.root.after(150, run)
+
     def _history_refresh(self):
         win = self.hist_win
         try:
@@ -815,7 +841,7 @@ class ScreenshotController:
                     self._make_thumb(path)
                 finally:
                     self._thumb_jobs.discard(path)
-                    self._ui_q.put(self._history_refresh)
+                    self._ui_q.put(self._history_refresh_soon)
             self._io(job)
         return None
 
@@ -1058,26 +1084,42 @@ class Capture:
     def _pump(self):
         if self.done:
             return
-        if time.time() > self.deadline:
-            self.cancel()
-            return
-        last = None
-        while not self.done:
-            try:
-                ev = self.grab.events.get_nowait()
-            except queue.Empty:
-                break
-            if ev[0] == "move":
-                last = ev
-                continue
-            if last:
+        ok = False
+        try:
+            if time.time() > self.deadline:
+                self.cancel()
+                return
+            last = None
+            while not self.done:
+                try:
+                    ev = self.grab.events.get_nowait()
+                except queue.Empty:
+                    break
+                if ev[0] == "move":
+                    last = ev
+                    continue
+                if last:
+                    self._moved(last)
+                    last = None
+                self._button(ev)
+            if last and not self.done:
                 self._moved(last)
-                last = None
-            self._button(ev)
-        if last and not self.done:
-            self._moved(last)
-        if not self.done:
-            self.top.after(8, self._pump)
+            ok = True
+        except Exception:
+            self.ctl.log("screenshot overlay pump:\n" + traceback.format_exc())
+        finally:
+            # always either the next round or the end: a stopped pump would leave the
+            # mouse grabbed with nothing reading it
+            if not self.done:
+                try:
+                    if ok:
+                        self.top.after(8, self._pump)
+                    else:
+                        self.cancel()
+                except Exception:
+                    self.ctl.log("screenshot overlay stop:\n" + traceback.format_exc())
+                    if self.grab:
+                        self.grab.stop()
 
     def _at(self, ev):
         return _Point(ev[-2] - self.ox, ev[-1] - self.oy)

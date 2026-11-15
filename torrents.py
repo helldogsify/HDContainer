@@ -75,6 +75,7 @@ RESUME_EVERY = 30        # s between resume-data snapshots of active downloads
 LOCK = "running.lock"    # exists while the app runs; left behind = the last exit was not clean
 MARKER = "format2"       # state written by a version with LOCK; older state may hold a stale snapshot
 TICK_MS = 1000
+DELETE_WAIT = 60         # s the session is kept for an unconfirmed delete_files job
 HISTORY_MAX = 200        # finished downloads kept in the history, as many as dictations
 
 # "Maximum speed" lifts libtorrent's conservative connection defaults; rate limits
@@ -108,6 +109,27 @@ def downloads_dir():
 
 def _tid_of(hashes):
     return str(hashes.get_best())
+
+
+def free_save_path(base, name, single_file, taken=()):
+    """save_path for a fresh download that never writes into existing data: `base` when
+    base\\name is free, otherwise a new subfolder `name (2)` (`stem (2)` for a one-file
+    torrent) that holds the download. `taken` = (path, name) pairs already in use."""
+    used = {(os.path.normcase(os.path.abspath(p)), n.lower()) for p, n in taken if p and n}
+
+    def busy(p, n):
+        return os.path.exists(os.path.join(p, n)) or (
+            os.path.normcase(os.path.abspath(p)), n.lower()) in used
+    if not busy(base, name):
+        return base
+    stem = os.path.splitext(name)[0] if single_file else name
+    stem = "".join("_" if c in '<>:"/\\|?*' or ord(c) < 32 else c for c in stem).rstrip(" .") or "download"
+    n = 2
+    while True:
+        cand = os.path.join(base, "%s (%d)" % (stem, n))
+        if not os.path.exists(cand) and not busy(cand, name):
+            return cand
+        n += 1
 
 
 def _fmt_num(x):
@@ -163,7 +185,8 @@ class TorrentController:
         self.dir = os.path.join(local_dir, "torrents")
         os.makedirs(self.dir, exist_ok=True)
         self.ses = None
-        self.items = {}        # tid -> {"name","path","h","done","paused","err","t_force","t_resume"}
+        self._deleting = {}    # tid -> time: remove_torrent(delete_files) not confirmed yet
+        self.items = {}      # tid -> {"name","path","h","done","paused","err","t_force","t_resume"}
         self.order = []
         self.draft = None
         self._popup = None     # {"parent", "sig", "rows"} while the tray menu is open
@@ -228,6 +251,8 @@ class TorrentController:
         """Close the session once nothing is in it: no open ports or DHT traffic at idle."""
         if self.ses is None or any(it["h"] is not None for it in self.items.values()):
             return
+        if self._deleting:             # closing now could cancel the delete_files job
+            return
         box, self.ses = [self.ses], None
 
         def bye():
@@ -266,7 +291,9 @@ class TorrentController:
         """Store a save_resume_data_alert atomically: a torn file would lose all progress."""
         try:
             tid = _tid_of(a.handle.info_hashes())
-            if tid in self.items:
+            it = self.items.get(tid)
+            # a late snapshot of a torrent already stopped (auto-stop) would leave an orphan file
+            if it is not None and it["h"] is not None:
                 tmp = self._p(tid, ".resume.tmp")
                 with open(tmp, "wb") as f:
                     f.write(lt.write_resume_data_buf(a.params))
@@ -338,15 +365,24 @@ class TorrentController:
             self._merge(it, ti)
             self._notice_opened(S("finished") if it["done"] else S("already"), it)
             return
+        save = None
         if it is not None:                 # finished entry kept in the list: start over
             self.items.pop(tid)
             self.order.remove(tid)
+            save = it["path"] or None      # its files are ours: libtorrent rechecks them
         try:
             with open(path, "rb") as src, open(self._p(tid, ".torrent"), "wb") as dst:
                 dst.write(src.read())
         except Exception as ex:
             self.log("torrent copy failed: %r" % ex)
-        it = self._add(ti, self.folder())
+        if save is None:
+            # a fresh download never writes into (and a later "Delete" never removes)
+            # existing data of the same name: it goes into its own "name (2)" folder
+            save = free_save_path(self.folder(), ti.name(), ti.num_files() == 1,
+                                  [(x["path"], x["name"]) for x in self.items.values()])
+            if save != self.folder():
+                self.log("torrent %s: name taken, saving to %s" % (ti.name(), save))
+        it = self._add(ti, save)
         self._save_list()
         self._repopup()
         self._notice_opened(S("started"), it)
@@ -427,6 +463,8 @@ class TorrentController:
         h = it["h"]
         if h is not None and self.ses is not None and h.is_valid():
             self.ses.remove_torrent(h, lt.options_t.delete_files if delete_files else 0)
+            if delete_files:               # the session stays until the files are gone
+                self._deleting[tid] = time.time()
         self._drop_state(tid)
         self._save_list()
         self._maybe_close_session()
@@ -450,6 +488,12 @@ class TorrentController:
             if self.ses is not None:
                 self._alerts()
                 now = time.time()
+                if self._deleting:
+                    for tid, t0 in list(self._deleting.items()):
+                        if now - t0 > DELETE_WAIT:      # no answer: give up waiting
+                            self._deleting.pop(tid, None)
+                    if not self._deleting:
+                        self._maybe_close_session()
                 for it in list(self.items.values()):
                     h = it["h"]
                     if h is None or it["done"] or it["paused"]:
@@ -472,6 +516,9 @@ class TorrentController:
                 pending += 1
             elif isinstance(a, lt.save_resume_data_failed_alert):
                 pending += 1
+            elif isinstance(a, (lt.torrent_deleted_alert, lt.torrent_delete_failed_alert)):
+                if self._delete_done(a):
+                    self._maybe_close_session()
             elif isinstance(a, lt.torrent_finished_alert):
                 self._on_finished(a.handle)
             elif isinstance(a, (lt.torrent_error_alert, lt.file_error_alert)):
@@ -480,6 +527,20 @@ class TorrentController:
                     it["err"] = a.message()
                     self.log("torrent error %s: %s" % (it["name"], it["err"]))
         return pending
+
+    def _delete_done(self, a):
+        """A delete_files job ended (done or failed). True when none is pending any more."""
+        try:
+            tid = _tid_of(a.info_hashes)
+        except Exception:
+            tid = None
+        if isinstance(a, lt.torrent_delete_failed_alert):
+            self.log("torrent files delete failed: %s" % a.message())
+        if tid in self._deleting:
+            self._deleting.pop(tid)
+        elif self._deleting:               # unknown id: the oldest pending one
+            self._deleting.pop(min(self._deleting, key=self._deleting.get))
+        return not self._deleting
 
     def _on_finished(self, h):
         tid = _tid_of(h.info_hashes())
@@ -513,21 +574,26 @@ class TorrentController:
         handled here (no notices, no tk), so it is safe at Windows session end."""
         if self.ses is None:
             return
-        n = 0
-        for it in self.items.values():
+        want = set()                       # info-hashes whose snapshot is still due
+        for tid, it in self.items.items():
             if it["h"] is not None and it["h"].is_valid():
                 it["h"].save_resume_data(lt.torrent_handle.flush_disk_cache)
-                n += 1
+                want.add(tid)
         deadline = time.time() + wait
-        while n > 0 and time.time() < deadline:
+        # a pending delete_files job is waited for too: closing the session cancels it
+        while (want or self._deleting) and time.time() < deadline:
             if self.ses.wait_for_alert(250) is None:
                 continue
             for a in self.ses.pop_alerts():
-                if isinstance(a, lt.save_resume_data_alert):
-                    self._write_resume(a)
-                    n -= 1
-                elif isinstance(a, lt.save_resume_data_failed_alert):
-                    n -= 1
+                if isinstance(a, (lt.save_resume_data_alert, lt.save_resume_data_failed_alert)):
+                    if isinstance(a, lt.save_resume_data_alert):
+                        self._write_resume(a)
+                    try:
+                        want.discard(_tid_of(a.handle.info_hashes()))
+                    except Exception:
+                        pass
+                elif isinstance(a, (lt.torrent_deleted_alert, lt.torrent_delete_failed_alert)):
+                    self._delete_done(a)
 
     def shutdown(self):
         """Quit: snapshot resume data so a restart continues where it stopped."""

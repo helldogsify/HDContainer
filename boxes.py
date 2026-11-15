@@ -22,6 +22,8 @@ import hashlib
 import threading
 import collections
 import configparser
+import uuid
+import jsonstore
 from ctypes import wintypes
 import tkinter as tk
 from tkinter import filedialog
@@ -52,6 +54,7 @@ BSTR = {
     "paste": {"en": "Paste", "ru": "Вставить", "es": "Pegar", "pt": "Colar", "de": "Einfügen", "fr": "Coller", "zh": "粘贴"},
     "open_folder": {"en": "Open box folder", "ru": "Открыть папку ящика", "es": "Abrir la carpeta de la caja", "pt": "Abrir a pasta da caixa", "de": "Box-Ordner öffnen", "fr": "Ouvrir le dossier de la boîte", "zh": "打开收纳盒文件夹"},
     "delete_box": {"en": "Delete box", "ru": "Удалить ящик", "es": "Eliminar caja", "pt": "Excluir caixa", "de": "Box löschen", "fr": "Supprimer la boîte", "zh": "删除收纳盒"},
+    "delete_left": {"en": "Some files could not be moved to the desktop (open in a program?), so the box stays: %s", "ru": "Часть файлов не удалось вернуть на рабочий стол (открыты в программе?), поэтому ящик остаётся: %s", "es": "Algunos archivos no se pudieron mover al escritorio (¿abiertos en un programa?), así que la caja se queda: %s", "pt": "Alguns arquivos não puderam ir para a área de trabalho (abertos em um programa?), então a caixa fica: %s", "de": "Einige Dateien konnten nicht auf den Desktop verschoben werden (in einem Programm geöffnet?), daher bleibt die Box: %s", "fr": "Certains fichiers n’ont pas pu revenir sur le bureau (ouverts dans un programme ?), la boîte reste donc : %s", "zh": "部分文件无法移回桌面（是否在程序中打开？），因此保留收纳盒：%s"},
     "delete_q": {"en": "Delete box “%s”? Its files go back to the desktop.", "ru": "Удалить ящик «%s»? Файлы из него вернутся на рабочий стол.", "es": "¿Eliminar la caja «%s»? Sus archivos vuelven al escritorio.", "pt": "Excluir a caixa “%s”? Os arquivos voltam para a área de trabalho.", "de": "Box „%s“ löschen? Ihre Dateien kommen zurück auf den Desktop.", "fr": "Supprimer la boîte « %s » ? Ses fichiers reviennent sur le bureau.", "zh": "删除收纳盒“%s”？其中的文件会回到桌面。"},
     "delete_q_folder": {"en": "Remove box “%s”? The folder itself stays as it is.", "ru": "Убрать ящик «%s»? Сама папка останется как есть.", "es": "¿Quitar la caja «%s»? La carpeta se queda como está.", "pt": "Remover a caixa “%s”? A pasta continua como está.", "de": "Box „%s“ entfernen? Der Ordner selbst bleibt unverändert.", "fr": "Retirer la boîte « %s » ? Le dossier reste tel quel.", "zh": "移除收纳盒“%s”？文件夹本身保持不变。"},
     "to_desktop": {"en": "Move to the desktop", "ru": "Вынести на рабочий стол", "es": "Mover al escritorio", "pt": "Mover para a área de trabalho", "de": "Auf den Desktop verschieben", "fr": "Déplacer sur le bureau", "zh": "移到桌面"},
@@ -270,6 +273,7 @@ _d(user32.TrackPopupMenu, ctypes.c_int, [VP, UINT, ctypes.c_int, ctypes.c_int, c
 _d(user32.SetForegroundWindow, BOOL, [HWND])
 _d(user32.PostMessageW, BOOL, [HWND, UINT, WPARAM, LPARAM])
 _d(user32.SendMessageW, LRESULT, [HWND, UINT, WPARAM, LPARAM])
+_d(user32.SendMessageTimeoutW, LRESULT, [HWND, UINT, WPARAM, LPARAM, UINT, UINT, ctypes.POINTER(ctypes.c_size_t)])
 _d(user32.GetWindowThreadProcessId, DWORD, [HWND, ctypes.POINTER(DWORD)])
 _d(user32.SetWindowsHookExW, VP, [ctypes.c_int, HOOKPROC, VP, DWORD])
 _d(user32.CallNextHookEx, LRESULT, [VP, ctypes.c_int, WPARAM, LPARAM])
@@ -573,6 +577,7 @@ class IconCache:
 
     def __init__(self):
         self.cache, self.pending = {}, set()
+        self.latest = {}                # (path, size) -> the key of its newest picture
         self.lock = threading.Lock()
         self.q = queue.Queue()
         self.recheck = collections.deque()      # keys shown from disk, to ask the shell when idle
@@ -613,6 +618,10 @@ class IconCache:
 
     def _put(self, key, img):
         with self.lock:
+            old = self.latest.get(key[:2])
+            if old is not None and old != key:
+                self.cache.pop(old, None)
+            self.latest[key[:2]] = key
             self.cache[key] = img
             self.pending.discard(key)
             self.gen += 1
@@ -662,6 +671,19 @@ class IconCache:
                 self._disk_save(key, img)
             self._put(key, img or False)                        # False: no picture, draw a placeholder
 
+    def forget(self, keys):
+        """Drop pictures from memory and disk: the next get() asks the shell."""
+        with self.lock:
+            for k in keys:
+                self.cache.pop(k, None)
+                if self.latest.get(k[:2]) == k:
+                    self.latest.pop(k[:2], None)
+        for k in keys:
+            try:
+                os.remove(self._file(k))
+            except OSError:
+                pass
+
     def _recheck(self, key):
         try:
             img = shell_image(key[0], key[1])
@@ -705,8 +727,9 @@ def safe_name(name):
     return s or "Box"
 
 
-def file_op(func, sources, dest_dir, log):
-    """Move/copy with Explorer's progress, undo and rename-on-collision (worker thread)."""
+def file_op(func, sources, dest_dir, log, wait=False):
+    """Move/copy with Explorer's progress, undo and rename-on-collision (worker thread;
+    wait=True runs it here and returns the result code, 0 = success)."""
     def run():
         ole32.CoInitializeEx(None, 2)
         op = SHFILEOPSTRUCTW()
@@ -717,6 +740,9 @@ def file_op(func, sources, dest_dir, log):
         rc = shell32.SHFileOperationW(ctypes.byref(op))
         if rc:
             log("box file op %d failed: %d" % (func, rc))
+        return rc
+    if wait:
+        return run()
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -882,16 +908,48 @@ def _profile():
     return os.path.normcase(os.environ.get("USERPROFILE") or os.path.expanduser("~")).rstrip("\\/")
 
 
+_KNOWN_FOLDERS = ("{FDD39AD0-238F-46AF-ADB4-6C85480369C7}",    # Documents
+                  "{374DE290-123F-4565-9164-39C4925E467B}",    # Downloads
+                  "{33E28130-4E1E-4676-835A-98395C3BC3BB}",    # Pictures
+                  "{4BD8D571-6D19-48D3-BE97-422220080E43}",    # Music
+                  "{18989B1D-99B5-455B-841C-AB7C74E4DDFC}")    # Videos
+_special_cache = []
+
+
+def _special_folders():
+    """Known folders, OneDrive roots and AppData roots (normcased), looked up once."""
+    if _special_cache:
+        return _special_cache[0]
+    out = []
+    for g in _KNOWN_FOLDERS:
+        p = ctypes.c_wchar_p()
+        try:
+            if shell32.SHGetKnownFolderPath(ctypes.byref(_guid(g)), 0, None, ctypes.byref(p)) == 0 and p.value:
+                out.append(p.value)
+                ole32.CoTaskMemFree(p)
+        except Exception:
+            pass
+    for k in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial", "APPDATA", "LOCALAPPDATA"):
+        if os.environ.get(k):
+            out.append(os.environ[k])
+    res = {os.path.normcase(os.path.abspath(x)).rstrip("\\/") for x in out}
+    _special_cache.append(res)
+    return res
+
+
 def protected_folder(path):
     """Folders a box must never move or copy in, only link to: a drive root, the user's profile
-    (the desktop shows it as an icon of its own) and any folder the desktop itself lives in."""
+    (the desktop shows it as an icon of its own), any folder the desktop itself lives in, the
+    known folders (Documents, Downloads…), OneDrive and AppData, and any folder holding one."""
     if not path:
         return False
     p = os.path.normcase(os.path.abspath(path)).rstrip("\\/")
     if len(p) <= 2 or p == _profile():
         return True
-    desk = os.path.normcase(desktop_dir()).rstrip("\\/")
-    return desk == p or desk.startswith(p + os.sep)
+    for k in {os.path.normcase(desktop_dir()).rstrip("\\/")} | _special_folders():
+        if k == p or k.startswith(p + os.sep):
+            return True
+    return False
 
 
 def desktop_icon_clsid(parse, from_desktop=False, fs=""):
@@ -1388,8 +1446,10 @@ class Box:
         return self.title_h() if (self.d.get("rollup") or self.d.get("collapsed")) else self.rect()[3]
 
     # ---- listing ----
-    def refresh_items(self):
-        folder = self.folder
+    @staticmethod
+    def scan_folder(folder):
+        """(name, path, is_dir, mtime) of the visible entries, None if unreadable.
+        No tk and no Box state: also runs on the scan worker thread."""
         out = []
         try:
             for e in os.scandir(folder):
@@ -1403,6 +1463,26 @@ class Box:
                     continue
         except OSError:
             out = None
+        return out
+
+    def scan_async(self):
+        """Start a background scan; the tick applies the result (scan_done)."""
+        if getattr(self, "_scanning", False) or not self.folder:
+            return
+        self._scanning = True
+        folder, t0 = self.folder, time.time()
+
+        def work():
+            try:
+                self.scan_done = (folder, Box.scan_folder(folder), t0)
+            finally:
+                self._scanning = False
+        threading.Thread(target=work, daemon=True).start()
+
+    def refresh_items(self, scanned=False):
+        if scanned is False:
+            self._sync_scan_t = time.time()     # older background results are stale now
+        out = Box.scan_folder(self.folder) if scanned is False else scanned
         sort = self.d.get("sort", "name")
         if out is not None:
             if sort == "manual":                         # dragged into place; new files go to the end
@@ -1416,10 +1496,11 @@ class Box:
                 out.sort(key=lambda t: (not t[2], t[0].lower()))
         sig = None if out is None else tuple((n, m) for n, _p, _d, m in out)
         if sig != self.sig:
+            picked = {self.items[i][1] for i in self.sel if 0 <= i < len(self.items)}
             self.items = out or []
             self.sig = sig
             self._prefetch_icons()
-            self.sel = {i for i in self.sel if i < len(self.items)}
+            self.sel = {i for i, t in enumerate(self.items) if t[1] in picked}
             if out is not None and "seen" not in self.d:
                 self.d["seen"] = [n for n, *_ in out]
             return True
@@ -1700,6 +1781,13 @@ class Box:
             mdc = gdi32.CreateCompatibleDC(None)
             bits = VP()
             hbm = gdi32.CreateDIBSection(mdc, ctypes.byref(bi), 0, ctypes.byref(bits), None, 0)
+            if not (mdc and hbm and bits):
+                if hbm:
+                    gdi32.DeleteObject(hbm)
+                if mdc:
+                    gdi32.DeleteDC(mdc)
+                self.mgr.log("box draw: no GDI bitmap %dx%d" % (w, h))
+                return
             old = gdi32.SelectObject(mdc, hbm)
             self._dc = (mdc, hbm, old, (w, h), bits)
         mdc, _hbm, _old, _sz, bits = self._dc
@@ -1847,6 +1935,10 @@ class Box:
             elif self.press and self.press.get("mode") == "reorder":     # capture taken away: put things back
                 self.press = None
                 self._end_reorder(commit=False)
+            elif self.press:
+                # title / item / empty press: without this the next hover turned it into
+                # a move (the box followed the cursor) or a drag
+                self.press = None
             return 0
         return None
 
@@ -1866,6 +1958,14 @@ class Box:
         user32.KillTimer(self.hwnd, 2)
         redraw = not self.hovering
         self.hovering = True
+        if self.press and not (wp & 0x0001):                 # MK_LBUTTON gone: the press is over
+            if self.press.get("mode") in ("move", "resize"):
+                self._finish_press()
+            elif self.press.get("mode") == "reorder":
+                self.press = None
+                self._end_reorder(commit=False)
+            else:
+                self.press = None
         pr = self.press
         if pr:
             p = POINT()
@@ -2136,7 +2236,11 @@ def listview_hit(lv, x, y):
             user32.ScreenToClient(lv, ctypes.byref(p))
             info = LVHITTESTINFO(p, 0, -1, 0, 0)
             kernel32.WriteProcessMemory(hp, mem, ctypes.byref(info), size, None)
-            return int(user32.SendMessageW(lv, LVM_HITTEST, 0, mem))
+            # a hung Explorer must not freeze the tk thread: on timeout count it as an icon
+            res = ctypes.c_size_t(0)
+            if not user32.SendMessageTimeoutW(lv, LVM_HITTEST, 0, mem, 0x0002, 300, ctypes.byref(res)):
+                return 0
+            return ctypes.c_ssize_t(res.value).value
         finally:
             kernel32.VirtualFreeEx(hp, mem, 0, 0x8000)
     finally:
@@ -2242,13 +2346,10 @@ class BoxManager:
 
     # ---- persistence ----
     def _load(self):
-        data = None
-        try:
-            with open(self.path, encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            pass
-        if not (isinstance(data, dict) and isinstance(data.get("boxes"), list)):
+        data, st = jsonstore.load(
+            self.path, lambda x: isinstance(x, dict) and isinstance(x.get("boxes"), list), self.log)
+        self._load_broken = st == jsonstore.BROKEN
+        if data is None:
             return {"boxes": [], "style": {}, "box_styles": {}, "opts": {}, "v": DATA_VERSION}
         v = data.get("v", 1)
         data.setdefault("style", {})
@@ -2284,11 +2385,12 @@ class BoxManager:
 
     def save(self):
         self._save_at = 0.0
-        tmp = self.path + ".tmp"
+        if getattr(self, "_load_broken", False):
+            if not self.data.get("boxes"):
+                return      # never replace an unreadable state file with an empty one
+            self._load_broken = False       # the user made new boxes: save them
         try:
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, ensure_ascii=False)
-            os.replace(tmp, self.path)
+            jsonstore.save(self.path, self.data)
         except Exception as ex:
             self.log("boxes save failed: %r" % ex)
 
@@ -2361,19 +2463,28 @@ class BoxManager:
         try:
             self._ensure_windows()
             now = time.time()
+            changed = False
+            for b in self.boxes:                                   # results of background scans
+                res = getattr(b, "scan_done", None)
+                if res is None:
+                    continue
+                b.scan_done = None
+                if res[2] < getattr(b, "_sync_scan_t", 0):
+                    continue
+                if b.hwnd and not b.reorder and res[0] == b.folder and b.refresh_items(scanned=res[1]):
+                    changed = True
+                    if b.rolled():
+                        b.render()
+                    else:
+                        b.mark_seen()
+                        b.animate_to(b.target_h())                 # items came or went: the height follows
+            if changed:
+                self._check_moved_icons()
             if now >= self._scan_at:
                 self._scan_at = now + SCAN_EVERY
-                changed = False
                 for b in self.boxes:
-                    if b.hwnd and not b.reorder and b.refresh_items():
-                        changed = True
-                        if b.rolled():
-                            b.render()
-                        else:
-                            b.mark_seen()
-                            b.animate_to(b.target_h())             # items came or went: the height follows
-                if changed:
-                    self._check_moved_icons()
+                    if b.hwnd and not b.reorder:
+                        b.scan_async()
             if self.icons.dirty:
                 self.icons.dirty = False
                 for b in self.boxes:
@@ -2412,7 +2523,7 @@ class BoxManager:
             if b.hwnd and not user32.IsWindow(b.hwnd):        # Explorer restarted
                 self.by_hwnd.pop(b.hwnd, None)
                 b.hwnd = None
-                b._dc = None
+                b._free_dc()
             if not b.hwnd:
                 b.create(self.host)
 
@@ -2433,11 +2544,16 @@ class BoxManager:
 
     def on_explorer_restart(self):
         self.host = None
+        # L28: the new icon view is visible, so the boxes come back visible too
+        if getattr(self, "hidden", False):
+            self.hidden = False
+            self.data["icons_hidden"] = False
+            self.save_soon()
         for b in self.boxes:
             if b.hwnd and not user32.IsWindow(b.hwnd):
                 self.by_hwnd.pop(b.hwnd, None)
                 b.hwnd = None
-                b._dc = None
+                b._free_dc()
 
     # ---- lining boxes up: even gaps, aligned edges ----
     def _others(self, box):
@@ -2657,7 +2773,8 @@ class BoxManager:
                 if pic:
                     sdi = SHDRAGIMAGE(SIZE(pic.width, pic.height), POINT(pic.width // 2, pic.height // 2),
                                       image_to_hbitmap(pic), 0xFFFFFFFF)
-                    _vcall(helper, 3, HRESULT, [VP, VP], ctypes.byref(sdi), pdo)
+                    if _vcall(helper, 3, HRESULT, [VP, VP], ctypes.byref(sdi), pdo) != 0 and sdi.hbmp:
+                        gdi32.DeleteObject(sdi.hbmp)
             src = DropSource()
             eff = DWORD(0)
             ole32.DoDragDrop(pdo, src.ptr, DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK, ctypes.byref(eff))
@@ -2723,9 +2840,12 @@ class BoxManager:
     def rename_item(self, path):
         old = os.path.basename(path)
         new = self.app._ask_string(B("rename").rstrip("…"), B("file_name"), old)
-        if new and new != old:
+        clean = safe_name(new) if new and new.strip(" .") else ""
+        if clean == "Box" and new.strip() != "Box":
+            clean = ""                                          # nothing usable was typed
+        if clean and clean != old:
             try:
-                os.rename(path, os.path.join(os.path.dirname(path), safe_name(new)))
+                os.rename(path, os.path.join(os.path.dirname(path), clean))
             except OSError as ex:
                 self.log("rename failed: %r" % ex)
             self._scan_at = 0
@@ -2738,6 +2858,7 @@ class BoxManager:
     def box_menu(self, box, x, y):
         menu = user32.CreatePopupMenu()
         subs = []
+        cmd = 0
         try:
             def add(m, cid, text, checked=False):
                 user32.AppendMenuW(m, MF_STRING | (MF_CHECKED if checked else 0), cid, text)
@@ -2797,8 +2918,8 @@ class BoxManager:
         elif cmd == 0x9013:
             targets = {self.moved_target(p) for _n, p, _d, _m in box.items} - {None}    # e.g. a full Recycle Bin
             with self.icons.lock:
-                for k in [k for k in self.icons.cache if os.path.dirname(k[0]) == box.folder or k[0] in targets]:
-                    self.icons.cache.pop(k, None)
+                keys = [k for k in self.icons.cache if os.path.dirname(k[0]) == box.folder or k[0] in targets]
+            self.icons.forget(keys)
             box._layer = None
             box.sig = None
             box.refresh_items()
@@ -2856,7 +2977,7 @@ class BoxManager:
             kernel32.SetFileAttributesW(self.box_root, 0x2 | 0x4)              # hidden + system
             folder = unique_path(self.box_root, safe_name(name))
             os.makedirs(folder, exist_ok=True)
-        d = {"id": "b%x" % int(time.time() * 1000000), "name": name, "dir": folder, "own": own,
+        d = {"id": "b%x" % int(time.time() * 1000000) + "_" + uuid.uuid4().hex[:6], "name": name, "dir": folder, "own": own,
              "rects": {}, "last": rect or self._place_new(at), "rollup": True, "sort": "name"}
         d.update(extra)
         d["rects"][self.sig] = list(d["last"])
@@ -2887,7 +3008,11 @@ class BoxManager:
             return
         box.d["name"] = new
         if box.d.get("own") and box.folder and os.path.isdir(box.folder):
-            dst = unique_path(self.box_root, safe_name(new))
+            want = os.path.join(self.box_root, safe_name(new))
+            if os.path.normcase(want) == os.path.normcase(box.folder):
+                dst = want                                      # same folder, only the case changes
+            else:
+                dst = unique_path(self.box_root, safe_name(new))
             try:
                 os.rename(box.folder, dst)
                 box.d["dir"] = dst
@@ -2903,12 +3028,39 @@ class BoxManager:
         if not self.app._ask_yesno(B("delete_box"), q):
             return
         if box.d.get("own") and box.folder and os.path.isdir(box.folder):
+            # shortcuts of moved standard icons (This PC…) are not moved back: the real
+            # icon returns via _check_moved_icons, a moved copy would be a duplicate
+            links = {os.path.normcase(p) for p in (self.data.get("moved_icons") or {}).values()}
+            srcs = []
             for name in os.listdir(box.folder):
-                try:
-                    shutil.move(os.path.join(box.folder, name), unique_path(self.desktop, name))
-                except OSError as ex:
-                    self.log("return to desktop failed %s: %r" % (name, ex))
+                pth = os.path.join(box.folder, name)
+                if name.lower() == "desktop.ini":
+                    continue
+                if os.path.normcase(pth) in links:
+                    try:
+                        os.remove(pth)
+                        continue
+                    except OSError:
+                        pass
+                srcs.append(pth)
+            if srcs:
+                file_op(FO_MOVE, srcs, self.desktop, self.log, wait=True)
             try:
+                left = [n for n in os.listdir(box.folder) if n.lower() != "desktop.ini"]
+            except OSError:
+                left = []
+            if left:
+                # never drop a box whose folder still holds files: they would sit in a
+                # hidden folder that no box shows
+                self.log("delete box %r kept: %d item(s) could not be moved" % (box.name, len(left)))
+                self.app._info(B("delete_box"), B("delete_left", ", ".join(left[:8])
+                                                   + (" …" if len(left) > 8 else "")))
+                return
+            try:
+                ini = os.path.join(box.folder, "desktop.ini")
+                if os.path.exists(ini):
+                    os.chmod(ini, 0o666)
+                    os.remove(ini)
                 os.rmdir(box.folder)
             except OSError:
                 pass

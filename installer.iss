@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.12.0"
+#define MyAppVersion "1.12.1"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -70,7 +70,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Root: HKCU; Subkey: "Software\Classes\HDContainer.torrent"; ValueType: string; ValueName: ""; ValueData: "Torrent"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\HDContainer.torrent\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExe},0"
 Root: HKCU; Subkey: "Software\Classes\HDContainer.torrent\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" ""%1"""
-Root: HKCU; Subkey: "Software\Classes\.torrent"; ValueType: string; ValueName: ""; ValueData: "HDContainer.torrent"; Flags: uninsdeletevalue
+; the default handler only when .torrent has none (or it is already ours): another torrent
+; client keeps it, HDContainer is then offered under "Open with" (OpenWithProgids)
+Root: HKCU; Subkey: "Software\Classes\.torrent"; ValueType: string; ValueName: ""; ValueData: "HDContainer.torrent"; Flags: uninsdeletevalue; Check: TorrentDefaultFree
 Root: HKCU; Subkey: "Software\Classes\.torrent\OpenWithProgids"; ValueType: none; ValueName: "HDContainer.torrent"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\Applications\{#MyAppExe}\SupportedTypes"; ValueType: string; ValueName: ".torrent"; ValueData: ""; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\Applications\{#MyAppExe}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" ""%1"""
@@ -93,6 +95,8 @@ var
   IsUpgrade: Boolean;
   LegacyPath: String;
   LegacyVer: String;
+  TorrentFreeChecked: Boolean;
+  TorrentFree: Boolean;
 
 // найти прежнюю установку по ключу деинсталляции Inno (AppId + _is1), HKCU/HKLM
 function FindPrev(): Boolean;
@@ -117,6 +121,41 @@ begin
     RegQueryStringValue(HKLM, K, 'DisplayVersion', LegacyVer);
     if LegacyVer = '' then LegacyVer := '?';
   end;
+end;
+
+// True when .torrent has no default handler yet, or the handler is already ours.
+// Read once, before the [Registry] section writes anything.
+function TorrentHandlerFree(RootKey: Integer): Boolean;
+var
+  V: String;
+begin
+  Result := True;
+  if RegQueryStringValue(RootKey, 'Software\Classes\.torrent', '', V) then
+    if (Trim(V) <> '') and (CompareText(Trim(V), 'HDContainer.torrent') <> 0) then
+      Result := False;
+end;
+
+function TorrentDefaultFree(): Boolean;
+var
+  V: String;
+begin
+  if not TorrentFreeChecked then
+  begin
+    TorrentFreeChecked := True;
+    V := '';
+    // ours already in HKCU (an update): keep it; HKCU wins over HKLM anyway
+    if RegQueryStringValue(HKCU, 'Software\Classes\.torrent', '', V) and
+       (CompareText(Trim(V), 'HDContainer.torrent') = 0) then
+    begin
+      TorrentFree := True;
+      Result := True;
+      exit;
+    end;
+    TorrentFree := TorrentHandlerFree(HKCU) and TorrentHandlerFree(HKLM);
+    if TorrentFree and IsWin64 then
+      TorrentFree := TorrentHandlerFree(HKLM64);
+  end;
+  Result := TorrentFree;
 end;
 
 function InitializeSetup(): Boolean;

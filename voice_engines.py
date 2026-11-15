@@ -47,6 +47,16 @@ CREATE_NO_WINDOW = 0x08000000
 
 class VoiceError(Exception):
     """Ошибка с коротким человекочитаемым текстом (показывается в оверлее)."""
+    code = None              # HTTP status, when the error is an HTTP reply
+    retry_after = None       # raw Retry-After header of that reply, if any
+
+
+def _as_dict(j, who):
+    """Provider replies must be JSON objects; anything else is a VoiceError, so the
+    caller's fallbacks still run (an AttributeError would skip them)."""
+    if not isinstance(j, dict):
+        raise VoiceError("%s: unexpected response" % who)
+    return j
 
 
 def _ua():
@@ -102,7 +112,10 @@ def _http_json(url, body=None, headers=None, timeout=120, method=None):
                 else (j.get("error") or j.get("message") or detail)
         except Exception:
             msg = str(e)
-        raise VoiceError("HTTP %d: %s" % (e.code, str(msg)[:200]))
+        err = VoiceError("HTTP %d: %s" % (e.code, str(msg)[:200]))
+        err.code = e.code
+        err.retry_after = (e.headers.get("Retry-After") if e.headers is not None else None)
+        raise err
     except urllib.error.URLError as e:
         raise VoiceError("%s" % (e.reason,))
     except socket.timeout:
@@ -347,10 +360,16 @@ class WhisperLocal:
     def idle_check(self):
         if self.keep:
             return
-        with self._lock:
+        # called on the tk thread: never wait for ensure_server (it holds the lock for
+        # up to 120 s while the server starts); a busy lock means it is in use anyway
+        if not self._lock.acquire(blocking=False):
+            return
+        try:
             if self.alive() and time.time() - self.last_used > self.IDLE_STOP:
                 self.log("whisper-server idle -> stop")
                 self.stop()
+        finally:
+            self._lock.release()
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +395,8 @@ def cloud_transcribe(wav, url, key, model, lang, prompt="", timeout=120):
     h = {"Content-Type": ctype}
     if key:
         h["Authorization"] = "Bearer " + key
-    j = _http_json(url.rstrip("/") + "/audio/transcriptions", body, h, timeout=timeout)
+    j = _as_dict(_http_json(url.rstrip("/") + "/audio/transcriptions", body, h, timeout=timeout),
+                 "stt")
     return j.get("text") or ""
 
 
@@ -683,11 +703,14 @@ class ClaudeCode:
                     d = json.loads(line)
                 except ValueError:
                     continue
+                if not isinstance(d, dict):
+                    continue
                 if d.get("type") == "system" and d.get("subtype") == "init":
                     self.model_used = d.get("model") or ""      # какую модель выбрал CLI
                 elif d.get("type") == "assistant":
-                    for b in (d.get("message") or {}).get("content") or []:
-                        if b.get("type") == "text":
+                    m = d.get("message")
+                    for b in (m.get("content") if isinstance(m, dict) else None) or []:
+                        if isinstance(b, dict) and b.get("type") == "text":
                             last_text = b.get("text") or last_text
                 elif d.get("type") == "result":
                     if d.get("is_error") or d.get("subtype") != "success":
@@ -736,11 +759,13 @@ def anthropic_ask(key, model, system, text, timeout=180):
         # при отказе классификатора сервер сам перезапустит запрос на резервной модели
         headers["anthropic-beta"] = "server-side-fallback-2026-07-01"
         body["fallbacks"] = "default"
-    j = _http_json("https://api.anthropic.com/v1/messages",
-                   json.dumps(body).encode("utf-8"), headers, timeout=timeout)
+    j = _as_dict(_http_json("https://api.anthropic.com/v1/messages",
+                            json.dumps(body).encode("utf-8"), headers, timeout=timeout), "anthropic")
     if j.get("stop_reason") == "refusal":
         raise VoiceError("refused")
-    return "".join(b.get("text", "") for b in j.get("content") or [] if b.get("type") == "text")
+    content = j.get("content") if isinstance(j.get("content"), list) else []
+    return "".join(b.get("text", "") for b in content
+                   if isinstance(b, dict) and b.get("type") == "text")
 
 
 # ---------------------------------------------------------------------------
@@ -815,6 +840,9 @@ class WarmPool:
         return hashlib.sha1(system.encode("utf-8")).hexdigest()[:16]
 
     def _spawn(self, system):
+        if time.time() - getattr(self, "_pruned", 0) > 3600:     # the server may run for weeks
+            self._pruned = time.time()
+            _prune_share_prompts(self.log)
         key = self._hash(system)
         spf = write_prompt_file(os.path.join(scratch_dir(), "share_%s.txt" % key), system)
         r = ClaudeCode(self.get_exe(), self.get_model(), spf, os.path.join(scratch_dir(), "cwd"),
@@ -862,6 +890,21 @@ class WarmPool:
             self._runner = None
 
 
+def _prune_share_prompts(log=None, max_age=24 * 3600):
+    """Each distinct client prompt leaves a share_<hash>.txt in the scratch dir; drop the
+    ones older than a day (a running `claude -p` has read its file at start already)."""
+    n = 0
+    for p in glob.glob(os.path.join(scratch_dir(), "share_*.txt")):
+        try:
+            if time.time() - os.path.getmtime(p) > max_age:
+                os.remove(p)
+                n += 1
+        except OSError:
+            pass
+    if n and log:
+        log("share: removed %d old prompt files" % n)
+
+
 def _msg_text(content):
     if isinstance(content, str):
         return content
@@ -887,11 +930,16 @@ class ShareServer:
             def log_message(self, *a):
                 pass
 
-            def _send(self, code, obj):
+            def _send(self, code, obj, close=False):
                 body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
                 self.send_response(code)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
+                if close:
+                    # early error reply: the request body may be unread, so the
+                    # keep-alive stream is out of sync -> drop the connection
+                    self.send_header("Connection", "close")
+                    self.close_connection = True
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -904,13 +952,14 @@ class ShareServer:
                 if not is_private_ip(self.client_address[0]):
                     # ключ идёт открытым текстом по HTTP — в интернет не выставляемся
                     srv.log("share: refused non-private %s" % self.client_address[0])
-                    self._send(403, {"error": {"message": "only private networks (Tailscale, LAN)"}})
+                    self._send(403, {"error": {"message": "only private networks (Tailscale, LAN)"}},
+                               close=True)
                     return False
                 got =(self.headers.get("Authorization") or "").replace("Bearer ", "", 1).strip()
                 if srv.token and hmac.compare_digest(got.encode(), srv.token.encode()):
                     return True
                 srv.log("share: bad key from %s" % self.client_address[0])
-                self._send(401, {"error": {"message": "bad or missing API key"}})
+                self._send(401, {"error": {"message": "bad or missing API key"}}, close=True)
                 return False
 
             def _json(self):
@@ -925,10 +974,19 @@ class ShareServer:
             def do_GET(self):
                 if not self._authed():
                     return
-                if self.path.rstrip("/").endswith("/hdc/gemini"):
+                path = self.path.rstrip("/")
+                if path.endswith("/hdc/gemini") or path.endswith("/hdc/keys"):
+                    # /hdc/gemini is the old name (older clients ask it), /hdc/keys an alias
+                    ip = self.client_address[0]
                     k = srv.shared_keys() if srv.shared_keys else {}
-                    return self._send(200, {"gemini_key": k.get("gemini") or "",
-                                            "groq_key": k.get("groq") or ""})
+                    k = {n: (k.get(n) or "") for n in ("gemini", "groq")}
+                    given = [n for n in ("gemini", "groq") if k[n]]
+                    if given and not is_key_client(ip):
+                        srv.log("share: keys withheld from %s (not Tailscale/loopback)" % ip)
+                        k = {"gemini": "", "groq": ""}
+                    elif given:
+                        srv.log("share: keys handed to %s: %s" % (ip, ", ".join(given)))
+                    return self._send(200, {"gemini_key": k["gemini"], "groq_key": k["groq"]})
                 if self.path.rstrip("/").endswith("/models"):
                     return self._send(200, {"object": "list", "data": [
                         {"id": SHARE_MODEL_ID, "object": "model", "owned_by": "hdcontainer"}]})
@@ -940,7 +998,7 @@ class ShareServer:
                 try:
                     data = self._json()
                 except ValueError:
-                    return self._send(400, {"error": {"message": "invalid JSON"}})
+                    return self._send(400, {"error": {"message": "invalid JSON"}}, close=True)
                 path = self.path.rstrip("/")
                 msgs = [m for m in (data.get("messages") or []) if isinstance(m, dict)] \
                     if isinstance(data.get("messages"), list) else []
@@ -955,7 +1013,7 @@ class ShareServer:
                 user = next((_msg_text(m.get("content")) for m in reversed(msgs)
                              if m.get("role") == "user"), "")
                 if not user:
-                    return self._send(400, {"error": {"message": "no user message"}})
+                    return self._send(400, {"error": {"message": "no user message"}}, close=True)
                 t0 = time.time()
                 with srv._sem:
                     try:
@@ -980,6 +1038,7 @@ class ShareServer:
             def handle_error(self, request, client_address):
                 pass                  # клиент оборвал keep-alive и т.п.; в exe без консоли stderr нет
 
+        _prune_share_prompts(self.log)
         try:
             self.httpd = Server(("0.0.0.0", self.port), Handler)
             self.httpd.daemon_threads = True
@@ -1017,6 +1076,16 @@ def is_private_ip(ip):
         return ip in ("::1",)
     return (a == 10 or a == 127 or (a == 172 and 16 <= b <= 31) or (a == 192 and b == 168)
             or (a == 100 and 64 <= b <= 127))
+
+
+def is_key_client(ip):
+    """Clients that may receive this PC's Groq / Gemini keys: loopback and Tailscale /
+    CGNAT 100.64/10 (encrypted by Tailscale). LAN clients would get them over plain HTTP."""
+    try:
+        a, b = (int(x) for x in ip.split(".")[:2])
+    except ValueError:
+        return ip == "::1"
+    return a == 127 or (a == 100 and 64 <= b <= 127)
 
 
 def local_addresses():

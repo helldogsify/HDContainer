@@ -677,6 +677,7 @@ class Recorder:
         winmm.waveInStart(h)
         self._opened.set()
         idx = 0
+        reset = False
         try:
             while True:
                 hd = hdrs[idx]
@@ -692,11 +693,16 @@ class Recorder:
                 time.sleep(0.01)
             # reset возвращает все буферы (с тем, что успело записаться) — дочитываем по порядку
             winmm.waveInReset(h)
+            reset = True
             for k in range(self.NBUF):
                 hd = hdrs[(idx + k) % self.NBUF]
                 if hd.dwFlags & WHDR_DONE and hd.dwBytesRecorded:
                     self._consume(bufs[(idx + k) % self.NBUF].raw[:hd.dwBytesRecorded])
         finally:
+            # on an exception the buffers are still queued: reset first, or unprepare
+            # fails (WAVERR_STILLPLAYING) and the driver may write into freed memory
+            if not reset:
+                winmm.waveInReset(h)
             for hd in hdrs:
                 winmm.waveInUnprepareHeader(h, ctypes.byref(hd), hsz)
             winmm.waveInClose(h)
@@ -796,6 +802,9 @@ def _set_bytes(fmt, data):
     if not hmem:
         return False
     p = kernel32.GlobalLock(hmem)
+    if not p:
+        kernel32.GlobalFree(hmem)
+        return False
     ctypes.memmove(p, data, len(data))
     kernel32.GlobalUnlock(hmem)
     if not user32.SetClipboardData(fmt, hmem):

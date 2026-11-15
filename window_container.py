@@ -55,6 +55,7 @@ import ctypes
 from ctypes import wintypes
 import tkinter as tk
 import tkinter.font as tkfont
+import jsonstore
 
 try:                                   # Pillow: аватар из любой картинки + чёткие иконки
     from PIL import Image, ImageDraw, ImageTk
@@ -92,7 +93,7 @@ except Exception:
     screenshot = None
     _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.12.0"
+VERSION = "1.12.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -298,31 +299,38 @@ _SETTINGS = os.path.join(_DIR, "HDContainer_settings.json")
 
 
 def write_json_atomic(path, obj):
-    # сначала во временный файл, потом подмена: обрыв записи (краш, выключение
-    # питания) не оставит пустой/обрезанный файл вместо настроек или контейнеров
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False)
-        f.flush()
+    # temp file + fsync + replace: a crash or power loss never leaves a truncated file
+    jsonstore.save(path, obj)
+
+
+# True while the settings file could not be read and no backup worked: saving then
+# would replace the user's settings (API keys included) with almost nothing
+_SETTINGS_BROKEN = [False]
+
+
+def load_settings(probe=False):
+    """probe=True: a plain read for a side process (--convert), no backup bookkeeping."""
+    if probe:
         try:
-            os.fsync(f.fileno())
+            with open(_SETTINGS, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
         except Exception:
-            pass
-    os.replace(tmp, path)
+            return {}
+    d, st = jsonstore.load(_SETTINGS, lambda x: isinstance(x, dict), log)
+    _SETTINGS_BROKEN[0] = st == jsonstore.BROKEN
+    return d if isinstance(d, dict) else {}
 
 
-def load_settings():
-    try:
-        with open(_SETTINGS, "r", encoding="utf-8") as f:
-            d = json.load(f)
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
-
-
-def save_settings(d):
+def save_settings(d, force=False):
+    if _SETTINGS_BROKEN[0] and not force:
+        # the unreadable file is kept as .broken-<ts>; the first deliberate save
+        # by the user (force=True from the settings window) lifts the block
+        log("save_settings skipped: the settings file was unreadable at start")
+        return
     try:
         write_json_atomic(_SETTINGS, d)
+        _SETTINGS_BROKEN[0] = False
     except Exception as ex:
         log("save_settings failed: %r" % ex)
 
@@ -753,6 +761,9 @@ def _decl(fn, restype, argtypes):
 
 
 _decl(user32.GetAncestor, HWND, [HWND, UINT])
+_decl(user32.ShowWindowAsync, BOOL, [HWND, ctypes.c_int])
+_decl(user32.SendMessageTimeoutW, ctypes.c_ssize_t,
+      [HWND, UINT, ctypes.c_size_t, ctypes.c_ssize_t, UINT, UINT, ctypes.POINTER(ctypes.c_size_t)])
 _decl(user32.GetWindow, HWND, [HWND, UINT])
 _decl(user32.GetWindowLongW, LONG, [HWND, ctypes.c_int])
 _decl(user32.SetWindowLongW, LONG, [HWND, ctypes.c_int, LONG])
@@ -1517,6 +1528,27 @@ def set_autostart(on):
         return False
 
 
+# the tray app's _defer (set in TrayApp.__init__): worker threads hand results to tk
+_DEFER = [None]
+
+
+def remember_folder_async(sig, hwnd):
+    """Resolve the folder of an Explorer window on a worker thread and store it in sig
+    on the tk thread (json dumps of the sigs run there)."""
+    defer = _DEFER[0]
+    if defer is None:
+        path = folder_path_for_hwnd(hwnd)
+        if path:
+            sig["folder"] = path
+        return
+
+    def work():
+        path = folder_path_for_hwnd(hwnd)
+        if path:
+            defer(lambda: sig.setdefault("folder", path))
+    threading.Thread(target=work, daemon=True).start()
+
+
 def folder_path_for_hwnd(hwnd):
     """Путь папки, открытой в окне проводника (через Shell.Application). '' если не вышло."""
     try:
@@ -1612,7 +1644,10 @@ def send_copydata(hwnd, text, kind=1):
     cds.dwData = kind
     cds.cbData = (len(text) + 1) * ctypes.sizeof(wintypes.WCHAR)
     cds.lpData = ctypes.cast(buf, ctypes.c_void_p)
-    user32.SendMessageW(hwnd, WM_COPYDATA, 0, ctypes.addressof(cds))
+    res = ctypes.c_size_t(0)
+    # SMTO_ABORTIFHUNG: a hung main instance must not hang every later launch
+    user32.SendMessageTimeoutW(hwnd, WM_COPYDATA, 0, ctypes.addressof(cds),
+                               0x0002, 5000, ctypes.byref(res))
 
 
 # ---------------------------------------------------------------------------
@@ -1723,7 +1758,7 @@ class Container:
         return changed
 
     # --- членство ---
-    def attach(self, hwnd, host_hwnd, place_rect=None, maximize=False):
+    def attach(self, hwnd, host_hwnd, place_rect=None, maximize=False, sig=None):
         if not user32.IsWindow(hwnd) or hwnd in self.members:
             return False
         # разворачиваем только свёрнутое: SW_RESTORE у окна «на весь экран»
@@ -1750,12 +1785,19 @@ class Container:
         user32.ShowWindow(hwnd, SW_MAXIMIZE if maximize else SW_SHOW)
         user32.SetForegroundWindow(hwnd)
         self.members[hwnd] = m
-        m.sig = self.add_app_sig(hwnd)
+        if sig is not None and any(a is sig for a in self.apps):
+            # the saved entry this window was matched with: update it, never add a
+            # second one (a relaunched window usually has another title)
+            if not sig.get("exe"):
+                sig["exe"] = exe_for_hwnd(hwnd)
+            sig["title"] = m.title
+            self._store_state(sig, hwnd)
+            m.sig = sig
+        else:
+            m.sig = self.add_app_sig(hwnd)
         cls = get_class_name(hwnd)
         if cls in FOLDER_CLASSES and not m.sig.get("folder"):
-            path = folder_path_for_hwnd(hwnd)   # запомнить путь папки для переоткрытия
-            if path:
-                m.sig["folder"] = path
+            remember_folder_async(m.sig, hwnd)  # запомнить путь папки для переоткрытия
         log("ATTACH '%s' <- hwnd=%s cls=%r '%s'" % (
             self.name, hwnd, cls, m.title[:40]))
         return True
@@ -1816,6 +1858,7 @@ class TrayApp:
         self._reassert = []           # повторная установка позиции только что добавленных окон
         self._menu_actions = {}
         self._native_q = []           # действия из нативных колбэков (см. _defer)
+        _DEFER[0] = self._defer
         self._pending_update = None   # (tag, url), выставляется фоновым потоком
         self.settings = load_settings()
         global LANG
@@ -1904,13 +1947,15 @@ class TrayApp:
                 self.root.after(1000, lambda c=_c: self._activate(c))
 
         # сторож: вернёт окна в норму, если нас резко убьют (без перезапуска)
-        self.root.after(1500, self._launch_watchdog)
+        self.root.after(1500, lambda: threading.Thread(
+            target=self._launch_watchdog, daemon=True).start())
         # пункт «Конвертировать в» в меню Проводника: ключи реестра HKCU; после
         # обновления в другую папку или смены языка перезаписываются
         self.root.after(6000, self._apply_convert_menu)
         # подчистить разовую задачу обновления, если осталась после установки
         # (задача не может удалить сама себя, пока выполняется её действие)
-        self.root.after(3000, self._cleanup_update_task)
+        self.root.after(3000, lambda: threading.Thread(
+            target=self._cleanup_update_task, daemon=True).start())
 
         # внешний WM_CLOSE (напр. при обновлении) -> штатное завершение,
         # которое снимает владение со всех окон (а не убивает их)
@@ -1955,6 +2000,11 @@ class TrayApp:
                 self.torrents.end_session()
             except Exception as ex:
                 log("torrents end_session failed: %r" % ex)
+        if msg == WM_ENDSESSION and wparam:
+            try:
+                self._release_all_at_session_end()
+            except Exception as ex:
+                log("release at session end failed: %r" % ex)
         if msg == WM_ENDSESSION and wparam and getattr(self, "boxes", None) is not None:
             try:
                 self.boxes.save()
@@ -1987,17 +2037,33 @@ class TrayApp:
         self._native_q.append(fn)
 
     def _drain_native(self):
+        # re-arm first: an item that opens a modal dialog runs a nested event loop,
+        # and the queue keeps draining inside it (tray clicks, WM_COPYDATA, recovery)
+        self.root.after(30, self._drain_native)
         while self._native_q:
             fn = self._native_q.pop(0)
             try:
                 fn()
             except Exception:
                 log("deferred call failed:\n" + traceback.format_exc())
-        self.root.after(30, self._drain_native)
 
     def _activate_by_name(self, name):
         c = next((x for x in self.containers if x.name == name), None)
-        if c:
+        if c and c.active:
+            # the shortcut promises to raise the container: restore it and its windows
+            self._set_current(c)
+            host = c.host_hwnd
+            if host and user32.IsIconic(host):
+                user32.ShowWindow(host, SW_RESTORE)
+            self._show_group(c)
+            target = c.last_fg if c.last_fg in c.members else 0
+            if not target or not user32.IsWindowVisible(target):
+                target = next((h for h, _t in self._enum_windows() if h in c.members), 0)
+            if target:
+                if user32.IsIconic(target):
+                    user32.ShowWindow(target, SW_RESTORE)
+                user32.SetForegroundWindow(target)
+        elif c:
             self._activate(c)
         else:
             log("activate_by_name: no container %r" % name)
@@ -2433,7 +2499,7 @@ class TrayApp:
                 continue
             if want_title and want_title[:24] in title.lower():
                 return hwnd
-            if best is None and not strict:
+            if best is None and not strict and base:
                 best = hwnd
         return best
 
@@ -2519,7 +2585,8 @@ class TrayApp:
             user32.SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
                                 | SWP_NOOWNERZORDER)
-        if placed:
+        fg = user32.GetForegroundWindow()
+        if placed and (not fg or fg == c.host_hwnd or fg in c.members):
             user32.SetForegroundWindow(placed[0])
 
     def _reflow(self, c):
@@ -2554,9 +2621,12 @@ class TrayApp:
     # ------- автообновление -------
     def _update_tick(self):
         # периодическая проверка релизов (раз в 3 часа), пока включено в настройках
-        if self.settings.get("autoupdate", True):
-            self._check_update_bg(False)
         self.root.after(3 * 60 * 60 * 1000, self._update_tick)
+        try:
+            if self.settings.get("autoupdate", True):
+                self._check_update_bg(False)
+        except Exception:
+            log("update tick failed:\n" + traceback.format_exc())
 
     def _check_update_bg(self, verbose):
         def worker():
@@ -2569,15 +2639,36 @@ class TrayApp:
                 self._pending_update = ("__uptodate__", None, None, True)
         threading.Thread(target=worker, daemon=True).start()
 
+    def _update_busy(self):
+        return getattr(self, "_update_dialog_open", False) or getattr(self, "_updating", False)
+
     def _handle_pending_update(self, upd):
         tag, url, sha, verbose = upd
-        if tag == "__uptodate__":
-            self._info(T("update_title"), T("up_to_date"))
-            return
-        if not self._ask_yesno(T("update_title"), T("update_available", tag)):
+        if self._update_busy():
+            return                  # a dialog or a download for an update is already there
+        if not verbose:
+            # a background check never takes the focus from a fullscreen game or video:
+            # the topmost dialog would minimise it. Ask again a minute later.
+            fs = False
+            try:
+                fs = screenshot is not None and screenshot.foreground_fullscreen()
+            except Exception:
+                pass
+            if fs:
+                self.root.after(60 * 1000, lambda: self._handle_pending_update(upd))
+                return
+        self._update_dialog_open = True
+        try:
+            if tag == "__uptodate__":
+                self._info(T("update_title"), T("up_to_date"))
+                return
+            yes = self._ask_yesno(T("update_title"), T("update_available", tag))
+        finally:
+            self._update_dialog_open = False
+        if not yes:
             if not verbose:
                 # «Нет» = пропустить ЭТУ версию, а не спрашивать каждые 3 часа
-                self._set_setting("skip_update", tag)
+                self._set_setting("skip_update", tag, user=True)
             return
         if is_installed_copy():
             self._do_update(url, sha)
@@ -2594,6 +2685,7 @@ class TrayApp:
         # Скачанное сверяем с SHA-256 из API релиза: без этого любой подменённый
         # файл (прокси с «доверенным» корневым сертификатом, ошибка сервера,
         # обрыв на границе блока) запускался бы тихо с /VERYSILENT.
+        self._updating = True
         win = self._dialog(T("update_title"), 440, 184)
         status = tk.Label(win, text=T("updating"), bg=COL_SURFACE, fg=COL_TEXT,
                           font=FONT, justify="left", wraplength=400)
@@ -2603,7 +2695,7 @@ class TrayApp:
         bar = track.create_rectangle(0, 0, 0, 10, fill=COL_ACCENT, outline="")
         pct = tk.Label(win, text="", bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM)
         pct.pack(anchor="e", padx=20, pady=(6, 0))
-        st = {"done": False}
+        st = {"done": False, "marquee": False}
 
         def set_bar(frac):
             if not win.winfo_exists():
@@ -2612,6 +2704,11 @@ class TrayApp:
             frac = max(0.0, min(1.0, frac))
             track.coords(bar, 0, 0, int(w * frac), 10)
             pct.configure(text="%d%%" % int(frac * 100))
+
+        def start_marquee():                    # once, however many download retries
+            if not st["marquee"]:
+                st["marquee"] = True
+                marquee(0.0)
 
         def marquee(pos):                       # неизвестен размер -> бегущая полоса
             if st["done"] or not win.winfo_exists():
@@ -2624,6 +2721,7 @@ class TrayApp:
 
         def fail():
             st["done"] = True
+            self._updating = False
             try:
                 win.destroy()
             except Exception:
@@ -2644,6 +2742,7 @@ class TrayApp:
             if self._launch_updater(dst):
                 self.root.after(700, self._quit)
             else:
+                self._updating = False
                 try:
                     win.destroy()
                 except Exception:
@@ -2669,7 +2768,7 @@ class TrayApp:
                     with urllib.request.urlopen(req, timeout=90, context=ctx) as r:
                         total = int(r.getheader("Content-Length") or 0)
                         if total <= 0:
-                            self._defer(lambda: marquee(0.0))
+                            self._defer(start_marquee)
                         got, shown = 0, -1
                         with open(dst, "wb") as f:
                             while True:
@@ -2749,14 +2848,13 @@ class TrayApp:
             log("updater task did not start")
         except Exception as ex:
             log("schtasks updater failed: %r" % ex)
-        # запасной путь (если Планировщик отключён): невидимый wscript напрямую
+        # No direct wscript fallback: a child of this process dies with it (kill-on-close
+        # job, see above), so the app would quit with nothing installed. False = the
+        # caller opens the release page for a manual update instead.
         try:
-            subprocess.Popen(["wscript.exe", vbs],
-                             creationflags=CREATE_NO_WINDOW | 0x00000008 | 0x00000200,
-                             close_fds=True)
-            return True
-        except Exception as ex:
-            log("detached updater failed: %r" % ex)
+            os.remove(vbs)
+        except Exception:
+            pass
         return False
 
     def _cleanup_update_task(self):
@@ -2782,7 +2880,7 @@ class TrayApp:
         used = set()
         for sig in list(c.apps):
             hw = self._find_match(sig, used)
-            if hw and c.attach(hw, host, sig.get("rect"), sig.get("max")):
+            if hw and c.attach(hw, host, sig.get("rect"), sig.get("max"), sig=sig):
                 used.add(hw)
                 self._queue_reassert(hw, sig)
             else:
@@ -3181,7 +3279,11 @@ class TrayApp:
                   and win.bind("<FocusOut>", _close_outside))
 
     def _create_container(self):
-        c = Container(T("container_n", len(self.containers) + 1))
+        names = {x.name for x in self.containers}
+        n = len(self.containers) + 1
+        while T("container_n", n) in names:
+            n += 1
+        c = Container(T("container_n", n))
         self._edit_container(c)            # is_new определяется по отсутствию в списке
 
     # единое окно: имя, иконка, цвет, окна (добавить/убрать), раскладка, сброс
@@ -3190,7 +3292,19 @@ class TrayApp:
 
     def _edit_container(self, c):
         is_new = c not in self.containers
+        editors = self.__dict__.setdefault("_editors", {})
+        old = editors.get(id(c))
+        if old is not None:
+            try:
+                if old.winfo_exists():
+                    old.lift()
+                    old.focus_force()
+                    return
+            except Exception:
+                pass
         win = self._dialog(T("edit_container"), 940, 700)
+        editors[id(c)] = win
+        win.bind("<Destroy>", lambda e: e.widget is win and editors.pop(id(c), None))
         draft = {"icon": c.icon, "layout": c.layout}
         color_state = {"v": c.color}
         cur_members = [h for h in c.members if user32.IsWindow(h)] if c.active else []
@@ -3364,8 +3478,9 @@ class TrayApp:
         grid = tk.Frame(canvas, bg=COL_SURFACE)
         canvas.create_window((0, 0), window=grid, anchor="nw")
         grid.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind_all("<MouseWheel>",
-                        lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        # bound on the editor window itself (its children carry it in their bindtags):
+        # bind_all scrolled this editor from every window of the app
+        win.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
 
         wa = work_area()
         aspect = wa[2] / max(wa[3], 1)
@@ -3443,10 +3558,6 @@ class TrayApp:
 
         def close():
             try:
-                canvas.unbind_all("<MouseWheel>")
-            except Exception:
-                pass
-            try:
                 win.destroy()
             except Exception:
                 pass
@@ -3471,6 +3582,9 @@ class TrayApp:
             self.root.after(1, lambda: self._delete(c))
 
         def do_save():
+            if not is_new and c not in self.containers:
+                close()             # deleted while this editor was open
+                return
             nm = name_var.get().strip() or c.name
             c.name, c.title = nm, nm
             if draft["icon"] != c.icon:
@@ -3491,6 +3605,9 @@ class TrayApp:
                     user32.SetWindowTextW(c.host_hwnd, nm)
                 for h in list(c.members):
                     if h not in want:
+                        m = c.members.get(h)
+                        if m is not None and getattr(m, "sig", None) is not None:
+                            c.apps = [a for a in c.apps if a is not m.sig]
                         c.detach(h)
                 for h in want:
                     if h not in c.members and user32.IsWindow(h):
@@ -3712,7 +3829,7 @@ class TrayApp:
         # снять нельзя, поэтому снимаем, пока с контейнером работают (окно в фокусе),
         # не чаще раза в 4с — к моменту сворачивания картинка уже свежая
         now = time.time()
-        if now - c.snap_t < 4.0 or not dwmapi:
+        if now - c.snap_t < 4.0 or not dwmapi or getattr(c, "_snap_busy", False):
             return
         if user32.GetForegroundWindow() not in c.members:
             return
@@ -3733,14 +3850,32 @@ class TrayApp:
         t = max(vy, min(b[1] for b in boxes))
         rr = min(vx + vw, max(b[2] for b in boxes))
         bb = min(vy + vh, max(b[3] for b in boxes))
-        snap = snapshot_group(order, (l, t, rr - l, bb - t))
-        if snap:
+        area = (l, t, rr - l, bb - t)
+
+        def apply(snap):
+            c._snap_busy = False
+            if not snap:
+                return
+            if not (c.active and c.host_hwnd):
+                gdi32.DeleteObject(snap[0])
+                return
             self._drop_snap(c)
             c.snap, c.snap_t = snap, now
             try:
                 dwmapi.DwmInvalidateIconicBitmaps(c.host_hwnd)
             except Exception:
                 pass
+
+        def work():
+            snap = None
+            try:
+                snap = snapshot_group(order, area)
+            except Exception as ex:
+                log("snapshot failed: %r" % ex)
+            self._defer(lambda: apply(snap))
+
+        c._snap_busy = True
+        threading.Thread(target=work, daemon=True).start()
 
     def _queue_reassert(self, hwnd, sig):
         rect = sig.get("rect")
@@ -3828,6 +3963,14 @@ class TrayApp:
     #  Поллинг: чистка закрытых окон + отложенный подхват
     # ===================================================================
     def _poll(self):
+        try:
+            self._poll_once()
+        except Exception:
+            log("poll failed:\n" + traceback.format_exc())
+        finally:
+            self.root.after(700, self._poll)
+
+    def _poll_once(self):
         if self._pending_update:
             upd = self._pending_update
             self._pending_update = None
@@ -3848,13 +3991,13 @@ class TrayApp:
                 if not c.active:
                     continue
                 used = self._all_member_hwnds()
+                p["left"] -= 1          # before attach: an entry that raises still runs out
                 hw = self._find_match(p["sig"], used)
                 if hw and c.attach(hw, c.host_hwnd, p["sig"].get("rect"),
-                                   p["sig"].get("max")):
+                                   p["sig"].get("max"), sig=p["sig"]):
                     self._queue_reassert(hw, p["sig"])
                     changed = True
                     continue
-                p["left"] -= 1
                 if p["left"] > 0:
                     still.append(p)
                 else:
@@ -3877,7 +4020,6 @@ class TrayApp:
                         dirty = c.sync_app_rects() or dirty
                 if dirty:
                     self._save_containers()
-        self.root.after(700, self._poll)
 
     # ===================================================================
     #  Хранилище контейнеров
@@ -3890,27 +4032,23 @@ class TrayApp:
         self._save_recovery()
 
     def _save_containers(self):
+        if getattr(self, "_store_broken", False):
+            if not self.containers:
+                return      # never replace an unreadable store with an empty list
+            self._store_broken = False      # the user made new containers: save them
         try:
             write_json_atomic(_STORE, [c.to_dict() for c in self.containers])
         except Exception as ex:
             log("save_containers failed: %r" % ex)
 
     def _load_containers(self):
-        if not os.path.exists(_STORE):
+        # unreadable file: a .broken-<ts> copy is kept, the last good .bak is tried,
+        # and _save_containers refuses to overwrite it with an empty list
+        data, st = jsonstore.load(_STORE, lambda x: isinstance(x, list), log)
+        if st == jsonstore.BROKEN:
+            self._store_broken = True
             return
-        try:
-            with open(_STORE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if not isinstance(data, list):
-                raise ValueError("store is not a list")
-        except Exception as ex:
-            # файл не читается: НЕ даём следующему _save() затереть его пустым
-            # списком — откладываем копию, пользователь сможет восстановить вручную
-            log("load_containers failed: %r" % ex)
-            try:
-                shutil.copy2(_STORE, _STORE + ".broken")
-            except Exception:
-                pass
+        if data is None:
             return
         for d in data:
             try:
@@ -3928,6 +4066,29 @@ class TrayApp:
     # ===================================================================
     #  Страховка от потери окон (orphan recovery)
     # ===================================================================
+    def _release_all_at_session_end(self):
+        """Called from the window procedure (no tk). Owners go back to the originals,
+        windows hidden by a group roll-up are shown again, then the stores are written."""
+        for c in self.containers:
+            if not c.active:
+                continue
+            for m in list(c.members.values()):
+                h = m.hwnd
+                if not user32.IsWindow(h):
+                    continue
+                try:
+                    set_owner(h, m.o_owner)
+                    if m.group_hidden:
+                        user32.ShowWindowAsync(h, SW_SHOWNA)
+                        m.group_hidden = False
+                except Exception:
+                    pass
+        self._save_containers()
+        try:                         # empty snapshot = clean exit for the watchdog
+            write_json_atomic(_RECOVERY, {"containers": []})
+        except Exception:
+            pass
+
     def _save_recovery(self):
         # снимок активных контейнеров и их окон. Пишется при каждом изменении;
         # при штатном выходе перетирается пустым -> наличие записей = БЫЛ КРАШ.
@@ -4117,9 +4278,9 @@ class TrayApp:
         self.root.wait_window(win)
         return res["v"]
 
-    def _set_setting(self, key, v):
+    def _set_setting(self, key, v, user=False):
         self.settings[key] = v
-        save_settings(self.settings)
+        save_settings(self.settings, force=user)
 
     def _setting_check(self, parent, text, val, setter, pad):
         row = tk.Frame(parent, bg=COL_SURFACE)
@@ -4158,7 +4319,7 @@ class TrayApp:
             global LANG
             LANG = code
             self.settings["lang"] = code
-            save_settings(self.settings)
+            save_settings(self.settings, force=True)
             try:
                 win.destroy()
             except Exception:
@@ -4365,6 +4526,7 @@ class TrayApp:
 
     def _settings_save(self):
         d = getattr(self, "_gen_draft", None) or {}
+        _SETTINGS_BROKEN[0] = False          # a deliberate Save by the user may write the file
         try:
             if "autostart" in d and d["autostart"] != autostart_enabled():
                 set_autostart(d["autostart"])
@@ -4373,16 +4535,20 @@ class TrayApp:
             if "convert_menu" in d:
                 self._set_setting("convert_menu", d["convert_menu"])
                 self._apply_convert_menu()
-            if self.voice is not None:
-                self.voice.commit()
-            if self.torrents is not None:
-                self.torrents.commit()
-            if self.boxes is not None:
-                self.boxes.commit()
-            if self.screenshot is not None:
-                self.screenshot.commit()
         except Exception:
             log("settings save failed:\n" + traceback.format_exc())
+        # each module on its own: one failing commit must not leave the others' drafts stale
+        for mod in (self.voice, self.torrents, self.boxes, self.screenshot):
+            if mod is None:
+                continue
+            try:
+                mod.commit()
+            except Exception:
+                log("settings save failed (%s):\n%s" % (type(mod).__name__, traceback.format_exc()))
+                try:
+                    mod.discard()
+                except Exception:
+                    pass
         self._settings_close_win()
 
     def _settings_cancel(self):
@@ -4635,7 +4801,7 @@ def main():
         i = args.index("--convert")
         if i + 2 < len(args):
             global LANG
-            LANG = load_settings().get("lang") or detect_lang()
+            LANG = load_settings(probe=True).get("lang") or detect_lang()
             convert.LANG_GET = lambda: LANG
             convert.LOG = log
             convert.run_cli(args[i + 1], args[i + 2])

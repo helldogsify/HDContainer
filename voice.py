@@ -2,7 +2,7 @@
 """
 Голосовой ввод HDContainer.
 
-Держишь горячую клавишу (по умолчанию Shift + Num +) — над часами появляется
+Держишь горячую клавишу (по умолчанию левый Alt) — над часами появляется
 анимированный индикатор, HDContainer слушает микрофон. Отпустил — речь
 распознаётся (Whisper) и отдаётся LLM:
 
@@ -43,6 +43,22 @@ HOTKEY_ID = 0xB0CE
 # клавиши, которые можно назначить горячими БЕЗ модификатора: F1-F24, Pause,
 # ScrollLock, PrtSc (объявлено вне класса: внутри него `set` — метод настроек)
 PLAIN_HOTKEYS_OK = frozenset(range(0x70, 0x88)) | {0x13, 0x91, 0x2C}
+
+
+def vocab_cut(text, budget=800):
+    """Shorten the STT vocabulary for Groq (Whisper prompt limit 224 tokens): ~800
+    Latin chars; a non-ASCII char counts double (Cyrillic costs more tokens). Cuts at
+    a word / comma boundary."""
+    t = (text or "").strip()
+    used = 0
+    for i, ch in enumerate(t):
+        used += 1 if ord(ch) < 128 else 2
+        if used > budget:
+            cut = t[:i]
+            sp = max(cut.rfind(" "), cut.rfind(","))
+            return (cut[:sp] if sp > 0 else cut).rstrip(" ,")
+    return t
+
 
 # ---------------------------------------------------------------------------
 #  Строки (7 языков, как в основном приложении)
@@ -131,7 +147,7 @@ VSTR = {
     "vocab": {"en": "Vocabulary hint (names, terms)", "ru": "Подсказка словаря (имена, термины)", "es": "Vocabulario (nombres, términos)", "pt": "Vocabulário (nomes, termos)", "de": "Vokabular-Hinweis (Namen, Begriffe)", "fr": "Vocabulaire (noms, termes)", "zh": "词汇提示（人名、术语）"},
     "gm_on": {"en": "Fast mode: Groq, Gemini", "ru": "Быстрый режим: Groq, Gemini", "es": "Modo rápido: Groq, Gemini", "pt": "Modo rápido: Groq, Gemini", "de": "Schnellmodus: Groq, Gemini", "fr": "Mode rapide : Groq, Gemini", "zh": "快速模式：Groq、Gemini"},
     "gq_key": {"en": "Groq API key (empty = from the Claude PC)", "ru": "Ключ Groq API (пусто — с ПК с Claude)", "es": "Clave de Groq (vacío = del PC con Claude)", "pt": "Chave do Groq (vazio = do PC com Claude)", "de": "Groq-Schlüssel (leer = vom Claude-PC)", "fr": "Clé Groq (vide = du PC Claude)", "zh": "Groq 密钥（留空 = 用 Claude 电脑的）"},
-    "gm_note": {"en": "Groq recognizes the speech and processes the text in ~1-2 s, Gemini is its backup; the voice goes to these services. If both fail, the recognition and LLM below work.", "ru": "Groq распознаёт речь и обрабатывает текст за 1–2 с, Gemini — его запасной; голос уходит в эти сервисы. Если оба не ответили, работают распознавание и LLM ниже.", "es": "Gemini escucha y escribe el texto en ~1,5 s; la voz va a Google. Comandos y ediciones siguen yendo al LLM. Si Gemini falla, funciona el reconocimiento de abajo.", "pt": "O Gemini ouve e escreve o texto em ~1,5 s; a voz vai para o Google. Comandos e edições continuam indo ao LLM. Se o Gemini falhar, funciona o reconhecimento abaixo.", "de": "Gemini hört zu und schreibt den Text in ~1,5 s; die Stimme geht an Google. Befehle und Bearbeitungen gehen weiter an das LLM. Fällt Gemini aus, arbeitet die Erkennung unten.", "fr": "Gemini écoute et écrit le texte en ~1,5 s ; la voix part chez Google. Commandes et modifications vont toujours au LLM. Si Gemini échoue, la reconnaissance ci-dessous prend le relais.", "zh": "Gemini 约 1.5 秒听写成文；语音会发送到 Google。命令和编辑仍交给下方 LLM。Gemini 失败时使用下方识别。"},
+    "gm_note": {"en": "Groq recognizes the speech and processes the text in ~1-2 s, Gemini is its backup; the voice and, when editing, the selected text go to these services. If both fail, the recognition and LLM below work.", "ru": "Groq распознаёт речь и обрабатывает текст за 1–2 с, Gemini — его запасной; голос и выделенный при правке текст уходят в эти сервисы. Если оба не ответили, работают распознавание и LLM ниже.", "es": "Groq reconoce la voz y procesa el texto en ~1-2 s; Gemini es su respaldo. La voz y, al editar, el texto seleccionado van a estos servicios. Si ambos fallan, funcionan el reconocimiento y el LLM de abajo.", "pt": "O Groq reconhece a fala e processa o texto em ~1-2 s; o Gemini é o reserva. A voz e, ao editar, o texto selecionado vão para esses serviços. Se ambos falharem, funcionam o reconhecimento e o LLM abaixo.", "de": "Groq erkennt die Sprache und bearbeitet den Text in ~1-2 s, Gemini ist die Reserve. Die Stimme und beim Bearbeiten der markierte Text gehen an diese Dienste. Fallen beide aus, arbeiten Erkennung und LLM unten.", "fr": "Groq reconnaît la voix et traite le texte en ~1-2 s, Gemini sert de secours. La voix et, en édition, le texte sélectionné partent vers ces services. Si les deux échouent, la reconnaissance et le LLM ci-dessous prennent le relais.", "zh": "Groq 约 1–2 秒识别语音并处理文本，Gemini 作为备用；语音以及编辑时选中的文本会发送到这些服务。两者都失败时使用下方的识别和 LLM。"},
     "gm_key": {"en": "Gemini API key (empty = from the Claude PC)", "ru": "Ключ Gemini API (пусто — с ПК с Claude)", "es": "Clave de Gemini (vacío = del PC con Claude)", "pt": "Chave do Gemini (vazio = do PC com Claude)", "de": "Gemini-Schlüssel (leer = vom Claude-PC)", "fr": "Clé Gemini (vide = du PC Claude)", "zh": "Gemini 密钥（留空 = 用 Claude 电脑的）"},
     "gm_model": {"en": "Gemini model", "ru": "Модель Gemini", "es": "Modelo de Gemini", "pt": "Modelo do Gemini", "de": "Gemini-Modell", "fr": "Modèle Gemini", "zh": "Gemini 模型"},
     "sec_llm": {"en": "Text processing (LLM)", "ru": "Обработка текста (LLM)", "es": "Procesamiento de texto (LLM)", "pt": "Processamento de texto (LLM)", "de": "Textverarbeitung (LLM)", "fr": "Traitement du texte (LLM)", "zh": "文本处理（LLM）"},
@@ -456,7 +472,10 @@ class Overlay:
         if getattr(self, "_clicked", False):
             self._clicked = False
             self.hide(0)
-            (getattr(self, "_click_fn", None) or self.on_click)()
+            try:
+                (getattr(self, "_click_fn", None) or self.on_click)()
+            except Exception as ex:          # the tick below must still reschedule
+                self.log("overlay click action failed: %r" % ex)
         now = time.time()
         if self.hide_at and now >= self.hide_at:
             self.target_alpha = 0.0
@@ -781,8 +800,15 @@ class VoiceController:
 
     # ---- настройки ----
     def get(self, k):
+        """Draft-aware: for the settings window and its test button only. Runtime code
+        (dictation, hotkey, share server) uses get_live, so unsaved edits do nothing."""
         src = self.draft if self.draft is not None else self.app.settings.get("voice", {})
         v = src.get(k, DEFAULTS[k])
+        return vs.unprotect(v) if k in SECRET_KEYS else v
+
+    def get_live(self, k):
+        """Saved setting, ignoring an open settings draft."""
+        v = self.app.settings.get("voice", {}).get(k, DEFAULTS[k])
         return vs.unprotect(v) if k in SECRET_KEYS else v
 
     def set(self, k, v, save=True):
@@ -794,6 +820,16 @@ class VoiceController:
         d[k] = v
         if save:
             self.app._set_setting("voice", d)
+
+    def set_live(self, k, v):
+        """Write a saved setting from runtime code (tk thread), even while the settings
+        window is open; an open draft gets the same value so Save does not undo it."""
+        v = vs.protect(v) if (k in SECRET_KEYS and v) else v
+        d = self.app.settings.setdefault("voice", {})
+        d[k] = v
+        self.app._set_setting("voice", d)
+        if self.draft is not None:
+            self.draft[k] = v
 
     # ---- черновик: правки из окна применяются только по «Сохранить» ----
     def begin_edit(self):
@@ -825,17 +861,17 @@ class VoiceController:
     ARM_DELAY = 0.2         # одиночный модификатор: запись стартует, если держат дольше
 
     def register_hotkey(self):
-        self.hook.configure(self.get("hk_mods"), self.get("hk_vk"), self.get("enabled"))
-        self.hook.mask_taps = self.get("mode") == "toggle"
+        self.hook.configure(self.get_live("hk_mods"), self.get_live("hk_vk"), self.get_live("enabled"))
+        self.hook.mask_taps = self.get_live("mode") == "toggle"
         self.hook.arm_delay = self.ARM_DELAY
         self._hk_ok = bool(self.hook._hook)
         self.log("voice hotkey %s (%s) hook=%s" % (
-            vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")), self.get("mode"),
+            vs.hotkey_label(self.get_live("hk_mods"), self.get_live("hk_vk")), self.get_live("mode"),
             "ok" if self._hk_ok else "FAILED"))
         return self._hk_ok
 
     def unregister_hotkey(self):
-        self.hook.configure(self.get("hk_mods"), self.get("hk_vk"), False)
+        self.hook.configure(self.get_live("hk_mods"), self.get_live("hk_vk"), False)
 
     def on_hotkey(self, wparam):
         return False            # RegisterHotKey больше не используется
@@ -861,7 +897,7 @@ class VoiceController:
         if kind in ("captured", "capture_cancel"):
             self._capture_done(ev)
             return
-        toggle = self.get("mode") == "toggle"
+        toggle = self.get_live("mode") == "toggle"
         single = self.hook.modifier_only
         if kind == "press":
             if toggle and not single:
@@ -897,19 +933,19 @@ class VoiceController:
     # ---- проверка готовности ----
     def _setup_problem(self):
         """Короткое описание того, что не настроено (или None)."""
-        if self.get("stt") == "local":
-            if not self.whisper.is_installed(self.get("w_model")):
+        if self.get_live("stt") == "local":
+            if not self.whisper.is_installed(self.get_live("w_model")):
                 return V("o_need_model")
-        elif not self.get("stt_url"):
+        elif not self.get_live("stt_url"):
             return V("o_setup")
-        llm = self.get("llm")
-        if llm == "claude_code" and not ve.find_claude(self.get("cc_path")):
+        llm = self.get_live("llm")
+        if llm == "claude_code" and not ve.find_claude(self.get_live("cc_path")):
             return V("o_need_llm")
-        if llm == "remote" and not (self.get("rm_url") and self.get("rm_key")):
+        if llm == "remote" and not (self.get_live("rm_url") and self.get_live("rm_key")):
             return V("o_need_llm")
-        if llm == "anthropic" and not self.get("an_key"):
+        if llm == "anthropic" and not self.get_live("an_key"):
             return V("o_need_llm")
-        if llm == "openai" and not self.get("oa_url"):
+        if llm == "openai" and not self.get_live("oa_url"):
             return V("o_need_llm")
         return None
 
@@ -922,7 +958,7 @@ class VoiceController:
             return
         fg = vs.user32.GetForegroundWindow()
         s = Session(fg)
-        s.rec = vs.Recorder(self.get("mic"))
+        s.rec = vs.Recorder(self.get_live("mic"))
         if not s.rec.start():
             self.log("voice: mic failed %s" % s.rec.error)
             self.overlay.show("error", V("o_err_mic"), V("o_err_mic_sub"))
@@ -947,51 +983,78 @@ class VoiceController:
     def _gm_key(self):
         """Gemini key for the fast path ("" = fast path off): own key, or the one the
         Claude-sharing PC handed out. Off for 5 min after a quota / key error."""
-        if not self.get("gm_on") or time.time() < getattr(self, "_gm_cool", 0):
+        if not self.get_live("gm_on") or time.time() < getattr(self, "_gm_cool", 0):
             return ""
-        return self.get("gm_key") or (self.get("gm_key_rm") if self.get("llm") == "remote" else "")
+        g = self.get_live
+        return g("gm_key") or (g("gm_key_rm") if g("llm") == "remote" else "")
 
-    def _gq_key(self):
-        """Groq key for the fast path ("" = off): own key or the Claude PC's one."""
-        if not self.get("gm_on") or time.time() < getattr(self, "_gq_cool", 0):
+    def _gq_key(self, use="stt"):
+        """Groq key for the fast path ("" = off): own key or the Claude PC's one.
+        `use` = "stt" or "llm": each has its own cooldown (see _gq_failed)."""
+        g = self.get_live
+        if not g("gm_on") or time.time() < getattr(self, "_gq_cool_" + use, 0):
             return ""
-        return self.get("gq_key") or (self.get("gq_key_rm") if self.get("llm") == "remote" else "")
+        return g("gq_key") or (g("gq_key_rm") if g("llm") == "remote" else "")
+
+    def _gq_failed(self, use, ex):
+        """Cooldown after a Groq error: 429 = honour Retry-After (else 60 s), so a spent
+        quota does not cost failed round-trips on every dictation; another 4xx (bad key,
+        bad request) = 5 min. Network errors and 5xx: none, the next dictation retries."""
+        code = getattr(ex, "code", None)
+        if code == 429:
+            try:
+                wait = min(float(getattr(ex, "retry_after", None) or 60), 24 * 3600)
+            except (TypeError, ValueError):
+                wait = 60
+        elif code is not None and 400 <= code < 500:
+            wait = 300
+        else:
+            return
+        setattr(self, "_gq_cool_" + use, time.time() + max(wait, 1))
 
     def _gm_fetch(self):
-        """Client PC without its own key: ask the Claude-sharing PC for its Gemini key
-        (once per 30 min until it has one)."""
-        if (not self.get("gm_on") or (self.get("gm_key") and self.get("gq_key"))
-                or self.get("llm") != "remote" or not (self.get("rm_url") and self.get("rm_key"))):
+        """Client PC without its own keys: ask the Claude-sharing PC for its Gemini / Groq
+        keys, every 30 min (a key the server no longer gives out is dropped here too).
+        Runs on a worker thread: the result is saved on the tk thread via a "call"."""
+        g = self.get_live
+        if (not g("gm_on") or (g("gm_key") and g("gq_key"))
+                or g("llm") != "remote" or not (g("rm_url") and g("rm_key"))):
             return
         if time.time() < getattr(self, "_gm_fetch_at", 0):
             return
         self._gm_fetch_at = time.time() + 1800
         try:
-            ks = ve.remote_keys(ve.remote_base(self.get("rm_url")), self.get("rm_key"))
+            ks = ve.remote_keys(ve.remote_base(g("rm_url")), g("rm_key"))
         except Exception as ex:
             self.log("voice: key fetch: %s" % ex)
             return
         for name, setting in (("gemini", "gm_key_rm"), ("groq", "gq_key_rm")):
-            k = ks.get(name)
-            if k and k != self.get(setting):
-                self._post("call", fn=lambda st=setting, v=k: self.set(st, v))
-                self.log("voice: %s key received from the Claude PC" % name)
+            k = ks.get(name) or ""
+            if k != (g(setting) or ""):
+                # saved settings, not the draft: Cancel in Settings must not lose it
+                self._post("call", fn=lambda st=setting, v=k: self.set_live(st, v))
+                self.log("voice: %s key %s the Claude PC" % (
+                    name, "received from" if k else "withdrawn by"))
 
     def _prewarm(self, s):
         try:
             self._gm_fetch()
-            if self.get("llm") == "claude_code":
+            # with a Groq key the LLM step goes to Groq first: no `claude -p` up front
+            # (it would be killed unused); _llm starts one only if Groq fails
+            if self.get_live("llm") == "claude_code" and not self._gq_key("llm"):
                 spf = ve.write_prompt_file(os.path.join(ve.scratch_dir(), "system_prompt.txt"),
                                            self._system_prompt())
-                s.runner = ve.ClaudeCode(ve.find_claude(self.get("cc_path")), self.get("cc_model"),
+                s.runner = ve.ClaudeCode(ve.find_claude(self.get_live("cc_path")), self.get_live("cc_model"),
                                          spf, os.path.join(ve.scratch_dir(), "cwd"), self.log)
                 if not s.cancelled:
                     s.runner.start()
-            elif self.get("llm") == "remote":
-                ve.remote_warm(ve.remote_base(self.get("rm_url")), self.get("rm_key"),
+                    if s.cancelled:               # the pipeline ended while it started
+                        s.runner.cancel()
+            elif self.get_live("llm") == "remote":
+                ve.remote_warm(ve.remote_base(self.get_live("rm_url")), self.get_live("rm_key"),
                                self._system_prompt())
-            if self.get("stt") == "local":
-                self.whisper.ensure_server(self.get("w_model"), self.get("lang"))
+            if self.get_live("stt") == "local":
+                self.whisper.ensure_server(self.get_live("w_model"), self.get_live("lang"))
         except Exception as ex:
             self.log("voice prewarm: %r" % ex)
 
@@ -999,7 +1062,7 @@ class VoiceController:
         s = self.sess
         if self.state != "recording" or s is None:
             return
-        if self.get("mode") == "hold" and not self.hook.hotkey_held():
+        if self.get_live("mode") == "hold" and not self.hook.hotkey_held():
             s.lost_key = getattr(s, "lost_key", 0) + 1
             if s.lost_key > 10:               # отпускание не пришло (экран блокировки и т.п.)
                 self._stop_recording()
@@ -1042,7 +1105,7 @@ class VoiceController:
             self.overlay.show("nothing", V("o_nothing"))
             return
         self.state = "busy"
-        warm = (self.get("stt") == "local" and not self.whisper.alive()
+        warm = (self.get_live("stt") == "local" and not self.whisper.alive()
                 and not self._gm_key() and not self._gq_key())
         self.overlay.show("warm" if warm else "recog", V("o_warm") if warm else V("o_recog"))
         threading.Thread(target=self._pipeline, args=(s,), daemon=True).start()
@@ -1058,45 +1121,62 @@ class VoiceController:
             self.root.after(30, self._pump)
 
     def _pump(self):
-        while True:
+        try:
+            while True:
+                try:
+                    kind, kw = self._q.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    if kind == "stage":
+                        self.overlay.show(kw["state"], kw["title"], kw.get("sub", ""))
+                    elif kind == "final":
+                        # state first: whatever fails below, the hotkey must work again
+                        self.state = "idle"
+                        self.sess = None
+                        self.overlay.show(kw["state"], kw["title"], kw.get("sub", ""),
+                                          clickable=kw.get("clickable", False))
+                        self._history_refresh()
+                    elif kind == "call":
+                        kw["fn"]()
+                    elif kind == "test":
+                        cb = kw.get("cb")
+                        if cb:
+                            cb(kw.get("text", ""))
+                except Exception:
+                    if kind == "final":
+                        self.state, self.sess = "idle", None
+                    self.log("voice pump (%s):\n%s" % (kind, traceback.format_exc()))
+        finally:
+            # always either reschedule or clear _pumping: a dead pump would leave the
+            # dictation "busy" for good
             try:
-                kind, kw = self._q.get_nowait()
-            except queue.Empty:
-                break
-            if kind == "stage":
-                self.overlay.show(kw["state"], kw["title"], kw.get("sub", ""))
-            elif kind == "final":
-                self.state = "idle"
-                self.sess = None
-                self.overlay.show(kw["state"], kw["title"], kw.get("sub", ""),
-                                  clickable=kw.get("clickable", False))
-                self._history_refresh()
-            elif kind == "call":
-                kw["fn"]()
-            elif kind == "test":
-                cb = kw.get("cb")
-                if cb:
-                    cb(kw.get("text", ""))
-        if self.state != "idle" or not self._q.empty() or getattr(self, "_test_running", False):
-            self.root.after(40, self._pump)
-        else:
-            self._pumping = False
+                again = (self.state != "idle" or not self._q.empty()
+                         or getattr(self, "_test_running", False))
+                if again:
+                    self.root.after(40, self._pump)
+            except Exception:
+                again = False
+            if not again:
+                self._pumping = False
 
     # ---- конвейер ----
-    def _system_prompt(self):
-        return ve.system_prompt(self.get("p_dict").strip() or None, self.get("p_edit").strip() or None)
+    def _system_prompt(self, g=None):
+        g = g or self.get_live
+        return ve.system_prompt(g("p_dict").strip() or None, g("p_edit").strip() or None)
 
     def _stt(self, wav, duration=0.0):
-        lang = self.get("lang")
-        if self.get("stt") == "local":
-            return self.whisper.transcribe(wav, self.get("w_model"), lang, self.get("stt_prompt"),
-                                           duration if self.get("w_fast") else 0.0)
-        return ve.cloud_transcribe(wav, self.get("stt_url"), self.get("stt_key"), self.get("stt_model"),
-                                   lang, self.get("stt_prompt"))
+        g = self.get_live
+        lang = g("lang")
+        if g("stt") == "local":
+            return self.whisper.transcribe(wav, g("w_model"), lang, g("stt_prompt"),
+                                           duration if g("w_fast") else 0.0)
+        return ve.cloud_transcribe(wav, g("stt_url"), g("stt_key"), g("stt_model"),
+                                   lang, g("stt_prompt"))
 
     def _llm_fast(self, text, runner=None):
         """Groq first (~0.5-1 s), the configured LLM when Groq fails."""
-        qk = self._gq_key()
+        qk = self._gq_key("llm")
         if qk:
             t = time.time()
             try:
@@ -1109,27 +1189,26 @@ class VoiceController:
                     return out
                 self.log("voice: groq llm returned nothing")
             except ve.VoiceError as ex:
-                if str(ex).startswith("HTTP 4") and not str(ex).startswith("HTTP 429"):
-                    self._gq_cool = time.time() + 300
+                self._gq_failed("llm", ex)
                 self.log("voice: groq llm failed (%.1fs): %s" % (time.time() - t, ex))
         return self._llm(text, runner)
 
-    def _llm(self, text, runner=None):
-        p = self.get("llm")
+    def _llm(self, text, runner=None, g=None):
+        """g: settings getter; the settings test button passes the draft-aware get."""
+        g = g or self.get_live
+        sp = self._system_prompt(g)
+        p = g("llm")
         if p == "claude_code":
             if runner is None:
-                spf = ve.write_prompt_file(os.path.join(ve.scratch_dir(), "system_prompt.txt"),
-                                           self._system_prompt())
-                runner = ve.ClaudeCode(ve.find_claude(self.get("cc_path")), self.get("cc_model"),
+                spf = ve.write_prompt_file(os.path.join(ve.scratch_dir(), "system_prompt.txt"), sp)
+                runner = ve.ClaudeCode(ve.find_claude(g("cc_path")), g("cc_model"),
                                        spf, os.path.join(ve.scratch_dir(), "cwd"), self.log)
             return runner.ask(text)
         if p == "remote":
-            return ve.openai_ask(ve.remote_base(self.get("rm_url")), self.get("rm_key"), ve.SHARE_MODEL_ID,
-                                 self._system_prompt(), text)
+            return ve.openai_ask(ve.remote_base(g("rm_url")), g("rm_key"), ve.SHARE_MODEL_ID, sp, text)
         if p == "anthropic":
-            return ve.anthropic_ask(self.get("an_key"), self.get("an_model"), self._system_prompt(), text)
-        return ve.openai_ask(self.get("oa_url"), self.get("oa_key"), self.get("oa_model"),
-                             self._system_prompt(), text)
+            return ve.anthropic_ask(g("an_key"), g("an_model"), sp, text)
+        return ve.openai_ask(g("oa_url"), g("oa_key"), g("oa_model"), sp, text)
 
     def _clipboard_selection(self, fg):
         """Запасной способ узнать выделение, если UIA не сказал: Ctrl+Insert
@@ -1138,6 +1217,10 @@ class VoiceController:
         if vs.class_name(fg) in CONSOLE_CLASSES:
             return ""
         snap = vs.clip_snapshot()
+        if snap is None:
+            return ""          # clipboard busy: it could not be restored afterwards
+        if vs.user32.GetForegroundWindow() != fg:
+            return ""          # focus moved on: Ctrl+Insert would go to another window
         seq = vs.clip_seq()
         vs.send_combo([vs.VK_CONTROL], vs.VK_INSERT)
         end = time.time() + 0.45
@@ -1160,23 +1243,23 @@ class VoiceController:
             wav = s.rec.wav_bytes()
             gm_clean = None
             heard = False
-            qk = self._gq_key()
+            qk = self._gq_key("stt")
             if qk:
+                # Whisper's prompt limit is 224 tokens: a longer vocabulary gets a 400
+                vocab = vocab_cut(self.get_live("stt_prompt"))
                 try:
-                    tr = ve.cloud_transcribe(wav, ve.GROQ_URL, qk, ve.GROQ_STT, self.get("lang"),
-                                             self.get("stt_prompt"),
-                                             timeout=6 + getattr(s.rec, "sent_duration", 0.0) / 10)
+                    tr = ve.cloud_transcribe(wav, ve.GROQ_URL, qk, ve.GROQ_STT, self.get_live("lang"),
+                                             vocab, timeout=6 + getattr(s.rec, "sent_duration", 0.0) / 10)
                     text, heard = ve.clean_transcript(tr), True
                     self.log("voice: groq stt %.1fs -> %d chars" % (time.time() - t0, len(text)))
                 except ve.VoiceError as ex:
-                    if str(ex).startswith("HTTP 4") and not str(ex).startswith("HTTP 429"):
-                        self._gq_cool = time.time() + 300
+                    self._gq_failed("stt", ex)
                     self.log("voice: groq stt failed (%.1fs): %s" % (time.time() - t0, ex))
             gk = None if heard else self._gm_key()
             if gk:
                 try:
-                    tr, gm_clean = ve.gemini_hear(wav, gk, self.get("gm_model"), self.get("lang"),
-                                                  self.get("stt_prompt"), log=self.log)
+                    tr, gm_clean = ve.gemini_hear(wav, gk, self.get_live("gm_model"), self.get_live("lang"),
+                                                  self.get_live("stt_prompt"), log=self.log)
                     text = ve.clean_transcript(tr)
                     self.log("voice: gemini %.1fs -> %d chars" % (time.time() - t0, len(text)))
                 except ve.VoiceError as ex:
@@ -1210,8 +1293,8 @@ class VoiceController:
                         len(sel or "")))
             answer, warn = False, ""
             if not sel and not ve.COMMAND_HINT.search(text) and (
-                    not self.get("cleanup") or gm_clean):
-                result = gm_clean if (gm_clean and self.get("cleanup")) else text
+                    not self.get_live("cleanup") or gm_clean):
+                result = gm_clean if (gm_clean and self.get_live("cleanup")) else text
                 if s.runner:
                     s.runner.cancel()
             else:
@@ -1251,6 +1334,7 @@ class VoiceController:
                 self._history_add(text, "error")
             self._post("final", state="error", title=V("o_err"), sub=repr(ex)[:120], clickable=True)
         finally:
+            s.cancelled = True        # a prewarm still starting its runner kills it itself
             if s.runner:
                 s.runner.cancel()
 
@@ -1266,8 +1350,8 @@ class VoiceController:
         # последней, тут же ВЫПОЛНЯЕТСЯ как команда — только в буфер
         if "\n" in text.strip() and vs.class_name(fg_now) in CONSOLE_CLASSES:
             editable = False
-        if self.get("autopaste") and editable and fg_now == s.fg:
-            restore = self.get("restore_clip")
+        if self.get_live("autopaste") and editable and fg_now == s.fg:
+            restore = self.get_live("restore_clip")
             snap = vs.clip_snapshot() if restore else None
             if not vs.clip_set_text(text, exclude_history=restore):
                 raise ve.VoiceError("clipboard busy")
@@ -1295,13 +1379,13 @@ class VoiceController:
         # 1.3.2: «Claude на другом ПК» был пресетом OpenAI-совместимых
         if v.get("llm") == "openai" and v.get("oa_preset") == "hdcontainer":
             self.set("llm", "remote", save=False)
-            self.set("rm_url", self.get("oa_url"), save=False)
-            self.set("rm_key", self.get("oa_key"), save=False)
+            self.set("rm_url", self.get_live("oa_url"), save=False)
+            self.set("rm_key", self.get_live("oa_key"), save=False)
             self.set("oa_preset", "openai", save=False)
             self.set("oa_url", DEFAULTS["oa_url"], save=False)
             self.set("oa_model", DEFAULTS["oa_model"], save=False)
         # раздавать Claude Code может только тот ПК, где он есть
-        if v.get("share_enabled") and not ve.find_claude(self.get("cc_path")):
+        if v.get("share_enabled") and not ve.find_claude(self.get_live("cc_path")):
             self.set("share_enabled", False, save=False)
             self.log("voice: share disabled — no Claude Code on this PC")
         if v:
@@ -1312,34 +1396,34 @@ class VoiceController:
         if self.share:
             self.share.stop()
             self.share = None
-        if not self.get("share_enabled"):
+        if not self.get_live("share_enabled"):
             return
-        if not self.get("share_token"):
+        if not self.get_live("share_token"):
             self.set("share_token", ve.new_token())
-        pool = ve.WarmPool(lambda: ve.find_claude(self.get("cc_path")), lambda: self.get("cc_model"),
+        pool = ve.WarmPool(lambda: ve.find_claude(self.get_live("cc_path")), lambda: self.get_live("cc_model"),
                            self.log)
         try:
-            port = int(self.get("share_port"))
+            port = int(self.get_live("share_port"))
         except (TypeError, ValueError):
             port = DEFAULTS["share_port"]
-        self.share = ve.ShareServer(pool, self.get("share_token"), port, self.log)
-        self.share.shared_keys = lambda: {"gemini": self.get("gm_key"), "groq": self.get("gq_key")}
+        self.share = ve.ShareServer(pool, self.get_live("share_token"), port, self.log)
+        self.share.shared_keys = lambda: {"gemini": self.get_live("gm_key"), "groq": self.get_live("gq_key")}
         self.share.start()
 
     # ---- Whisper: держать модель в памяти, число потоков ----
     def _apply_whisper(self):
-        self.whisper.keep = bool(self.get("w_keep"))
+        self.whisper.keep = bool(self.get_live("w_keep"))
         try:
-            self.whisper.threads = int(self.get("w_threads") or 0)
+            self.whisper.threads = int(self.get_live("w_threads") or 0)
         except (TypeError, ValueError):
             self.whisper.threads = 0
-        if (self.whisper.keep and self.get("enabled") and self.get("stt") == "local"
-                and not self.whisper.alive() and self.whisper.is_installed(self.get("w_model"))):
+        if (self.whisper.keep and self.get_live("enabled") and self.get_live("stt") == "local"
+                and not self.whisper.alive() and self.whisper.is_installed(self.get_live("w_model"))):
             threading.Thread(target=self._warm_whisper, daemon=True).start()
 
     def _warm_whisper(self):
         try:
-            self.whisper.ensure_server(self.get("w_model"), self.get("lang"))
+            self.whisper.ensure_server(self.get_live("w_model"), self.get_live("lang"))
         except Exception as ex:
             self.log("whisper keep-warm: %r" % ex)
 
@@ -1366,7 +1450,7 @@ class VoiceController:
 
     def _history_add(self, text, how, raw=""):
         # зовётся из потока обработки — под замком; окно истории обновится само
-        if not self.get("history") or not (text or "").strip():
+        if not self.get_live("history") or not (text or "").strip():
             return
         with self._hist_lock:
             self.history.append({"t": time.time(), "text": text, "how": how, "raw": raw or ""})
@@ -1839,7 +1923,8 @@ class VoiceController:
 
         # распознавание
         self._h(V("sec_stt"))
-        # fast mode: Gemini hears the audio itself; the engines below are the fallback
+        # fast mode: Groq recognizes and cleans up, Gemini is its backup; the engines
+        # below are the fallback when both fail
         self._check(V("gm_on"), "gm_on")
         self._note(V("gm_note"))
         self._entry(V("gq_key"), "gq_key", secret=True)
@@ -2045,6 +2130,7 @@ class VoiceController:
                 self.dl["err"] = str(ex)[:160]
                 self.log("whisper install failed: %r" % ex)
             self.dl["finished"] = True
+        self.whisper.installing = True        # before the thread: a second click must not start another
         threading.Thread(target=run, daemon=True).start()
         self._rebuild()
 
@@ -2082,7 +2168,7 @@ class VoiceController:
         def run():
             t0 = time.time()
             try:
-                out, _ = ve.split_answer(self._llm(ve.user_message(V("test_phrase"))))
+                out, _ = ve.split_answer(self._llm(ve.user_message(V("test_phrase")), g=self.get))
                 msg = "%s\n«%s» → «%s»" % (V("test_ok", time.time() - t0), V("test_phrase"), out[:160])
             except Exception as ex:
                 msg = "!" + V("test_fail", str(ex)[:200])

@@ -27,8 +27,10 @@ import csv
 import glob
 import hashlib
 import html
+import io
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -262,14 +264,54 @@ def _release_asset(repo, tag, asset):
     raise RuntimeError("asset %s not found in %s@%s" % (asset, repo, tag))
 
 
+def zip_member_target(dst_dir, base):
+    """Where a zip member named `base` (already the last path part) may be written, or
+    None: no drive-relative names or alternate data streams (':'), nothing outside dst_dir."""
+    if not base or ":" in base or base in (".", "..") or "/" in base or "\\" in base:
+        return None
+    root = os.path.realpath(dst_dir)
+    out = os.path.realpath(os.path.join(root, base))
+    if os.path.dirname(out) != root:
+        return None
+    return out
+
+
+_STALE_S = 300      # s: leftovers of an install older than this were abandoned (crash, cancel)
+
+
+def _clean_install_leftovers(name):
+    """Remove *.part downloads and *.new extraction dirs left by an interrupted install."""
+    root = tools_dir()
+    now = time.time()
+    cands = (glob.glob(os.path.join(glob.escape(root), name + "-*.zip.part"))
+             + glob.glob(os.path.join(glob.escape(os.path.join(root, name)), "*.part"))
+             + glob.glob(os.path.join(glob.escape(root), name + ".new*"))
+             + [os.path.join(root, name + ".old")])
+    for p in cands:
+        try:
+            if not os.path.exists(p) or now - os.path.getmtime(p) < _STALE_S:
+                continue                  # a parallel install may still be using it
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                os.remove(p)
+        except OSError:
+            pass
+
+
 def install_tool(name, progress=None, cancelled=lambda: False):
-    """Скачать и распаковать инструмент. progress(done, total)."""
+    """Скачать и распаковать инструмент. progress(done, total).
+    Atomic: the archive goes to a .part file and is extracted into `<name>.new-*`,
+    which replaces `<name>` by a rename only when complete."""
     repo, tag, asset, main_exe, rule, _mb = TOOLS[name]
     url, sha = _release_asset(repo, tag, asset)
-    dst_dir = os.path.join(tools_dir(), name)
-    os.makedirs(dst_dir, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=name + "-", suffix=".zip.part", dir=dst_dir)
+    root = tools_dir()
+    os.makedirs(root, exist_ok=True)
+    _clean_install_leftovers(name)
+    dst_dir = os.path.join(root, name)
+    fd, tmp = tempfile.mkstemp(prefix=name + "-", suffix=".zip.part", dir=root)
     os.close(fd)
+    new_dir = None
     try:
         h = hashlib.sha256()
         req = urllib.request.Request(url, headers={"User-Agent": "HDContainer-convert"})
@@ -290,10 +332,13 @@ def install_tool(name, progress=None, cancelled=lambda: False):
         if h.hexdigest() != sha:
             raise RuntimeError("sha256 mismatch")
         kind, what = rule
+        new_dir = tempfile.mkdtemp(prefix=name + ".new-", dir=root)
         with zipfile.ZipFile(tmp) as z:
             for info in z.infolist():
                 if info.is_dir():
                     continue
+                if cancelled():
+                    raise RuntimeError("cancelled")
                 parts = info.filename.replace("\\", "/").split("/")
                 base = parts[-1]
                 # пишем только по ИМЕНИ файла в свою папку: пути из архива не
@@ -301,15 +346,27 @@ def install_tool(name, progress=None, cancelled=lambda: False):
                 ok = base in what if kind == "names" else (what in parts[:-1])
                 if not ok or not base:
                     continue
-                with z.open(info) as src, open(os.path.join(dst_dir, base), "wb") as out:
+                target = zip_member_target(new_dir, base)
+                if target is None:
+                    continue
+                with z.open(info) as src, open(target, "wb") as out:
                     shutil.copyfileobj(src, out, 1024 * 1024)
-        if not tool_installed(name):
+        if not os.path.isfile(os.path.join(new_dir, main_exe)):
             raise RuntimeError("%s not found in archive" % main_exe)
+        old = dst_dir + ".old"
+        shutil.rmtree(old, ignore_errors=True)
+        if os.path.exists(dst_dir):               # a broken earlier install (no main exe)
+            os.rename(dst_dir, old)
+        os.rename(new_dir, dst_dir)
+        new_dir = None
+        shutil.rmtree(old, ignore_errors=True)
     finally:
         try:
             os.remove(tmp)
         except Exception:
             pass
+        if new_dir:
+            shutil.rmtree(new_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +411,8 @@ def _browser(args, timeout=180):
 
 
 def _file_url(path):
-    return "file:///" + os.path.abspath(path).replace("\\", "/")
+    # escaped: '#', '%' or '?' in a name would otherwise cut the path short
+    return pathlib.Path(os.path.abspath(path)).as_uri()
 
 
 def html_to_pdf(src_html, dst):
@@ -415,15 +473,47 @@ def output_path(src, fmt):
     return out
 
 
+_procs = set()                  # running children, killed by cancel_running()
+_procs_lock = threading.Lock()
+_cancel_ev = threading.Event()  # set by cancel_running(): no new child starts after it
+
+
+def cancel_running():
+    """Cancel: kill every running engine process; later _run calls fail at once."""
+    _cancel_ev.set()
+    with _procs_lock:
+        procs = list(_procs)
+    for p in procs:
+        try:
+            p.kill()
+        except Exception:
+            pass
+
+
 def _run(args, timeout=3600, cwd=None):
-    p = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW, cwd=cwd)
-    try:                                       # ребёнок умирает вместе с нами (окно закрыли)
-        import voice_sys
-        voice_sys.adopt_process(p)
-    except Exception:
-        pass
-    out, err = p.communicate(timeout=timeout)
+    with _procs_lock:
+        if _cancel_ev.is_set():
+            raise ConvertError("cancelled")
+        p = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW, cwd=cwd)
+        _procs.add(p)
+    try:
+        try:                                   # ребёнок умирает вместе с нами (окно закрыли)
+            import voice_sys
+            voice_sys.adopt_process(p)
+        except Exception:
+            pass
+        try:
+            out, err = p.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            p.kill()                           # no orphan still writing the output
+            p.communicate()
+            raise ConvertError("timed out after %d s" % timeout)
+    finally:
+        with _procs_lock:
+            _procs.discard(p)
+    if _cancel_ev.is_set():
+        raise ConvertError("cancelled")
     if p.returncode != 0:
         lines = (err or out or b"").decode("utf-8", "replace").strip().splitlines()
         raise ConvertError(lines[-1][:300] if lines else "exit code %d" % p.returncode)
@@ -454,11 +544,15 @@ def _pil():
     return Image
 
 
+ICC_FORMATS = ("png", "jpg", "webp", "tiff", "avif")   # Pillow embeds icc_profile in these
+
+
 def _save_image(im, dst, fmt):
     Image = _pil()
     if fmt == "gif" and getattr(im, "n_frames", 1) > 1:
-        im.save(dst, save_all=True)           # анимацию сохраняем целиком
+        im.save(dst, format="GIF", save_all=True)    # анимацию сохраняем целиком
         return
+    icc, src_mode = im.info.get("icc_profile"), im.mode
     if fmt in ("jpg", "pdf", "bmp"):
         if im.mode in ("RGBA", "LA", "P"):    # без альфы: прозрачное -> на белом
             im = im.convert("RGBA")
@@ -487,26 +581,49 @@ def _save_image(im, dst, fmt):
         kw = {"sizes": [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]}
     elif fmt == "pdf":
         kw = {"resolution": 100.0}
-    im.save(dst, format={"jpg": "JPEG", "tiff": "TIFF", "heic": "HEIF"}.get(fmt, fmt.upper()), **kw)
+    # keep the colour profile (wide-gamut photos) when it still fits the pixels: an RGB
+    # profile stays valid for RGB/RGBA/P, a CMYK or grey one only in its own mode
+    if icc and fmt in ICC_FORMATS and (im.mode == src_mode or (
+            src_mode in ("RGB", "RGBA", "P") and im.mode in ("RGB", "RGBA"))):
+        kw["icc_profile"] = icc
+    im.save(dst,format={"jpg": "JPEG", "tiff": "TIFF", "heic": "HEIF"}.get(fmt, fmt.upper()), **kw)
 
 
 def convert_image(src, dst, fmt, src_ext=""):
     Image = _pil()
     if src_ext in HEIF_EXTS and not heif_available():
         # нет pillow-heif -> декодируем ffmpeg'ом (у него свой HEIF-демультиплексор)
-        tmp = dst + ".png"
+        tmpd = tempfile.mkdtemp(prefix="hdc-img-")
         try:
+            tmp = os.path.join(tmpd, "frame.png")
             _run([tool_exe("ffmpeg"), "-y", "-hide_banner", "-loglevel", "error", "-i", src,
                   "-frames:v", "1", tmp])
-            _save_image(Image.open(tmp), dst, fmt)
+            with Image.open(tmp) as im:
+                _save_image(im, dst, fmt)
         finally:
-            try:
-                os.remove(tmp)
-            except Exception:
-                pass
+            shutil.rmtree(tmpd, ignore_errors=True)
         return
-    im = Image.open(src)
-    _save_image(im, dst, fmt)
+    with Image.open(src) as im:
+        _save_image(upright(im), dst, fmt)
+
+
+def upright(im):
+    """Apply the EXIF orientation (phone photos), keeping the ICC profile. Animations
+    are left alone: the transposed copy would hold only the first frame."""
+    if getattr(im, "n_frames", 1) > 1:
+        return im
+    try:
+        from PIL import ImageOps
+        icc = im.info.get("icc_profile")
+        out = ImageOps.exif_transpose(im)
+        if out is None:
+            return im
+        if icc and not out.info.get("icc_profile"):
+            out.info["icc_profile"] = icc
+        return out
+    except Exception as ex:
+        LOG("exif orientation skipped: %r" % ex)
+        return im
 
 
 def convert_svg(src, dst, fmt):
@@ -516,15 +633,14 @@ def convert_svg(src, dst, fmt):
     if fmt == "png":
         svg_to_png(src, dst)
         return
-    tmp = dst + ".png"
-    svg_to_png(src, tmp)
+    tmpd = tempfile.mkdtemp(prefix="hdc-svg-")
     try:
-        _save_image(_pil().open(tmp), dst, fmt)
+        tmp = os.path.join(tmpd, "page.png")
+        svg_to_png(src, tmp)
+        with _pil().open(tmp) as im:
+            _save_image(im, dst, fmt)
     finally:
-        try:
-            os.remove(tmp)
-        except Exception:
-            pass
+        shutil.rmtree(tmpd, ignore_errors=True)
 
 
 def convert_ffmpeg(src, dst, fmt, src_ext):
@@ -595,19 +711,68 @@ def convert_doc(src, dst, fmt, src_ext):
         shutil.rmtree(tmpd, ignore_errors=True)
 
 
+def free_name(path):
+    """`path`, or `stem (2).ext`, `stem (3).ext`… — the first one that does not exist."""
+    d, name = os.path.split(path)
+    stem, ext = os.path.splitext(name)
+    out, n = path, 2
+    while os.path.exists(out):
+        out = os.path.join(d, "%s (%d)%s" % (stem, n, ext))
+        n += 1
+    return out
+
+
+def move_to_free_name(tmp, path):
+    """Rename tmp to path, or to the next free variant if path appeared meanwhile.
+    Never overwrites: os.rename fails on Windows when the target exists."""
+    for _ in range(1000):
+        out = free_name(path)
+        try:
+            os.rename(tmp, out)
+            return out
+        except FileExistsError:
+            continue
+    raise ConvertError("no free file name for %s" % os.path.basename(path))
+
+
+def place_pages(tmpd, dst, fmt):
+    """Pages rendered by pdftoppm into tmpd as p-1.png… (p-01… for longer files) ->
+    next to dst: one page = dst itself, more = `stem-1.png`, `stem-2.png`… under free names.
+    Only our own files are touched; on failure the pages already placed are removed."""
+    pages = sorted(f for f in os.listdir(tmpd)
+                   if f.startswith("p-") and f.lower().endswith("." + fmt))
+    if not pages:
+        raise ConvertError("no pages rendered")
+    if len(pages) == 1:
+        return [move_to_free_name(os.path.join(tmpd, pages[0]), dst)]
+    stem = os.path.splitext(dst)[0]
+    out = []
+    try:
+        for f in pages:
+            num = f[2:-len(fmt) - 1]
+            out.append(move_to_free_name(os.path.join(tmpd, f), "%s-%s.%s" % (stem, num, fmt)))
+    except Exception:
+        for p in out:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        raise
+    return out
+
+
 def convert_pdf(src, dst, fmt):
     """PDF -> картинки (файл на страницу) / текст / html / документы."""
     if fmt in ("png", "jpg"):
-        prefix = os.path.splitext(dst)[0]
-        _run([tool_exe("poppler"), "-r", "150", "-png" if fmt == "png" else "-jpeg", src, prefix],
-             timeout=1800)
-        pages = sorted(glob.glob(glob.escape(prefix) + "-*." + fmt))
-        if not pages:
-            raise ConvertError("no pages rendered")
-        if len(pages) == 1:
-            os.replace(pages[0], dst)
-            return [dst]
-        return pages
+        # rendered in a temp dir: pdftoppm overwrites same-named files and a glob next to
+        # the user's files would adopt unrelated ones; pages then move to free names
+        tmpd = tempfile.mkdtemp(prefix="hdc-pages-")
+        try:
+            _run([tool_exe("poppler"), "-r", "150", "-png" if fmt == "png" else "-jpeg", src,
+                  os.path.join(tmpd, "p")], timeout=1800)
+            return place_pages(tmpd, dst, fmt)
+        finally:
+            shutil.rmtree(tmpd, ignore_errors=True)
     if fmt == "txt":
         _run([tool_exe("poppler", "pdftotext.exe"), "-layout", "-enc", "UTF-8", src, dst])
         return [dst]
@@ -665,7 +830,8 @@ def read_xlsx(path):
     for row in root.iter(_XLSX_NS + "row"):
         cells = []
         for c in row.findall(_XLSX_NS + "c"):
-            idx = _col_index(c.get("r", ""))
+            ref = c.get("r")              # optional in the format: then the next column
+            idx = _col_index(ref) if ref else len(cells)
             t = c.get("t")
             v = c.find(_XLSX_NS + "v")
             if t == "s":
@@ -737,31 +903,81 @@ def write_xlsx(path, rows):
             z.writestr(name, data)
 
 
+def _ansi_codepage():
+    try:
+        import ctypes
+        return "cp%d" % ctypes.windll.kernel32.GetACP()
+    except Exception:
+        return "cp1251"
+
+
+def decode_text(raw):
+    """Bytes of a text table -> str: UTF-8 (with or without BOM), else the Windows ANSI
+    code page (what Excel writes for "CSV"), else cp1251."""
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    for enc in (_ansi_codepage(), "cp1251"):
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            pass
+    return raw.decode("cp1251", "replace")
+
+
+def csv_rows(text, ext):
+    """Rows of a csv/tsv text. csv: the delimiter is sniffed (a Russian Excel writes ';')."""
+    delim = "\t" if ext == "tsv" else sniff_delimiter(text)
+    return list(csv.reader(io.StringIO(text, newline=""), dialect="excel", delimiter=delim))
+
+
+def sniff_delimiter(text):
+    """The delimiter that splits the first lines into the same number (>1) of fields most
+    consistently; ',' when none does. csv.Sniffer gives up on small files with quotes."""
+    sample = text[:65536]
+    if len(text) > len(sample) and "\n" in sample:
+        sample = sample[:sample.rindex("\n")]      # no cut-off last line
+    best, best_key = ",", (0.0, 0)
+    for d in (",", ";", "\t", "|"):
+        try:
+            counts = [len(r) for r in csv.reader(io.StringIO(sample, newline=""), delimiter=d)][:50]
+        except csv.Error:
+            continue
+        counts = [n for n in counts if n] or [0]
+        if counts[0] < 2:
+            continue
+        key = (sum(n == counts[0] for n in counts) / len(counts), counts[0])
+        if key > best_key:
+            best, best_key = d, key
+    return best
+
+
 def _read_table(src, ext):
     if ext == "xlsx":
         rows = read_xlsx(src)
         return (rows[0], rows[1:]) if rows else ([], [])
-    with open(src, "r", encoding="utf-8-sig", newline="") as f:
-        if ext == "json":
-            data = json.load(f)
-            if isinstance(data, dict):
-                data = [data]
-            if not isinstance(data, list):
-                raise ConvertError("JSON is not a list of objects")
-            rows = [r if isinstance(r, dict) else {"value": r} for r in data]
-            cols = []
-            for r in rows:
-                for k in r:
-                    if k not in cols:
-                        cols.append(k)
-            return cols, [[("" if r.get(c) is None else
-                            (json.dumps(r[c], ensure_ascii=False) if isinstance(r[c], (dict, list))
-                             else str(r[c]))) for c in cols] for r in rows]
-        dialect = "excel-tab" if ext == "tsv" else "excel"
-        rows = list(csv.reader(f, dialect=dialect))
-        if not rows:
-            return [], []
-        return rows[0], rows[1:]
+    with open(src, "rb") as f:
+        raw = f.read()
+    if ext == "json":
+        data = json.loads(raw.decode("utf-8-sig"))
+        if isinstance(data, dict):
+            data = [data]
+        if not isinstance(data, list):
+            raise ConvertError("JSON is not a list of objects")
+        rows = [r if isinstance(r, dict) else {"value": r} for r in data]
+        cols = []
+        for r in rows:
+            for k in r:
+                if k not in cols:
+                    cols.append(k)
+        return cols, [[("" if r.get(c) is None else
+                        (json.dumps(r[c], ensure_ascii=False) if isinstance(r[c], (dict, list))
+                         else str(r[c]))) for c in cols] for r in rows]
+    rows = csv_rows(decode_text(raw), ext)
+    if not rows:
+        return [], []
+    return rows[0], rows[1:]
 
 
 def table_to_html(cols, rows, title=""):
@@ -809,27 +1025,60 @@ def convert(src, fmt):
     if not os.path.isfile(src):
         raise ConvertError("file not found")
     dst = output_path(src, fmt)
+    if engine == "poppler" and fmt in ("png", "jpg"):
+        return convert_pdf(src, dst, fmt)   # pages: own temp dir, placed under free names
+    # the engine writes a temporary name next to dst (same volume, same extension, so
+    # ffmpeg & co pick the right format); only a finished file gets the final name,
+    # a cancelled or failed one never appears under it
+    tmp = part_path(dst)
+    with _parts_lock:
+        _parts.add(tmp)
     try:
         if engine == "image":
-            convert_image(src, dst, fmt, src_ext)
+            convert_image(src, tmp, fmt, src_ext)
         elif engine == "browser":
-            convert_svg(src, dst, fmt)
+            convert_svg(src, tmp, fmt)
         elif engine == "ffmpeg":
-            convert_ffmpeg(src, dst, fmt, src_ext)
+            convert_ffmpeg(src, tmp, fmt, src_ext)
         elif engine == "pandoc":
-            convert_doc(src, dst, fmt, src_ext)
+            convert_doc(src, tmp, fmt, src_ext)
         elif engine == "poppler":
-            return convert_pdf(src, dst, fmt)
+            convert_pdf(src, tmp, fmt)
         else:
-            convert_data(src, dst, fmt, src_ext)
-    except Exception:
-        try:
-            if os.path.exists(dst):
-                os.remove(dst)              # не оставлять обрезок
-        except Exception:
-            pass
-        raise
-    return [dst]
+            convert_data(src, tmp, fmt, src_ext)
+        if not os.path.isfile(tmp):
+            raise ConvertError("no output file")
+        return [move_to_free_name(tmp, dst)]
+    finally:
+        _remove_part(tmp)                   # не оставлять обрезок
+
+
+_parts = set()                  # temp outputs being written (removed on cancel / exit)
+_parts_lock = threading.Lock()
+
+
+def part_path(dst):
+    """Temporary output name next to dst: `stem.~hdc-xxxxxxxx.ext`."""
+    stem, ext = os.path.splitext(dst)
+    return "%s.~hdc-%s%s" % (stem, uuid.uuid4().hex[:8], ext)
+
+
+def _remove_part(tmp):
+    try:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    except OSError:
+        return                      # still open (a dying child): remove_parts() retries
+    with _parts_lock:
+        _parts.discard(tmp)
+
+
+def remove_parts():
+    """Delete temp outputs still listed (after cancel_running, before the process exits)."""
+    with _parts_lock:
+        parts = list(_parts)
+    for p in parts:
+        _remove_part(p)
 
 
 # ---------------------------------------------------------------------------
@@ -1100,12 +1349,16 @@ def acquire_batch_lock():
         return True                                 # лучше два окна, чем ни одного
 
 
+_batch_lock_guard = threading.Lock()
+
+
 def release_batch_lock():
     global _batch_handle
-    if _batch_handle:
+    with _batch_lock_guard:                       # the worker and the main thread both call it
+        h, _batch_handle = _batch_handle, None
+    if h:
         import ctypes
-        ctypes.WinDLL("kernel32").CloseHandle(ctypes.c_void_p(_batch_handle))
-        _batch_handle = None
+        ctypes.WinDLL("kernel32").CloseHandle(ctypes.c_void_p(h))
 
 
 def run_cli(path, fmt):
@@ -1162,7 +1415,27 @@ def _run_batch_window():
     btn = tk.Label(root, text=C("cancel"), bg=col("COL_SURFACE2", "#2d2e31"), fg=TX,
                    font=("Segoe UI", 10), padx=14, pady=6, cursor="hand2")
     btn.pack(side="right", padx=20, pady=12)
-    btn.bind("<Button-1>", lambda e: (st.__setitem__("cancel", True), root.destroy()))
+
+    def close(_e=None):
+        """Cancel / Close / the window's X: kill the running engine, let the worker remove
+        its partial output (up to 5 s), then exit; whatever is still listed is deleted."""
+        if st.get("closing"):
+            return
+        st["closing"] = True
+        if not st["done"]:
+            st["cancel"] = True
+            cancel_running()
+        t0 = time.time()
+
+        def wait():
+            if worker.is_alive() and time.time() - t0 < 5:
+                root.after(50, wait)
+                return
+            remove_parts()
+            root.destroy()
+        wait()
+    btn.bind("<Button-1>", close)
+    root.protocol("WM_DELETE_WINDOW", close)
 
     def ui(fn):
         root.after(0, lambda: status.winfo_exists() and fn())
@@ -1211,6 +1484,14 @@ def _run_batch_window():
                     while time.time() < deadline and not pending and not st["cancel"]:
                         time.sleep(0.2)
                         pending += take_jobs()
+                    if not pending and not st["cancel"]:
+                        # stop being the collector BEFORE the final status: a newcomer
+                        # from now on takes the mutex and shows its own window; one that
+                        # gave up while we still held it left its job in the queue
+                        release_batch_lock()
+                        pending += take_jobs()
+                        if pending:
+                            acquire_batch_lock()  # collector again, unless a newcomer is
                     if not pending:
                         break
                 total = done + failed + len(pending)
@@ -1254,6 +1535,7 @@ def _run_batch_window():
                             btn.configure(text=C("close")),
                             root.after(1500, root.destroy)))
 
-    threading.Thread(target=work, daemon=True).start()
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
     root.after(50, tick)
     root.mainloop()
