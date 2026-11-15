@@ -387,6 +387,7 @@ def cloud_transcribe(wav, url, key, model, lang, prompt=""):
 #  the caller sends a transcript with a command to the LLM as before.
 # ---------------------------------------------------------------------------
 GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_BACKUP = "gemini-3.5-flash-lite"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
 GEMINI_PROMPT = (
     "You are the speech recognition engine of a push-to-talk dictation tool. The attached "
@@ -423,10 +424,12 @@ def _gemini_once(b64, key, model, system, timeout):
         raise VoiceError("gemini: bad answer")
 
 
-def gemini_hear(wav, key, model="", lang="auto", vocab="", hedge=3.0, deadline=10.0):
-    """-> (transcript, clean_text). Free-tier Gemini sometimes stalls for 5-15 s on one
-    request, so a second identical request starts after `hedge` seconds (or at once when
-    the first fails with a server error); the first answer wins."""
+def gemini_hear(wav, key, model="", lang="auto", vocab="", deadline=10.0, grace=0.5, log=None):
+    """-> (transcript, clean_text). Races two models on separate free-tier quotas
+    (measured 2026-11-15: 3.1-flash-lite writes cleaner text but stalls 5-20 s on ~1 of
+    4 requests; 3.5-flash-lite answers in 1.1-1.6 s every time, slightly sloppier).
+    The main model's answer wins; the backup's is taken when the main one is not there
+    `grace` seconds later. A model that fails with a server error is asked once more."""
     if not key:
         raise VoiceError("no Gemini key")
     system = GEMINI_PROMPT
@@ -435,39 +438,49 @@ def gemini_hear(wav, key, model="", lang="auto", vocab="", hedge=3.0, deadline=1
     if vocab:
         system += "\nWords that may occur: %s" % vocab
     b64 = base64.b64encode(wav).decode("ascii")
+    main = model or GEMINI_MODEL
+    models = [main] + ([GEMINI_BACKUP] if GEMINI_BACKUP != main else [])
     q = queue.Queue()
     t0 = time.time()
+    end = t0 + deadline
 
-    def run():
+    def run(m):
         try:
-            q.put((True, _gemini_once(b64, key, model, system, deadline)))
+            q.put((m, True, _gemini_once(b64, key, m, system, max(1.0, end - time.time()))))
         except Exception as ex:
-            q.put((False, ex))
+            q.put((m, False, ex))
 
-    threading.Thread(target=run, daemon=True).start()
-    running, hedged = 1, False
-    while True:
-        now = time.time()
-        until = t0 + deadline if hedged else min(t0 + hedge, t0 + deadline)
+    tries = {}
+    for m in models:
+        tries[m] = 1
+        threading.Thread(target=run, args=(m,), daemon=True).start()
+    running, backup_res, err = len(models), None, None
+    while running > 0:
+        until = min(end, backup_at + grace) if backup_res else end
         try:
-            ok, res = q.get(timeout=max(0.01, until - now))
+            m, ok, res = q.get(timeout=max(0.01, until - time.time()))
         except queue.Empty:
-            if time.time() >= t0 + deadline:
-                raise VoiceError("gemini: timeout")
-            hedged, running = True, running + 1
-            threading.Thread(target=run, daemon=True).start()
-            continue
-        if ok:
-            return res
+            break
         running -= 1
-        msg = str(res)
-        client_err = msg.startswith("HTTP 4")          # bad key, quota: a retry won't help
-        if not hedged and not client_err and time.time() < t0 + deadline:
-            hedged, running = True, running + 1
-            threading.Thread(target=run, daemon=True).start()
+        if ok:
+            if m == main:
+                if log:
+                    log("voice: gemini answer from %s" % m)
+                return res
+            backup_res, backup_at = res, time.time()
             continue
-        if running <= 0 or client_err:
-            raise res if isinstance(res, VoiceError) else VoiceError("gemini: %s" % msg)
+        err = res
+        if not str(res).startswith("HTTP 4") and tries[m] < 2 and time.time() < end - 1:
+            tries[m] += 1
+            running += 1
+            threading.Thread(target=run, args=(m,), daemon=True).start()
+    if backup_res is not None:
+        if log:
+            log("voice: gemini answer from %s" % GEMINI_BACKUP)
+        return backup_res
+    if err is None:
+        raise VoiceError("gemini: timeout")
+    raise err if isinstance(err, VoiceError) else VoiceError("gemini: %s" % err)
 
 
 def remote_gemini_key(url, key):

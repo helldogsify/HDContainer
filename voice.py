@@ -1133,7 +1133,7 @@ class VoiceController:
             if gk:
                 try:
                     tr, gm_clean = ve.gemini_hear(wav, gk, self.get("gm_model"), self.get("lang"),
-                                                  self.get("stt_prompt"))
+                                                  self.get("stt_prompt"), log=self.log)
                     text = ve.clean_transcript(tr)
                     self.log("voice: gemini %.1fs -> %d chars" % (time.time() - t0, len(text)))
                 except ve.VoiceError as ex:
