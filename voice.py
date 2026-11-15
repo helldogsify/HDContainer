@@ -129,8 +129,9 @@ VSTR = {
     "url": {"en": "API URL", "ru": "Адрес API", "es": "URL de la API", "pt": "URL da API", "de": "API-URL", "fr": "URL de l’API", "zh": "API 地址"},
     "key": {"en": "API key", "ru": "API-ключ", "es": "Clave API", "pt": "Chave de API", "de": "API-Schlüssel", "fr": "Clé API", "zh": "API 密钥"},
     "vocab": {"en": "Vocabulary hint (names, terms)", "ru": "Подсказка словаря (имена, термины)", "es": "Vocabulario (nombres, términos)", "pt": "Vocabulário (nomes, termos)", "de": "Vokabular-Hinweis (Namen, Begriffe)", "fr": "Vocabulaire (noms, termes)", "zh": "词汇提示（人名、术语）"},
-    "gm_on": {"en": "Fast mode: Gemini", "ru": "Быстрый режим: Gemini", "es": "Modo rápido: Gemini", "pt": "Modo rápido: Gemini", "de": "Schnellmodus: Gemini", "fr": "Mode rapide : Gemini", "zh": "快速模式：Gemini"},
-    "gm_note": {"en": "Gemini hears the speech and writes the text in ~1.5 s; the voice goes to Google. Commands and edits still go to the LLM below. If Gemini fails, the recognition below works.", "ru": "Gemini слышит речь и пишет текст за ~1,5 с; голос уходит в Google. Команды и правка выделенного идут в LLM ниже. Если Gemini не ответил, работает распознавание ниже.", "es": "Gemini escucha y escribe el texto en ~1,5 s; la voz va a Google. Comandos y ediciones siguen yendo al LLM. Si Gemini falla, funciona el reconocimiento de abajo.", "pt": "O Gemini ouve e escreve o texto em ~1,5 s; a voz vai para o Google. Comandos e edições continuam indo ao LLM. Se o Gemini falhar, funciona o reconhecimento abaixo.", "de": "Gemini hört zu und schreibt den Text in ~1,5 s; die Stimme geht an Google. Befehle und Bearbeitungen gehen weiter an das LLM. Fällt Gemini aus, arbeitet die Erkennung unten.", "fr": "Gemini écoute et écrit le texte en ~1,5 s ; la voix part chez Google. Commandes et modifications vont toujours au LLM. Si Gemini échoue, la reconnaissance ci-dessous prend le relais.", "zh": "Gemini 约 1.5 秒听写成文；语音会发送到 Google。命令和编辑仍交给下方 LLM。Gemini 失败时使用下方识别。"},
+    "gm_on": {"en": "Fast mode: Groq, Gemini", "ru": "Быстрый режим: Groq, Gemini", "es": "Modo rápido: Groq, Gemini", "pt": "Modo rápido: Groq, Gemini", "de": "Schnellmodus: Groq, Gemini", "fr": "Mode rapide : Groq, Gemini", "zh": "快速模式：Groq、Gemini"},
+    "gq_key": {"en": "Groq API key (empty = from the Claude PC)", "ru": "Ключ Groq API (пусто — с ПК с Claude)", "es": "Clave de Groq (vacío = del PC con Claude)", "pt": "Chave do Groq (vazio = do PC com Claude)", "de": "Groq-Schlüssel (leer = vom Claude-PC)", "fr": "Clé Groq (vide = du PC Claude)", "zh": "Groq 密钥（留空 = 用 Claude 电脑的）"},
+    "gm_note": {"en": "Groq recognizes the speech and processes the text in ~1-2 s, Gemini is its backup; the voice goes to these services. If both fail, the recognition and LLM below work.", "ru": "Groq распознаёт речь и обрабатывает текст за 1–2 с, Gemini — его запасной; голос уходит в эти сервисы. Если оба не ответили, работают распознавание и LLM ниже.", "es": "Gemini escucha y escribe el texto en ~1,5 s; la voz va a Google. Comandos y ediciones siguen yendo al LLM. Si Gemini falla, funciona el reconocimiento de abajo.", "pt": "O Gemini ouve e escreve o texto em ~1,5 s; a voz vai para o Google. Comandos e edições continuam indo ao LLM. Se o Gemini falhar, funciona o reconhecimento abaixo.", "de": "Gemini hört zu und schreibt den Text in ~1,5 s; die Stimme geht an Google. Befehle und Bearbeitungen gehen weiter an das LLM. Fällt Gemini aus, arbeitet die Erkennung unten.", "fr": "Gemini écoute et écrit le texte en ~1,5 s ; la voix part chez Google. Commandes et modifications vont toujours au LLM. Si Gemini échoue, la reconnaissance ci-dessous prend le relais.", "zh": "Gemini 约 1.5 秒听写成文；语音会发送到 Google。命令和编辑仍交给下方 LLM。Gemini 失败时使用下方识别。"},
     "gm_key": {"en": "Gemini API key (empty = from the Claude PC)", "ru": "Ключ Gemini API (пусто — с ПК с Claude)", "es": "Clave de Gemini (vacío = del PC con Claude)", "pt": "Chave do Gemini (vazio = do PC com Claude)", "de": "Gemini-Schlüssel (leer = vom Claude-PC)", "fr": "Clé Gemini (vide = du PC Claude)", "zh": "Gemini 密钥（留空 = 用 Claude 电脑的）"},
     "gm_model": {"en": "Gemini model", "ru": "Модель Gemini", "es": "Modelo de Gemini", "pt": "Modelo do Gemini", "de": "Gemini-Modell", "fr": "Modèle Gemini", "zh": "Gemini 模型"},
     "sec_llm": {"en": "Text processing (LLM)", "ru": "Обработка текста (LLM)", "es": "Procesamiento de texto (LLM)", "pt": "Processamento de texto (LLM)", "de": "Textverarbeitung (LLM)", "fr": "Traitement du texte (LLM)", "zh": "文本处理（LLM）"},
@@ -200,11 +201,11 @@ DEFAULTS = {
     "p_dict": "", "p_edit": "",
     "share_enabled": False, "share_port": 8765, "share_token": "",
     "rm_url": "", "rm_key": "",
-    "gm_on": True, "gm_key": "", "gm_model": "", "gm_key_rm": "",
+    "gm_on": True, "gm_key": "", "gm_model": "", "gm_key_rm": "", "gq_key": "", "gq_key_rm": "",
     "history": True,
 }
 HISTORY_MAX = 200
-SECRET_KEYS = {"stt_key", "an_key", "oa_key", "share_token", "rm_key", "gm_key", "gm_key_rm"}
+SECRET_KEYS = {"stt_key", "an_key", "oa_key", "share_token", "rm_key", "gm_key", "gm_key_rm", "gq_key", "gq_key_rm"}
 
 # ---------------------------------------------------------------------------
 #  Палитра состояний индикатора
@@ -950,23 +951,31 @@ class VoiceController:
             return ""
         return self.get("gm_key") or (self.get("gm_key_rm") if self.get("llm") == "remote" else "")
 
+    def _gq_key(self):
+        """Groq key for the fast path ("" = off): own key or the Claude PC's one."""
+        if not self.get("gm_on") or time.time() < getattr(self, "_gq_cool", 0):
+            return ""
+        return self.get("gq_key") or (self.get("gq_key_rm") if self.get("llm") == "remote" else "")
+
     def _gm_fetch(self):
         """Client PC without its own key: ask the Claude-sharing PC for its Gemini key
         (once per 30 min until it has one)."""
-        if (not self.get("gm_on") or self.get("gm_key") or self.get("llm") != "remote"
-                or not (self.get("rm_url") and self.get("rm_key"))):
+        if (not self.get("gm_on") or (self.get("gm_key") and self.get("gq_key"))
+                or self.get("llm") != "remote" or not (self.get("rm_url") and self.get("rm_key"))):
             return
         if time.time() < getattr(self, "_gm_fetch_at", 0):
             return
         self._gm_fetch_at = time.time() + 1800
         try:
-            k = ve.remote_gemini_key(ve.remote_base(self.get("rm_url")), self.get("rm_key"))
+            ks = ve.remote_keys(ve.remote_base(self.get("rm_url")), self.get("rm_key"))
         except Exception as ex:
-            self.log("voice: gemini key fetch: %s" % ex)
+            self.log("voice: key fetch: %s" % ex)
             return
-        if k and k != self.get("gm_key_rm"):
-            self._post("call", fn=lambda: self.set("gm_key_rm", k))
-            self.log("voice: gemini key received from the Claude PC")
+        for name, setting in (("gemini", "gm_key_rm"), ("groq", "gq_key_rm")):
+            k = ks.get(name)
+            if k and k != self.get(setting):
+                self._post("call", fn=lambda st=setting, v=k: self.set(st, v))
+                self.log("voice: %s key received from the Claude PC" % name)
 
     def _prewarm(self, s):
         try:
@@ -1033,7 +1042,8 @@ class VoiceController:
             self.overlay.show("nothing", V("o_nothing"))
             return
         self.state = "busy"
-        warm = self.get("stt") == "local" and not self.whisper.alive() and not self._gm_key()
+        warm = (self.get("stt") == "local" and not self.whisper.alive()
+                and not self._gm_key() and not self._gq_key())
         self.overlay.show("warm" if warm else "recog", V("o_warm") if warm else V("o_recog"))
         threading.Thread(target=self._pipeline, args=(s,), daemon=True).start()
         self._ensure_pump()
@@ -1084,6 +1094,26 @@ class VoiceController:
         return ve.cloud_transcribe(wav, self.get("stt_url"), self.get("stt_key"), self.get("stt_model"),
                                    lang, self.get("stt_prompt"))
 
+    def _llm_fast(self, text, runner=None):
+        """Groq first (~0.5-1 s), the configured LLM when Groq fails."""
+        qk = self._gq_key()
+        if qk:
+            t = time.time()
+            try:
+                out = ve.openai_ask(ve.GROQ_URL, qk, ve.GROQ_LLM, self._system_prompt(), text,
+                                    timeout=12, extra=ve.GROQ_LLM_EXTRA)
+                if out.strip():
+                    if runner:
+                        runner.cancel()
+                    self.log("voice: groq llm %.1fs" % (time.time() - t))
+                    return out
+                self.log("voice: groq llm returned nothing")
+            except ve.VoiceError as ex:
+                if str(ex).startswith("HTTP 4") and not str(ex).startswith("HTTP 429"):
+                    self._gq_cool = time.time() + 300
+                self.log("voice: groq llm failed (%.1fs): %s" % (time.time() - t, ex))
+        return self._llm(text, runner)
+
     def _llm(self, text, runner=None):
         p = self.get("llm")
         if p == "claude_code":
@@ -1129,7 +1159,20 @@ class VoiceController:
         try:
             wav = s.rec.wav_bytes()
             gm_clean = None
-            gk = self._gm_key()
+            heard = False
+            qk = self._gq_key()
+            if qk:
+                try:
+                    tr = ve.cloud_transcribe(wav, ve.GROQ_URL, qk, ve.GROQ_STT, self.get("lang"),
+                                             self.get("stt_prompt"),
+                                             timeout=6 + getattr(s.rec, "sent_duration", 0.0) / 10)
+                    text, heard = ve.clean_transcript(tr), True
+                    self.log("voice: groq stt %.1fs -> %d chars" % (time.time() - t0, len(text)))
+                except ve.VoiceError as ex:
+                    if str(ex).startswith("HTTP 4") and not str(ex).startswith("HTTP 429"):
+                        self._gq_cool = time.time() + 300
+                    self.log("voice: groq stt failed (%.1fs): %s" % (time.time() - t0, ex))
+            gk = None if heard else self._gm_key()
             if gk:
                 try:
                     tr, gm_clean = ve.gemini_hear(wav, gk, self.get("gm_model"), self.get("lang"),
@@ -1141,7 +1184,7 @@ class VoiceController:
                     if str(ex).startswith("HTTP 4"):
                         self._gm_cool = time.time() + 300
                     self.log("voice: gemini failed (%.1fs), local stt: %s" % (time.time() - t0, ex))
-            if gm_clean is None:
+            if gm_clean is None and not heard:
                 text = ve.clean_transcript(self._stt(wav, getattr(s.rec, "sent_duration", 0.0)))
                 self.log("voice: stt %.1fs -> %d chars" % (time.time() - t0, len(text)))   # сам текст в лог не пишем
             if not text:
@@ -1175,7 +1218,7 @@ class VoiceController:
                 self._post("stage", state="think", title=V("o_think"), sub=text)
                 t1 = time.time()
                 try:
-                    raw = self._llm(ve.user_message(text, sel), s.runner)
+                    raw = self._llm_fast(ve.user_message(text, sel), s.runner)
                     result, answer = ve.split_answer(raw)
                     self.log("voice: llm %.1fs answer=%s" % (time.time() - t1, answer))
                 except ve.VoiceError as ex:
@@ -1280,7 +1323,7 @@ class VoiceController:
         except (TypeError, ValueError):
             port = DEFAULTS["share_port"]
         self.share = ve.ShareServer(pool, self.get("share_token"), port, self.log)
-        self.share.gemini_key = lambda: self.get("gm_key")
+        self.share.shared_keys = lambda: {"gemini": self.get("gm_key"), "groq": self.get("gq_key")}
         self.share.start()
 
     # ---- Whisper: держать модель в памяти, число потоков ----
@@ -1799,6 +1842,7 @@ class VoiceController:
         # fast mode: Gemini hears the audio itself; the engines below are the fallback
         self._check(V("gm_on"), "gm_on")
         self._note(V("gm_note"))
+        self._entry(V("gq_key"), "gq_key", secret=True)
         self._entry(V("gm_key"), "gm_key", secret=True)
         self._entry(V("gm_model"), "gm_model")
         langs = [(c, V("lang_auto") if c == "auto" else c) for c in ve.LANGS]

@@ -364,7 +364,7 @@ STT_PRESETS = [
 ]
 
 
-def cloud_transcribe(wav, url, key, model, lang, prompt=""):
+def cloud_transcribe(wav, url, key, model, lang, prompt="", timeout=120):
     if not url:
         raise VoiceError("no STT url")
     fields = {"model": model or "whisper-1", "response_format": "json"}
@@ -376,7 +376,7 @@ def cloud_transcribe(wav, url, key, model, lang, prompt=""):
     h = {"Content-Type": ctype}
     if key:
         h["Authorization"] = "Bearer " + key
-    j = _http_json(url.rstrip("/") + "/audio/transcriptions", body, h, timeout=120)
+    j = _http_json(url.rstrip("/") + "/audio/transcriptions", body, h, timeout=timeout)
     return j.get("text") or ""
 
 
@@ -386,6 +386,14 @@ def cloud_transcribe(wav, url, key, model, lang, prompt=""):
 #  Spoken commands are not trusted to it (flash-lite handled them unreliably):
 #  the caller sends a transcript with a command to the LLM as before.
 # ---------------------------------------------------------------------------
+# Groq (free tier): measured 2026-11-15 from montenegro-pc: whisper-large-v3 0.3-1.0 s for
+# 3-83 s of speech; gpt-oss-120b cleans up / applies spoken commands in 0.5-1.0 s with the
+# full system prompt. Gemini's free tier swung between 1.2 s and 25-50 s the same day.
+GROQ_URL = "https://api.groq.com/openai/v1"
+GROQ_STT = "whisper-large-v3"            # turbo misheard more on Russian
+GROQ_LLM = "openai/gpt-oss-120b"
+GROQ_LLM_EXTRA = {"reasoning_effort": "low"}
+
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 GEMINI_BACKUP = "gemini-3.5-flash-lite"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
@@ -483,11 +491,12 @@ def gemini_hear(wav, key, model="", lang="auto", vocab="", deadline=10.0, grace=
     raise err if isinstance(err, VoiceError) else VoiceError("gemini: %s" % err)
 
 
-def remote_gemini_key(url, key):
-    """The Gemini key of the PC that shares Claude Code ("" if it has none or is old)."""
+def remote_keys(url, key):
+    """{"gemini": .., "groq": ..} of the PC that shares Claude Code (empty if it has none)."""
     h = {"Authorization": "Bearer " + key} if key else {}
     j = _http_json(url.rstrip("/") + "/hdc/gemini", None, h, timeout=5)
-    return (j.get("gemini_key") or "") if isinstance(j, dict) else ""
+    j = j if isinstance(j, dict) else {}
+    return {"gemini": j.get("gemini_key") or "", "groq": j.get("groq_key") or ""}
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +556,10 @@ SPOKEN_COMMANDS = (
     "message; take it as a command only when it is clearly addressed to you rather than "
     "to the reader. Wherever it stands, a phrase is a command only when it tells you how "
     "to render this text; when it is part of what the user is saying to someone else "
-    "(«Маша, переведи на английский этот договор до пятницы»), it is ordinary text: keep it. When you translate, write the whole result in the target "
+    "(«Маша, переведи на английский этот договор до пятницы»), it is ordinary text: keep it. "
+    "Verbs like «напиши», «скажи», «передай», «ответь», \"tell\", \"write to\" that open "
+    "a message about someone («напиши Маше, что я буду к семи», «скажи ему, что…») are "
+    "part of the dictated text, not commands to you: keep them word for word. When you translate, write the whole result in the target "
     "language, still cleaned up as usual. When there is no command, just clean up the "
     "dictation.")
 
@@ -748,11 +760,12 @@ LLM_PRESETS = [
 ]
 
 
-def openai_ask(url, key, model, system, text, timeout=180):
+def openai_ask(url, key, model, system, text, timeout=180, extra=None):
     if not url:
         raise VoiceError("no LLM url")
     body = {"model": model, "messages": [{"role": "system", "content": system},
                                          {"role": "user", "content": text}]}
+    body.update(extra or {})
     h = {"Content-Type": "application/json"}
     if key:
         h["Authorization"] = "Bearer " + key
@@ -863,7 +876,7 @@ class ShareServer:
         self.httpd = None
         self.error = None
         self._sem = threading.Semaphore(2)
-        self.gemini_key = None        # callable -> the Gemini key handed to client PCs
+        self.shared_keys = None       # callable -> {"gemini": .., "groq": ..} for client PCs
 
     def start(self):
         srv = self
@@ -913,8 +926,9 @@ class ShareServer:
                 if not self._authed():
                     return
                 if self.path.rstrip("/").endswith("/hdc/gemini"):
-                    k = srv.gemini_key() if srv.gemini_key else ""
-                    return self._send(200, {"gemini_key": k or ""})
+                    k = srv.shared_keys() if srv.shared_keys else {}
+                    return self._send(200, {"gemini_key": k.get("gemini") or "",
+                                            "groq_key": k.get("groq") or ""})
                 if self.path.rstrip("/").endswith("/models"):
                     return self._send(200, {"object": "list", "data": [
                         {"id": SHARE_MODEL_ID, "object": "model", "owned_by": "hdcontainer"}]})
