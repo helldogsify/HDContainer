@@ -151,6 +151,34 @@ def send_combo(mods, vk):
     return user32.SendInput(len(seq), arr, ctypes.sizeof(INPUT)) == len(seq)
 
 
+KEYEVENTF_UNICODE = 0x0004
+
+
+def type_text(text):
+    """Type text as Unicode key events (VK_PACKET -> WM_CHAR), no clipboard.
+    For game text fields (The Sims 4 etc.) that have no UIA edit control and may
+    ignore Ctrl+V. Releases held modifiers first. True when Windows took all events."""
+    seq = [_key_input(m, True) for m in MODIFIER_VKS if key_down(m)]
+    flat = " ".join(text.split("\n")).replace("\r", "")
+    units = flat.encode("utf-16-le")
+    for i in range(0, len(units), 2):
+        code = int.from_bytes(units[i:i + 2], "little")
+        for up in (False, True):
+            inp = INPUT()
+            inp.type = INPUT_KEYBOARD
+            inp.u.ki.wVk = 0
+            inp.u.ki.wScan = code
+            inp.u.ki.dwFlags = KEYEVENTF_UNICODE | (KEYEVENTF_KEYUP if up else 0)
+            seq.append(inp)
+    sent = 0
+    for i in range(0, len(seq), 64):                    # small batches: games poll input per frame
+        chunk = seq[i:i + 64]
+        arr = (INPUT * len(chunk))(*chunk)
+        sent += user32.SendInput(len(chunk), arr, ctypes.sizeof(INPUT))
+        time.sleep(0.01)
+    return sent == len(seq)
+
+
 _SIDE_NAMES = {0xA0: "Left Shift", 0xA1: "Right Shift", 0xA2: "Left Ctrl", 0xA3: "Right Ctrl",
                0xA4: "Left Alt", 0xA5: "Right Alt", 0x5B: "Left Win", 0x5C: "Right Win"}
 

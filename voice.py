@@ -220,6 +220,8 @@ STATE_COLORS = {
     "started": ((0, 224, 255), (120, 150, 255)),  # a .torrent was opened
 }
 LABEL_STATES = {"error", "setup", "done", "started"}
+# programs whose text fields get the text typed in instead of pasted (voice -> game chat)
+TYPE_INTO_EXES = {"ts4_x64.exe", "ts4_dx9_x64.exe", "ts4.exe"}
 HIDE_AFTER = {"pasted": 2.2, "copied": 3.0, "answer": 4.0, "nothing": 1.6, "cancel": 1.0,
               "error": 7.0, "setup": 8.0, "done": 6.0, "started": 4.0}
 
@@ -1137,7 +1139,7 @@ class VoiceController:
             if not result.strip():
                 self._post("final", state="nothing", title=V("o_nothing"))
                 return
-            how = self._deliver(s, result, bool(editable) and not answer)
+            how = self._deliver(s, result, bool(editable) and not answer, typing_ok=not answer)
             if answer:
                 how = "answer"
             self._history_add(result, how, raw=text if text.strip() != result.strip() else "")
@@ -1162,8 +1164,14 @@ class VoiceController:
             if s.runner:
                 s.runner.cancel()
 
-    def _deliver(self, s, text, editable):
+    def _deliver(self, s, text, editable, typing_ok=True):
         fg_now = vs.user32.GetForegroundWindow()
+        # games draw their own text fields (no UIA edit, no caret) and may ignore
+        # Ctrl+V: type the text straight into them as Unicode keystrokes
+        if typing_ok and fg_now == s.fg and vs.process_exe(vs.window_pid(fg_now)) in TYPE_INTO_EXES:
+            if vs.type_text(text.strip()):
+                return "pasted"
+            self.log("voice: typing into the game rejected (elevated?) -> copied")
         # в терминал многострочный текст не вставляем: каждая строка, кроме
         # последней, тут же ВЫПОЛНЯЕТСЯ как команда — только в буфер
         if "\n" in text.strip() and vs.class_name(fg_now) in CONSOLE_CLASSES:
