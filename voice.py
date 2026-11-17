@@ -988,6 +988,24 @@ class VoiceController:
         g = self.get_live
         return g("gm_key") or (g("gm_key_rm") if g("llm") == "remote" else "")
 
+    def _cloud_stt_on(self):
+        """Fast mode with a Groq or Gemini key (cooldowns ignored): the local Whisper is
+        then only a fallback, started for the request that needs it and stopped soon
+        after (user 2026-11-17: «не должен работать Whisper ведь мы используем уже Groq
+        для распознавания»; it held ~1.1 GB of RAM all the time)."""
+        g = self.get_live
+        if not g("gm_on"):
+            return False
+        remote = g("llm") == "remote"
+        return bool(g("gq_key") or g("gm_key") or (remote and (g("gq_key_rm") or g("gm_key_rm"))))
+
+    def _whisper_policy(self):
+        """keep-warm only without a cloud engine; with one, unload after 60 s idle."""
+        cloud = self._cloud_stt_on()
+        self.whisper.keep = bool(self.get_live("w_keep")) and not cloud
+        self.whisper.IDLE_STOP = 60 if cloud else ve.WhisperLocal.IDLE_STOP
+        return cloud
+
     def _gq_key(self, use="stt"):
         """Groq key for the fast path ("" = off): own key or the Claude PC's one.
         `use` = "stt" or "llm": each has its own cooldown (see _gq_failed)."""
@@ -1053,7 +1071,7 @@ class VoiceController:
             elif self.get_live("llm") == "remote":
                 ve.remote_warm(ve.remote_base(self.get_live("rm_url")), self.get_live("rm_key"),
                                self._system_prompt())
-            if self.get_live("stt") == "local":
+            if self.get_live("stt") == "local" and not self._cloud_stt_on():
                 self.whisper.ensure_server(self.get_live("w_model"), self.get_live("lang"))
         except Exception as ex:
             self.log("voice prewarm: %r" % ex)
@@ -1412,7 +1430,9 @@ class VoiceController:
 
     # ---- Whisper: держать модель в памяти, число потоков ----
     def _apply_whisper(self):
-        self.whisper.keep = bool(self.get_live("w_keep"))
+        if self._whisper_policy() and self.whisper.alive():
+            self.log("whisper-server: cloud speech recognition is on -> stop the resident server")
+            threading.Thread(target=self.whisper.stop, daemon=True).start()
         try:
             self.whisper.threads = int(self.get_live("w_threads") or 0)
         except (TypeError, ValueError):
@@ -1607,6 +1627,7 @@ class VoiceController:
 
     def _idle_tick(self):
         try:
+            self._whisper_policy()
             self.whisper.idle_check()
         except Exception:
             pass
