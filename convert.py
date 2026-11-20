@@ -1190,11 +1190,9 @@ def build_settings(app, parent, win, pad=24):
     d = app._gen_draft
     app._setting_check(body, C("setting"), d["convert_menu"],
                        lambda v: d.__setitem__("convert_menu", bool(v)), pad)
-    note(C("setting_note"), indent=30, pady=(0, 6))
 
     # движки
     h(C("sec_tools"))
-    note(C("tools_note"))
     rows = {}
 
     def refresh(name):
@@ -1251,30 +1249,7 @@ def build_settings(app, parent, win, pad=24):
         rows[name] = (lbl, btn)
         refresh(name)
 
-    # PDF
-    h(C("sec_pdf"))
-    br = find_browser()
-    note(C("pdf_browser", br) if br else C("pdf_nobrowser"))
 
-    # форматы
-    h(C("sec_formats"))
-    fmt_rows = [
-        (C("f_images"), ", ".join(sorted(IMAGE_SRC)) + "  →  " + ", ".join(IMAGE_DST)),
-        ("SVG", "svg  →  " + ", ".join(SVG_DST)),
-        (C("f_audio"), ", ".join(sorted(AUDIO_SRC)) + "  →  " + ", ".join(AUDIO_DST)),
-        (C("f_video"), ", ".join(sorted(VIDEO_SRC)) + "  →  " + ", ".join(VIDEO_DST)
-         + ", mp3, wav, m4a " + C("f_video_audio")),
-        (C("f_subs"), ", ".join(sorted(SUB_SRC)) + "  →  " + ", ".join(SUB_DST)),
-        (C("f_docs"), ", ".join(sorted(DOC_SRC)) + "  →  " + ", ".join(DOC_DST)),
-        (C("f_pdf"), "pdf  →  " + ", ".join(PDF_DST) + "  " + C("f_pdf_pages")),
-        (C("f_tables"), ", ".join(sorted(DATA_SRC)) + "  →  " + ", ".join(DATA_DST)
-         + "  " + C("f_tables_note")),
-    ]
-    for title, text in fmt_rows:
-        tk.Label(body, text=title, bg=SF, fg=TX, font=("Segoe UI Semibold", 9)).pack(
-            anchor="w", padx=pad, pady=(6, 0))
-        tk.Label(body, text=text, bg=SF, fg=DIM, font=("Segoe UI", 9), wraplength=540,
-                 justify="left").pack(anchor="w", padx=pad)
     tk.Frame(body, bg=SF, height=16).pack()
     tk.Frame(body, bg=BD, height=0).pack()
 

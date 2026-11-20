@@ -1924,7 +1924,7 @@ class VoiceController:
     def _build(self):
         b, a = self._body, self.app
         self._p, self._pbg = b, self.c_sf
-        self._note(V("intro"), pady=(16, 6))
+        tk.Frame(b, bg=self.c_sf, height=10).pack()
         self._check(V("enable"), "enabled")
 
         # горячая клавиша
@@ -1940,7 +1940,6 @@ class VoiceController:
         # fast mode: Groq recognizes and cleans up, Gemini is its backup; the engines
         # below are the fallback when both fail
         self._check(V("gm_on"), "gm_on")
-        self._note(V("gm_note"))
         self._entry(V("gq_key"), "gq_key", secret=True)
         self._entry(V("gm_key"), "gm_key", secret=True)
         self._entry(V("gm_model"), "gm_model")
@@ -1970,8 +1969,8 @@ class VoiceController:
                 a._accent_btn(row, V("download"), lambda: self._download(m)).pack(side="right")
                 if self.dl and self.dl.get("err") and self.dl.get("model") == m:
                     self._note(V("test_fail", self.dl["err"]), fg=self.c_err)
-            self._pcheck(V("w_fast"), "w_fast", V("w_fast_note"))
-            self._pcheck(V("w_keep"), "w_keep", V("w_keep_note"))
+            self._pcheck(V("w_fast"), "w_fast")
+            self._pcheck(V("w_keep"), "w_keep")
             thr = [(0, V("w_thr_auto", ve.default_threads()))] + [(n, str(n)) for n in (2, 4, 6, 8, 12, 16)
                                                                  if n <= (os.cpu_count() or 8)]
             self._dropdown(V("w_threads"), thr, "w_threads")
@@ -2008,7 +2007,6 @@ class VoiceController:
             self._test_row()
 
         def llm_remote():
-            self._note(V("remote_hint"), pady=(0, 6))
             self._entry(V("remote_url"), "rm_url")
             self._entry(V("share_key"), "rm_key", secret=True)
             self._test_row()
@@ -2043,7 +2041,6 @@ class VoiceController:
         # сервер для других ПК — только там, где есть что раздавать
         if ve.find_claude(self.get("cc_path")) or self.get("share_enabled"):
             self._h(V("sec_share"))
-            self._note(V("share_desc"), pady=(0, 6))
 
             def toggle_share(v):
                 self._rebuild()
@@ -2072,14 +2069,12 @@ class VoiceController:
         # поведение
         self._h(V("sec_behavior"))
         self._check(V("cleanup"), "cleanup")
-        self._note(V("cleanup_note"), pady=(0, 6), indent=30)
         self._check(V("autopaste"), "autopaste")
         self._check(V("restore"), "restore_clip")
 
         # история
         self._h(V("hist_menu"))
         self._check(V("hist_keep"), "history")
-        self._note(V("hist_note", HISTORY_MAX, self.history_file), pady=(0, 6), indent=30)
         row = self._btn_row()
         self.app._ghost_btn(row, V("hist_open"), self.open_history).pack(side="left")
 

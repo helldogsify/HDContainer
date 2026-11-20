@@ -440,6 +440,7 @@ class VideoSession:
         self.want_hw = hardware
         self.size = out_size(self.rect[2], self.rect[3])
         self.audio = None
+        self.grabber = None
         self.t0 = None                  # QPC (hns) of the first video frame
         self.frames = 0
         self.dropped = 0
@@ -448,10 +449,26 @@ class VideoSession:
         self.started = time.time()
         self._stop = threading.Event()
         self.ready = threading.Event()
-        if system or mic:
-            self.audio = ra.Session(wav_path, log, system=system, mic=mic, mic_id=mic_id)
+        # always a sound session: computer sound / mic can be switched on during the recording
+        self.audio = ra.Session(wav_path, log, system=system, mic=mic, mic_id=mic_id)
         self.thread = threading.Thread(target=self._run, daemon=True, name="hdc-screenrec")
         self.thread.start()
+
+    def set_option(self, key, on):
+        """The panel's switches during the recording."""
+        on = bool(on)
+        if key in ("cursor", "clicks"):
+            setattr(self, key, on)
+            if self.grabber is not None:
+                setattr(self.grabber, key, on)
+        elif key == "system":
+            self.audio.set_sources(system=on)
+        elif key == "mic":
+            self.audio.set_sources(mic=on)
+
+    @property
+    def audio_used(self):
+        return self.audio is not None and self.audio.used
 
     def levels(self):
         return self.audio.levels() if self.audio is not None else (0.0, 0.0)
@@ -474,7 +491,7 @@ class VideoSession:
         try:
             x, y, w, h = self.rect
             ow, oh = self.size
-            grab = Grabber(x, y, w, h, ow, oh, self.cursor, self.clicks)
+            grab = self.grabber = Grabber(x, y, w, h, ow, oh, self.cursor, self.clicks)
             writer = H264Writer(self.video_path, ow, oh, self.fps, self.quality, self.log, hardware=self.want_hw)
             self.hardware = writer.hardware
             self.log("screenrec: %dx%d at (%d,%d) -> %dx%d, %d fps, %d kbit/s, %s encoder" % (

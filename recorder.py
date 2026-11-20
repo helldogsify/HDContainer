@@ -780,7 +780,7 @@ class RecorderController:
                 p.pack(side="left", padx=(0, 6))
                 p.bind("<Button-1>", lambda _e, v=val: (self.set(key, v), self._rebuild()))
 
-        note(R("intro"), pady=(8, 6))
+        tk.Frame(parent, bg=th["sf"], height=4).pack()
 
 
         header(R("sec_sources"))
@@ -791,11 +791,9 @@ class RecorderController:
             row.pack(fill="x", padx=pad + 34, pady=(0, 4))
             btn = a._ghost_btn(row, self._mic_label() + "   ⌄", lambda: self._mic_menu(btn))
             btn.pack(side="left")
-        note(R("phones_note"), pady=(4, 2))
 
         header(R("sec_indicator"))
         check(R("show_ind"), "indicator")
-        note(R("ind_note"), pady=(0, 2), indent=34)
 
         header(R("sec_save"))
         folder = self.get("folder")
@@ -815,7 +813,6 @@ class RecorderController:
 
         header(R("sec_format"))
         pills([(f, f.upper()) for f in FORMAT_CHOICES], "format")
-        note(R("fmt_note"), pady=(2, 2))
         tk.Frame(parent, bg=th["sf"], height=16).pack()
 
     def _mics(self):

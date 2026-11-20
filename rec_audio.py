@@ -581,7 +581,9 @@ class Session:
         self.mixer = Mixer(self.writer)
         self.out_srcs = {}              # render device id -> Source
         self.mic_src = None
+        self.used = bool(system or mic) # was any source ever on (the screen recorder drops a silent track)
         self._stop = threading.Event()
+        self._kick = threading.Event()  # set_sources: sync the devices now, not in 2 s
         self.started = time.time()
         self.thread = threading.Thread(target=self._run, daemon=True, name="hdc-rec-main")
         self.thread.start()
@@ -598,7 +600,25 @@ class Session:
     def seconds(self):
         return self.mixer.written / RATE
 
+    def set_sources(self, system=None, mic=None):
+        """Switch the computer sound / the microphone on or off while recording."""
+        if system is not None:
+            self.system = bool(system)
+        if mic is not None:
+            self.mic = bool(mic)
+        self.used = self.used or self.system or self.mic
+        self._kick.set()
+
     def _sync_devices(self, en):
+        if not self.system and self.out_srcs:
+            old, self.out_srcs = self.out_srcs, {}
+            for s in old.values():
+                s.stop()
+        if not self.mic and self.mic_src is not None:
+            self.mic_src.stop()
+            self.mic_src = None
+        if not (self.system or self.mic):
+            return
         ids = default_ids(en)
         if self.system:
             for i in ids["render"]:
@@ -630,7 +650,8 @@ class Session:
             last_sync = time.time()
             while not self._stop.is_set():
                 now = time.time()
-                if now - last_dev >= 2.0:
+                if now - last_dev >= 2.0 or self._kick.is_set():
+                    self._kick.clear()
                     last_dev = now
                     try:
                         self._sync_devices(en)
@@ -640,7 +661,9 @@ class Session:
                 if now - last_sync >= 5.0:
                     last_sync = now
                     self.writer.sync()
-                self._stop.wait(0.25)
+                self._kick.wait(0.25)
+                if self._stop.is_set():
+                    break
         except Exception:
             self.log("recorder session crashed:\n" + traceback.format_exc())
         finally:
@@ -658,6 +681,7 @@ class Session:
 
     def stop(self, wait=True):
         self._stop.set()
+        self._kick.set()
         if wait:
             self.thread.join(5)
 

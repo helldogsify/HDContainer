@@ -3298,8 +3298,6 @@ class BoxManager:
         b2 = tk.Frame(body, bg=sf)
         b2.pack(fill="x")
         self.app._setting_check(b2, B("snap"), bool(self.opt("snap")), lambda v: self._set_opt("snap", bool(v)), pad)
-        tk.Label(b2, text=B("snap_note"), bg=sf, fg=dim, font=fonts["sm"], wraplength=520, justify="left").pack(
-            anchor="w", padx=(pad + 32, pad), pady=(0, 4))
         self.app._setting_check(b2, B("quickhide"), bool(self.opt("quickhide")),
                                 lambda v: self._set_opt("quickhide", bool(v)), pad)
 
@@ -3323,8 +3321,6 @@ class BoxManager:
                               font=fonts["sm"], padx=10, pady=4, cursor="hand2")
                 lb.grid(row=r, column=c, sticky="we", padx=(0, 2), pady=(6, 0))
                 lb.bind("<Button-1>", lambda e, w=where: (self.arrange(w), self._build_body()))
-        tk.Label(body, text=B("arrange_note") + " " + B("up_note"), bg=sf, fg=dim, font=fonts["sm"], wraplength=520,
-                 justify="left").pack(anchor="w", padx=pad, pady=(8, 0))
 
         btns = tk.Frame(body, bg=sf)
         btns.pack(fill="x", padx=pad, pady=(14, 4))

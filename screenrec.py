@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """Screen recording ("Запись видео") for HDContainer.
 
-The hotkey (Ctrl+Shift+Y by default, its own voice_sys.KeyHook instance) or the tray opens the
+The hotkey (Ctrl+Shift+B by default, its own voice_sys.KeyHook instance) or the tray opens the
 same frozen overlay as the screenshots: drag a region or click for the whole monitor. A panel
 under the region switches computer sound / microphone / pointer / click rings (the choice is
-remembered) and starts the recording. While it runs, a red pill above the clock shows the time
-(click = stop) and a thin frame marks the region; both are WDA_EXCLUDEFROMCAPTURE windows, so
-they are on the screen and never in the video. The same hotkey, the tray row or the pill stop it.
+remembered) and starts the recording. The panel stays on the screen while it runs (user ruling
+2026-11-20: switches available during the recording, the time on the panel instead of a pill in
+the corner, draggable by a dotted grip), and a thin frame marks the region; both are
+WDA_EXCLUDEFROMCAPTURE windows, so they are on the screen and never in the video. The same
+hotkey, the tray row or Stop on the panel end it.
 
 Files: while recording, %LOCALAPPDATA%\\HDContainer\\screenrec\\vid-<ts>.mp4 (fragmented MP4) +
 vid-<ts>.wav (sound) + vid-<ts>.json (where it goes). After the stop a worker thread muxes them
@@ -47,18 +49,19 @@ VSTR = {
     "menu_start": {"en": "Record video", "ru": "Записать видео", "es": "Grabar vídeo", "pt": "Gravar vídeo", "de": "Video aufnehmen", "fr": "Enregistrer une vidéo", "zh": "录制视频"},
     "menu_stop": {"en": "Stop video · %s", "ru": "Остановить видео · %s", "es": "Detener vídeo · %s", "pt": "Parar vídeo · %s", "de": "Video beenden · %s", "fr": "Arrêter la vidéo · %s", "zh": "停止录制 · %s"},
     "intro": {
-        "en": "Records a part of the screen or the whole screen into an MP4 video. Press the hotkey, select a region (a click takes the whole screen), choose what to record on the panel and press “Record”. Stop with the same hotkey, from the tray menu or by clicking the indicator. The indicator and the frame around the region are not in the video.",
-        "ru": "Записывает часть экрана или весь экран в видео MP4. Нажми горячую клавишу, выдели область (клик — весь экран), выбери на панели, что записывать, и нажми «Запись». Остановить — той же клавишей, из меню в трее или кликом по индикатору. Индикатор и рамка вокруг области в видео не попадают.",
-        "es": "Graba una parte de la pantalla o toda la pantalla en un vídeo MP4. Pulsa el atajo, elige una zona (un clic toma toda la pantalla), elige en el panel qué grabar y pulsa «Grabar». Detén con el mismo atajo, desde el menú de la bandeja o con un clic en el indicador. El indicador y el marco de la zona no salen en el vídeo.",
-        "pt": "Grava uma parte da tela ou a tela inteira num vídeo MP4. Pressione o atalho, selecione uma área (um clique pega a tela inteira), escolha no painel o que gravar e clique em “Gravar”. Pare com o mesmo atalho, pelo menu da bandeja ou clicando no indicador. O indicador e a moldura da área não aparecem no vídeo.",
-        "de": "Nimmt einen Teil des Bildschirms oder den ganzen Bildschirm als MP4-Video auf. Hotkey drücken, Bereich aufziehen (Klick = ganzer Bildschirm), im Feld wählen, was aufgenommen wird, und „Aufnehmen“ drücken. Beenden mit demselben Hotkey, im Tray-Menü oder per Klick auf die Anzeige. Anzeige und Rahmen um den Bereich sind im Video nicht zu sehen.",
-        "fr": "Enregistre une partie de l'écran ou tout l'écran dans une vidéo MP4. Appuie sur le raccourci, sélectionne une zone (un clic prend tout l'écran), choisis sur le panneau quoi enregistrer et clique sur « Enregistrer ». Arrête avec le même raccourci, le menu de la zone de notification ou un clic sur l'indicateur. L'indicateur et le cadre autour de la zone n'apparaissent pas dans la vidéo.",
-        "zh": "把屏幕的一部分或整个屏幕录成 MP4 视频。按下快捷键，选择区域（点击即整个屏幕），在面板上选择录制内容，然后点“录制”。用同一快捷键、托盘菜单或点击指示器停止。指示器和区域边框不会出现在视频里。"},
+        "en": "Records a part of the screen or the whole screen into an MP4 video. Press the hotkey, select a region (a click takes the whole screen), choose what to record on the panel and press “Record”. The panel stays during the recording: switches work at once, it shows the time and stops with “Stop”; drag it by the dots. Stop also with the same hotkey or from the tray menu. The panel and the frame around the region are not in the video.",
+        "ru": "Записывает часть экрана или весь экран в видео MP4. Нажми горячую клавишу, выдели область (клик — весь экран), выбери на панели, что записывать, и нажми «Запись». Панель остаётся на время записи: переключатели работают сразу, на ней идёт время и есть «Стоп»; перетаскивается за точки. Остановить можно и той же клавишей или из меню в трее. Панель и рамка вокруг области в видео не попадают.",
+        "es": "Graba una parte de la pantalla o toda la pantalla en un vídeo MP4. Pulsa el atajo, elige una zona (un clic toma toda la pantalla), elige en el panel qué grabar y pulsa «Grabar». El panel se queda durante la grabación: los interruptores actúan al momento, muestra el tiempo y tiene «Detener»; se arrastra por los puntos. También se detiene con el mismo atajo o desde el menú de la bandeja. El panel y el marco de la zona no salen en el vídeo.",
+        "pt": "Grava uma parte da tela ou a tela inteira num vídeo MP4. Pressione o atalho, selecione uma área (um clique pega a tela inteira), escolha no painel o que gravar e clique em “Gravar”. O painel fica durante a gravação: os botões agem na hora, ele mostra o tempo e tem “Parar”; arraste-o pelos pontos. Também para com o mesmo atalho ou pelo menu da bandeja. O painel e a moldura da área não aparecem no vídeo.",
+        "de": "Nimmt einen Teil des Bildschirms oder den ganzen Bildschirm als MP4-Video auf. Hotkey drücken, Bereich aufziehen (Klick = ganzer Bildschirm), im Feld wählen, was aufgenommen wird, und „Aufnehmen“ drücken. Das Feld bleibt während der Aufnahme: Schalter wirken sofort, es zeigt die Zeit und hat „Stopp“; an den Punkten verschieben. Beenden auch mit demselben Hotkey oder im Tray-Menü. Feld und Rahmen um den Bereich sind im Video nicht zu sehen.",
+        "fr": "Enregistre une partie de l'écran ou tout l'écran dans une vidéo MP4. Appuie sur le raccourci, sélectionne une zone (un clic prend tout l'écran), choisis sur le panneau quoi enregistrer et clique sur « Enregistrer ». Le panneau reste pendant l'enregistrement : les interrupteurs agissent tout de suite, il affiche la durée et a « Arrêter » ; on le déplace par les points. On arrête aussi avec le même raccourci ou le menu de la zone de notification. Le panneau et le cadre autour de la zone n'apparaissent pas dans la vidéo.",
+        "zh": "把屏幕的一部分或整个屏幕录成 MP4 视频。按下快捷键，选择区域（点击即整个屏幕），在面板上选择录制内容，然后点“录制”。录制期间面板一直在：开关立即生效，显示时长并有“停止”按钮；拖动圆点可移动面板。也可用同一快捷键或托盘菜单停止。面板和区域边框不会出现在视频里。"},
     "hint": {"en": "Select the region to record  ·  click — whole screen  ·  Esc — cancel", "ru": "Выдели область записи  ·  клик — весь экран  ·  Esc — отмена", "es": "Elige la zona a grabar  ·  clic — toda la pantalla  ·  Esc — cancelar", "pt": "Selecione a área a gravar  ·  clique — tela inteira  ·  Esc — cancelar", "de": "Aufnahmebereich aufziehen  ·  Klick — ganzer Bildschirm  ·  Esc — abbrechen", "fr": "Sélectionne la zone à enregistrer  ·  clic — tout l'écran  ·  Esc — annuler", "zh": "选择录制区域  ·  点击 — 整个屏幕  ·  Esc — 取消"},
     "p_system": {"en": "Sound", "ru": "Звук ПК", "es": "Sonido", "pt": "Som", "de": "Ton", "fr": "Son", "zh": "系统声音"},
     "p_mic": {"en": "Microphone", "ru": "Микрофон", "es": "Micrófono", "pt": "Microfone", "de": "Mikrofon", "fr": "Micro", "zh": "麦克风"},
     "p_cursor": {"en": "Cursor", "ru": "Курсор", "es": "Cursor", "pt": "Cursor", "de": "Zeiger", "fr": "Curseur", "zh": "光标"},
     "p_clicks": {"en": "Clicks", "ru": "Клики", "es": "Clics", "pt": "Cliques", "de": "Klicks", "fr": "Clics", "zh": "点击"},
+    "p_stop": {"en": "Stop", "ru": "Стоп", "es": "Detener", "pt": "Parar", "de": "Stopp", "fr": "Arrêter", "zh": "停止"},
     "p_start": {"en": "Record", "ru": "Запись", "es": "Grabar", "pt": "Gravar", "de": "Aufnehmen", "fr": "Enregistrer", "zh": "录制"},
     "sec_what": {"en": "What to record", "ru": "Что записывать", "es": "Qué grabar", "pt": "O que gravar", "de": "Was aufnehmen", "fr": "Quoi enregistrer", "zh": "录制内容"},
     "src_system": {"en": "Computer sound", "ru": "Звук компьютера", "es": "Sonido del ordenador", "pt": "Som do computador", "de": "Computerton", "fr": "Son de l'ordinateur", "zh": "电脑声音"},
@@ -73,9 +76,8 @@ VSTR = {
     "q_high": {"en": "High", "ru": "Высокое", "es": "Alta", "pt": "Alta", "de": "Hoch", "fr": "Haute", "zh": "高"},
     "video_note": {"en": "60 frames — for games and fast motion; on a large region the computer may manage fewer.", "ru": "60 кадров — для игр и быстрого движения; на большой области компьютер может успевать меньше.", "es": "60 fotogramas: para juegos y movimiento rápido; en una zona grande el ordenador puede lograr menos.", "pt": "60 quadros — para jogos e movimento rápido; numa área grande o computador pode conseguir menos.", "de": "60 Bilder — für Spiele und schnelle Bewegung; bei einem großen Bereich schafft der Computer evtl. weniger.", "fr": "60 images — pour les jeux et les mouvements rapides ; sur une grande zone l'ordinateur peut en faire moins.", "zh": "60 帧适合游戏和快速画面；区域较大时电脑可能达不到。"},
     "sec_during": {"en": "While recording", "ru": "Во время записи", "es": "Durante la grabación", "pt": "Durante a gravação", "de": "Während der Aufnahme", "fr": "Pendant l'enregistrement", "zh": "录制时"},
-    "show_ind": {"en": "Show the indicator above the clock — time and a stop button", "ru": "Показывать индикатор над часами — время и кнопка «стоп»", "es": "Mostrar el indicador sobre el reloj: tiempo y botón de parada", "pt": "Mostrar o indicador acima do relógio — tempo e botão de parar", "de": "Anzeige über der Uhr zeigen — Zeit und Stopp-Knopf", "fr": "Afficher l'indicateur au-dessus de l'horloge — durée et bouton d'arrêt", "zh": "在时钟上方显示指示器——时长和停止按钮"},
     "show_frame": {"en": "Show a frame around the region", "ru": "Показывать рамку вокруг области", "es": "Mostrar un marco alrededor de la zona", "pt": "Mostrar uma moldura em volta da área", "de": "Rahmen um den Bereich zeigen", "fr": "Afficher un cadre autour de la zone", "zh": "在区域周围显示边框"},
-    "during_note": {"en": "Neither of them gets into the video.", "ru": "Ни то, ни другое в видео не попадает.", "es": "Ninguno de los dos sale en el vídeo.", "pt": "Nenhum dos dois aparece no vídeo.", "de": "Beides ist im Video nicht zu sehen.", "fr": "Ni l'un ni l'autre n'apparaît dans la vidéo.", "zh": "两者都不会出现在视频里。"},
+    "during_note": {"en": "The panel with the time and the frame are not in the video.", "ru": "Панель со временем и рамка в видео не попадают.", "es": "El panel con el tiempo y el marco no salen en el vídeo.", "pt": "O painel com o tempo e a moldura não aparecem no vídeo.", "de": "Das Feld mit der Zeit und der Rahmen sind im Video nicht zu sehen.", "fr": "Le panneau avec la durée et le cadre n'apparaissent pas dans la vidéo.", "zh": "带时长的面板和边框不会出现在视频里。"},
     "hk_note": {"en": "The same keys stop the recording.", "ru": "Те же клавиши останавливают запись.", "es": "Las mismas teclas detienen la grabación.", "pt": "As mesmas teclas param a gravação.", "de": "Dieselben Tasten beenden die Aufnahme.", "fr": "Les mêmes touches arrêtent l'enregistrement.", "zh": "同一组按键停止录制。"},
     "file": {"en": "Video", "ru": "Видео", "es": "Vídeo", "pt": "Vídeo", "de": "Video", "fr": "Vidéo", "zh": "视频"},
     "saved": {"en": "Video saved", "ru": "Видео сохранено", "es": "Vídeo guardado", "pt": "Vídeo salvo", "de": "Video gespeichert", "fr": "Vidéo enregistrée", "zh": "视频已保存"},
@@ -98,11 +100,11 @@ def V(key, *args):
 
 DEFAULTS = {
     "enabled": True,
-    "hk_mods": vs.MOD_CONTROL | vs.MOD_SHIFT, "hk_vk": 0x59,     # Ctrl+Shift+Y: free in browsers and Telegram
+    "hk_mods": vs.MOD_CONTROL | vs.MOD_SHIFT, "hk_vk": 0x42,     # Ctrl+Shift+B: the user's choice (2026-11-20)
     "system": True, "mic": False, "mic_id": "",
     "cursor": True, "clicks": False,
     "fps": 30, "quality": "normal",
-    "indicator": True, "frame": True,
+    "frame": True,
     "folder": "",                   # "" = the Desktop
 }
 FPS_CHOICES = (15, 30, 60)
@@ -189,7 +191,10 @@ class RegionFrame:
 
 
 # ---------------------------------------------------------------------------
-#  Region picker: the screenshot overlay + a panel of switches under the region
+#  The panel of switches: one picture for both places it lives in. Before the recording it is
+#  drawn on the frozen overlay under the region (the overlay gets its mouse from a hook); during
+#  the recording it is a layered window of its own (LivePanel), left out of capture, with the time
+#  and Stop. Both are dragged by the dotted grip left of the last button.
 # ---------------------------------------------------------------------------
 PANEL_BG = (27, 27, 29)
 PANEL_EDGE = (58, 59, 63)
@@ -202,24 +207,156 @@ REC = (255, 69, 58)
 GLYPHS = {"system": chr(0xE767), "mic": chr(0xE720), "cursor": chr(0xE8B0), "clicks": chr(0xE7C9),
           "start": chr(0xE7C8), "cancel": chr(0xE711)}
 TOGGLES = ("system", "mic", "cursor", "clicks")
+PICK_ITEMS = TOGGLES + ("|", "start", "grip", "cancel")
+REC_ITEMS = TOGGLES + ("|", "time", "stop", "grip")
+
+
+class PanelArt:
+    """Renders the panel (supersampled, smooth corners) as RGBA + the rectangles of its parts."""
+    SS = 3
+
+    def __init__(self):
+        self.u = _dpi()
+        k = self.SS
+        self.f_txt = _font(["seguisb.ttf", "segoeuib.ttf", "arialbd.ttf"], int(13 * self.u * k))
+        self.f_time = _font(["seguisb.ttf", "segoeuib.ttf", "arialbd.ttf"], int(14 * self.u * k))
+        self.f_ico = _font(["segmdl2.ttf", "SegoeIcons.ttf"], int(15 * self.u * k))
+        self._probe = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
+        self._cache = (None, None)
+
+    def _layout(self, keys, texts):
+        u, k = self.u, self.SS
+        pad, gap, ch = 6 * u, 4 * u, 36 * u
+        x = pad
+        out = []
+        for key in keys:
+            if key == "|":
+                out.append((key, x + 4 * u, x + 5 * u))
+                x += 9 * u + gap
+                continue
+            if key == "grip":
+                w = 22 * u
+            elif key == "saving":
+                w = self._probe.textlength(texts[key], font=self.f_txt) / k + 44 * u
+            elif key == "time":
+                w = self._probe.textlength("0:00:00" if len(texts[key]) > 5 else "00:00", font=self.f_time) / k + 34 * u
+            elif texts.get(key):
+                w = 12 * u + 18 * u + 8 * u + self._probe.textlength(texts[key], font=self.f_txt) / k + 14 * u
+            else:
+                w = ch
+            out.append((key, x, x + w))
+            x += w + gap
+        return out, int(x - gap + pad), int(ch + 2 * pad), pad
+
+    def render(self, keys, states, hover=None, elapsed=0.0, blink=True, progress=0.0):
+        """keys: PICK_ITEMS / REC_ITEMS; states: {toggle: bool}. Returns (RGBA, [(key, rect)], w, h)."""
+        texts = {t: V("p_" + t) for t in TOGGLES}
+        texts.update({"start": V("p_start"), "stop": V("p_stop"), "time": fmt_time(elapsed),
+                      "saving": "%s %d%%" % (R("saving"), int(progress * 100))})
+        spin = int(time.time() * 12) if "saving" in keys else 0
+        ck = (keys, tuple(sorted(states.items())), hover, texts["time"], blink, texts["saving"], spin, LANG_GET())
+        if self._cache[0] == ck:
+            return self._cache[1]
+        u, k = self.u, self.SS
+        items, pw, ph, pad = self._layout(keys, texts)
+        img = Image.new("RGBA", (pw * k, ph * k), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(img)
+        dr.rounded_rectangle((0, 0, pw * k - 1, ph * k - 1), radius=int(12 * u * k), fill=PANEL_BG + (255,),
+                             outline=PANEL_EDGE + (255,), width=max(1, int(u * k)))
+        rects = []
+        cy = ph * k / 2
+        top, bot = pad * k, (ph - pad) * k
+        for key, a, b in items:
+            if key == "|":
+                dr.rectangle((a * k, (ph * 0.28) * k, b * k, (ph * 0.72) * k), fill=PANEL_EDGE + (255,))
+                continue
+            hov = key == hover
+            if key == "saving":                     # spinner + "Saving 42%"
+                r = 7 * u * k
+                cx = a * k + 14 * u * k
+                ang = (time.time() * 300) % 360
+                dr.arc((cx - r, cy - r, cx + r, cy + r), ang, ang + 250, fill=TXT + (255,), width=max(2, int(2.2 * u * k)))
+                dr.text((cx + 14 * u * k, cy), texts["saving"], font=self.f_txt, fill=TXT + (255,), anchor="lm")
+                continue
+            if key == "time":                       # pulsing red dot + the running time, not a button
+                r = 5 * u * k
+                cx = a * k + 12 * u * k
+                if blink:
+                    dr.ellipse((cx - r, cy - r, cx + r, cy + r), fill=REC + (255,))
+                else:
+                    dr.ellipse((cx - r, cy - r, cx + r, cy + r), outline=REC + (255,), width=max(1, int(1.6 * u * k)))
+                dr.text((cx + 12 * u * k, cy), texts["time"], font=self.f_time, fill=TXT + (255,), anchor="lm")
+                continue
+            if key == "grip":                       # 2 x 3 dots: drag the panel by them
+                col = TXT if hov else TXT_DIM
+                if hov:
+                    dr.rounded_rectangle((a * k, top, b * k, bot), radius=int(9 * u * k), fill=CHIP_HOVER + (255,))
+                r = 1.6 * u * k
+                gx = (a + b) / 2 * k
+                for dx in (-3.2, 3.2):
+                    for dy in (-6.4, 0, 6.4):
+                        x, y = gx + dx * u * k, cy + dy * u * k
+                        dr.ellipse((x - r, y - r, x + r, y + r), fill=col + (255,))
+                rects.append((key, (int(a), int(pad), int(b), int(ph - pad))))
+                continue
+            on = states.get(key, True)
+            if key in ("start", "stop"):
+                fill = (255, 96, 86) if hov else REC
+                fg_i = fg_t = (255, 255, 255)
+            elif key == "cancel":
+                fill = CHIP_HOVER if hov else None
+                fg_i, fg_t = TXT if hov else TXT_DIM, TXT
+            else:
+                fill = CHIP_ON if on else None
+                if hov:
+                    fill = tuple(min(255, c + 12) for c in (fill or CHIP_HOVER))
+                fg_i, fg_t = (ACCENT if on else TXT_DIM), (TXT if on else TXT_DIM)
+            if fill:
+                dr.rounded_rectangle((a * k, top, b * k, bot), radius=int(9 * u * k), fill=fill + (255,))
+            label = texts.get(key)
+            if label:
+                gx = a * k + 12 * u * k
+                if key == "stop":                   # a filled square
+                    s = 5.5 * u * k
+                    c0 = gx + 8 * u * k
+                    dr.rounded_rectangle((c0 - s, cy - s, c0 + s, cy + s), radius=1.8 * u * k, fill=fg_i + (255,))
+                else:
+                    dr.text((gx, cy), GLYPHS[key], font=self.f_ico, fill=fg_i + (255,), anchor="lm")
+                dr.text((gx + 26 * u * k, cy), label, font=self.f_txt, fill=fg_t + (255,), anchor="lm")
+                if key in TOGGLES and not on:       # struck through: clearly "off"
+                    dr.line((gx - 1 * u * k, cy + 8 * u * k, gx + 17 * u * k, cy - 8 * u * k),
+                            fill=fg_i + (255,), width=max(1, int(1.6 * u * k)))
+            else:
+                dr.text(((a + b) / 2 * k, cy), GLYPHS[key], font=self.f_ico, fill=fg_i + (255,), anchor="mm")
+            rects.append((key, (int(a), int(pad), int(b), int(ph - pad))))
+        res = (img.resize((pw, ph), Image.LANCZOS), rects, pw, ph)
+        self._cache = (ck, res)
+        return res
+
+
+def hit_rect(rects, x, y):
+    for key, (a, b, c, d) in rects:
+        if a <= x < c and b <= y < d:
+            return key
+    return None
 
 
 class Picker(screenshot.Capture):
-    SS = 3
+    """The screenshot overlay with the panel under the selected region."""
 
     def __init__(self, ctl, img, origin):
         self.sel = None                 # chosen region (canvas coords) while the panel is shown
         self.panel_item = None
         self.panel_photo = None
-        self.panel_xy = (0, 0)
+        self.panel_img = None
+        self.panel_xy = (0, 0)          # panel's top-left, canvas coords
+        self.panel_at = None            # set once the panel was dragged: it stays there
+        self.drag = None                # (dx, dy) of the pointer inside the panel while dragging
+        self._drag_due = False
         self.buttons = []               # (key, (x1, y1, x2, y2)) in canvas coords
         self.hover = None
         self.pressed = None
-        s = _dpi()
-        self.u = s
-        k = self.SS
-        self.f_txt = _font(["seguisb.ttf", "segoeuib.ttf", "arialbd.ttf"], int(13 * s * k))
-        self.f_ico = _font(["segmdl2.ttf", "SegoeIcons.ttf"], int(15 * s * k))
+        self.art = PanelArt()
         super().__init__(ctl, img, origin)
 
     def hint_text(self):
@@ -227,22 +364,34 @@ class Picker(screenshot.Capture):
 
     # ---- pointer ----
     def _hit(self, e):
-        for key, (a, b, c, d) in self.buttons:
-            if a <= e.x < c and b <= e.y < d:
-                return key
-        return None
+        return hit_rect(self.buttons, e.x, e.y)
 
     def _motion(self, e):
+        if self.drag is not None:
+            self.panel_at = (e.x - self.drag[0], e.y - self.drag[1])
+            if not self._drag_due:
+                self._drag_due = True
+                self.cv.after(12, self._drag_draw)
+            return
         super()._motion(e)
         if self.sel is not None:
             h = self._hit(e)
             if h != self.hover:
                 self.hover = h
+                self.cv.configure(cursor="fleur" if h == "grip" else "hand2" if h else "crosshair")
                 self._draw_panel()
+
+    def _drag_draw(self):
+        self._drag_due = False
+        if not self.done:
+            self._draw_panel()
 
     def _press(self, e):
         if self.sel is not None:
             hit = self._hit(e)
+            if hit == "grip":
+                self.drag = (e.x - self.panel_xy[0], e.y - self.panel_xy[1])
+                return
             if hit:
                 self.pressed = hit
                 return
@@ -250,6 +399,10 @@ class Picker(screenshot.Capture):
         super()._press(e)
 
     def _release(self, e):
+        if self.drag is not None:
+            self.drag = None
+            self._draw_panel()
+            return
         if self.pressed is not None:
             key, self.pressed = self.pressed, None
             if self._hit(e) == key:
@@ -282,6 +435,7 @@ class Picker(screenshot.Capture):
             self.cv.delete(self.panel_item)
             self.panel_item = None
         self.panel_photo = None
+        self.cv.configure(cursor="crosshair")
 
     def _act(self, key):
         if key in TOGGLES:
@@ -299,100 +453,41 @@ class Picker(screenshot.Capture):
             return
         x1, y1, x2, y2 = self.sel
         rect = (x1 + self.ox, y1 + self.oy, x2 - x1, y2 - y1)
+        pos = (self.panel_xy[0] + self.ox, self.panel_xy[1] + self.oy)
         self.close()
-        self.ctl._on_pick(rect)
+        self.ctl._on_pick(rect, pos)
 
-    # ---- the panel (a Pillow picture, so its corners are smooth) ----
-    def _layout(self, d):
-        u, k = self.u, self.SS
-        items = []
-        for key in TOGGLES:
-            items.append((key, V("p_" + key)))
-        items.append(("|", ""))
-        items.append(("start", V("p_start")))
-        items.append(("cancel", ""))
-        pad, gap, ch = 6 * u, 4 * u, 36 * u
-        x = pad
-        out = []
-        for key, label in items:
-            if key == "|":
-                out.append((key, label, x + 4 * u, x + 5 * u))
-                x += 9 * u + gap
-                continue
-            if label:
-                tw = d.textlength(label, font=self.f_txt) / k
-                w = 12 * u + 18 * u + 8 * u + tw + 14 * u
-            else:
-                w = ch
-            out.append((key, label, x, x + w))
-            x += w + gap
-        return out, x - gap + pad, ch + 2 * pad, pad
-
+    # ---- the panel ----
     def _draw_panel(self):
         if self.sel is None or self.done:
             return
-        u, k = self.u, self.SS
-        probe = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
-        items, pw, ph, pad = self._layout(probe)
-        pw, ph = int(pw), int(ph)
-        # place: under the region, else above it, else inside at its bottom; within its monitor
-        x1, y1, x2, y2 = self.sel
-        ml, mt, mr, mb = screenshot.monitor_at((x1 + x2) // 2 + self.ox, (y1 + y2) // 2 + self.oy)
-        ml, mt, mr, mb = ml - self.ox, mt - self.oy, mr - self.ox, mb - self.oy
-        m = int(12 * u)
-        if y2 + m + ph <= mb - m:
-            py = y2 + m
-        elif y1 - m - ph >= mt + m:
-            py = y1 - m - ph
-        else:
-            py = y2 - m - ph
-        px = int((x1 + x2) / 2 - pw / 2)
-        px = max(ml + m, min(mr - m - pw, px))
+        fg, rects, pw, ph = self.art.render(PICK_ITEMS, {t: self.ctl.get(t) for t in TOGGLES}, self.hover)
+        iw, ih = self.img.size
+        if self.panel_at is not None:
+            px, py = self.panel_at
+        else:   # under the region, else above it, else inside at its bottom; within its monitor
+            x1, y1, x2, y2 = self.sel
+            ml, mt, mr, mb = screenshot.monitor_at((x1 + x2) // 2 + self.ox, (y1 + y2) // 2 + self.oy)
+            ml, mt, mr, mb = ml - self.ox, mt - self.oy, mr - self.ox, mb - self.oy
+            m = int(12 * self.art.u)
+            if y2 + m + ph <= mb - m:
+                py = y2 + m
+            elif y1 - m - ph >= mt + m:
+                py = y1 - m - ph
+            else:
+                py = y2 - m - ph
+            px = max(ml + m, min(mr - m - pw, int((x1 + x2) / 2 - pw / 2)))
+        px, py = max(0, min(iw - pw, int(px))), max(0, min(ih - ph, int(py)))
+        self.panel_xy = (px, py)
         # background: the frozen screen under the panel (dark, bright inside the selection)
+        x1, y1, x2, y2 = self.sel
         bg = self.img.crop((px, py, px + pw, py + ph)).point(lambda v: v * screenshot.DARK // 100)
         ix1, iy1, ix2, iy2 = max(px, x1), max(py, y1), min(px + pw, x2), min(py + ph, y2)
         if ix2 > ix1 and iy2 > iy1:
             bg.paste(self.img.crop((ix1, iy1, ix2, iy2)), (ix1 - px, iy1 - py))
-        img = Image.new("RGBA", (pw * k, ph * k), (0, 0, 0, 0))
-        dr = ImageDraw.Draw(img)
-        dr.rounded_rectangle((0, 0, pw * k - 1, ph * k - 1), radius=int(12 * u * k), fill=PANEL_BG + (255,),
-                             outline=PANEL_EDGE + (255,), width=max(1, int(u * k)))
-        self.buttons = []
-        cy = ph * k / 2
-        top, bot = pad * k, (ph - pad) * k
-        for key, label, a, b in items:
-            if key == "|":
-                dr.rectangle((a * k, (ph * 0.28) * k, b * k, (ph * 0.72) * k), fill=PANEL_EDGE + (255,))
-                continue
-            hov = key == self.hover
-            on = self.ctl.get(key) if key in TOGGLES else True
-            if key == "start":
-                fill = (255, 96, 86) if hov else REC
-                fg_i, fg_t = (255, 255, 255), (255, 255, 255)
-            elif key == "cancel":
-                fill = CHIP_HOVER if hov else None
-                fg_i, fg_t = TXT if hov else TXT_DIM, TXT
-            else:
-                fill = (CHIP_ON if on else None)
-                if hov:
-                    fill = tuple(min(255, c + 12) for c in (fill or CHIP_HOVER))
-                fg_i, fg_t = (ACCENT if on else TXT_DIM), (TXT if on else TXT_DIM)
-            if fill:
-                dr.rounded_rectangle((a * k, top, b * k, bot), radius=int(9 * u * k), fill=fill + (255,))
-            if label:
-                gx = a * k + 12 * u * k
-                dr.text((gx, cy), GLYPHS[key], font=self.f_ico, fill=fg_i + (255,), anchor="lm")
-                dr.text((gx + 26 * u * k, cy), label, font=self.f_txt, fill=fg_t + (255,), anchor="lm")
-                if key in TOGGLES and not on:           # struck through: clearly "off"
-                    gy = cy
-                    dr.line((gx - 1 * u * k, gy + 8 * u * k, gx + 17 * u * k, gy - 8 * u * k),
-                            fill=fg_i + (255,), width=max(1, int(1.6 * u * k)))
-            else:
-                dr.text(((a + b) / 2 * k, cy), GLYPHS[key], font=self.f_ico, fill=fg_i + (255,), anchor="mm")
-            self.buttons.append((key, (px + int(a), py + int(pad), px + int(b), py + int(ph - pad))))
-        img = img.resize((pw, ph), Image.LANCZOS)
         bg = bg.convert("RGBA")
-        bg.alpha_composite(img)
+        bg.alpha_composite(fg)
+        self.buttons = [(key, (px + a, py + b, px + c, py + d)) for key, (a, b, c, d) in rects]
         self.panel_img = bg.convert("RGB")
         self.panel_photo = ImageTk.PhotoImage(self.panel_img)
         if self.panel_item is None:
@@ -401,6 +496,253 @@ class Picker(screenshot.Capture):
             self.cv.itemconfigure(self.panel_item, image=self.panel_photo)
             self.cv.coords(self.panel_item, px, py)
         self.cv.tag_raise(self.panel_item)
+
+
+# ---- the live panel: a layered window during the recording ----
+g32 = ctypes.WinDLL("gdi32")
+k32 = ctypes.WinDLL("kernel32")
+LRESULT = ctypes.c_ssize_t
+WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+
+
+def _d(fn, res, args):
+    fn.restype, fn.argtypes = res, args
+
+
+_d(u32.SetCapture, wintypes.HWND, [wintypes.HWND])
+_d(u32.ReleaseCapture, wintypes.BOOL, [])
+_d(u32.GetCursorPos, wintypes.BOOL, [ctypes.POINTER(wintypes.POINT)])
+_d(u32.SetCursor, wintypes.HANDLE, [wintypes.HANDLE])
+_d(u32.LoadCursorW, wintypes.HANDLE, [wintypes.HINSTANCE, ctypes.c_void_p])
+_d(u32.GetWindowRect, wintypes.BOOL, [wintypes.HWND, ctypes.POINTER(wintypes.RECT)])
+_d(u32.SetWindowPos, wintypes.BOOL, [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                                     ctypes.c_int, ctypes.c_int, wintypes.UINT])
+_d(u32.ShowWindow, wintypes.BOOL, [wintypes.HWND, ctypes.c_int])
+_d(u32.DestroyWindow, wintypes.BOOL, [wintypes.HWND])
+_d(u32.DefWindowProcW, LRESULT, [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM])
+_d(u32.RegisterClassExW, wintypes.ATOM, [ctypes.POINTER(recorder.WNDCLASSEXW)])
+_d(u32.CreateWindowExW, wintypes.HWND,
+   [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_int, ctypes.c_int,
+    ctypes.c_int, ctypes.c_int, wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, ctypes.c_void_p])
+_d(u32.GetDC, wintypes.HDC, [wintypes.HWND])
+_d(u32.ReleaseDC, ctypes.c_int, [wintypes.HWND, wintypes.HDC])
+_d(u32.UpdateLayeredWindow, wintypes.BOOL,
+   [wintypes.HWND, wintypes.HDC, ctypes.POINTER(wintypes.POINT), ctypes.POINTER(recorder.SIZE), wintypes.HDC,
+    ctypes.POINTER(wintypes.POINT), wintypes.DWORD, ctypes.POINTER(recorder.BLENDFUNCTION), wintypes.DWORD])
+_d(k32.GetModuleHandleW, wintypes.HINSTANCE, [wintypes.LPCWSTR])
+_d(g32.CreateCompatibleDC, wintypes.HDC, [wintypes.HDC])
+_d(g32.DeleteDC, wintypes.BOOL, [wintypes.HDC])
+_d(g32.CreateDIBSection, wintypes.HBITMAP, [wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
+                                            ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.DWORD])
+_d(g32.SelectObject, wintypes.HGDIOBJ, [wintypes.HDC, wintypes.HGDIOBJ])
+_d(g32.DeleteObject, wintypes.BOOL, [wintypes.HGDIOBJ])
+WS_POPUP = 0x80000000
+WS_EX_LAYERED, WS_EX_TOPMOST = 0x80000, 0x8
+HWND_TOPMOST = -1
+SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE, SWP_SHOWWINDOW = 0x1, 0x4, 0x10, 0x40
+WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP = 0x200, 0x201, 0x202
+WM_MOUSEACTIVATE, MA_NOACTIVATE, WM_SETCURSOR, WM_CAPTURECHANGED = 0x21, 3, 0x20, 0x215
+IDC_ARROW, IDC_HAND, IDC_SIZEALL = 32512, 32649, 32646
+TICK_MS = 50
+_PANELS = {}                        # hwnd -> LivePanel: one window class, one procedure for all of them
+
+
+def _panel_proc(hwnd, msg, wp, lp):
+    p = _PANELS.get(hwnd)
+    if p is not None:
+        return p._wndproc(hwnd, msg, wp, lp)
+    if msg == WM_MOUSEACTIVATE:
+        return MA_NOACTIVATE
+    return u32.DefWindowProcW(hwnd, msg, wp, lp)
+
+
+_PANEL_PROC = WNDPROC(_panel_proc)
+_PANEL_CLASS = []
+
+
+class LivePanel:
+    """The panel during the recording: switches act at once, the time runs, Stop saves.
+    The window procedure never touches tk: dragging is pure Win32 (capture + SetWindowPos),
+    clicks are queued for the tk timer."""
+
+    def __init__(self, root, ctl, pos, log):
+        self.root, self.ctl, self.log = root, ctl, log
+        self.art = PanelArt()
+        self.rects = []
+        self.size = (0, 0)
+        self.hover = None
+        self.pressed = None
+        self.drag = None
+        self.clicks = []
+        self._dc = None
+        self._key = None
+        self.mode = "rec"               # "saving": the same window shows the progress after Stop
+        self.progress = 0.0
+        hinst = k32.GetModuleHandleW(None)
+        if not _PANEL_CLASS:
+            wc = recorder.WNDCLASSEXW()
+            wc.cbSize = ctypes.sizeof(wc)
+            wc.lpfnWndProc = _PANEL_PROC
+            wc.hInstance = hinst
+            wc.lpszClassName = "HDContainerVideoPanel"
+            _PANEL_CLASS.append(u32.RegisterClassExW(ctypes.byref(wc)))
+        self.hwnd = u32.CreateWindowExW(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                                        "HDContainerVideoPanel", "HDContainer screen recording", WS_POPUP,
+                                        0, 0, 10, 10, None, None, hinst, None)
+        if not self.hwnd:
+            raise OSError("panel window failed: %d" % ctypes.get_last_error())
+        _PANELS[self.hwnd] = self
+        if not u32.SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE):
+            log("screenrec: panel stays visible to capture (Windows older than 10 2004?)")
+        self._render(force=True)
+        x, y = self._clamp(*pos)
+        u32.SetWindowPos(self.hwnd, HWND_TOPMOST, x, y, self.size[0], self.size[1], SWP_NOACTIVATE | SWP_SHOWWINDOW)
+        self.root.after(TICK_MS, self._tick)
+
+    def _clamp(self, x, y):
+        vx, vy, vw, vh = screenshot.virtual_screen()
+        w, h = self.size
+        return max(vx, min(vx + vw - w, int(x))), max(vy, min(vy + vh - h, int(y)))
+
+    def _wndproc(self, hwnd, msg, wp, lp):
+        try:
+            if msg == WM_MOUSEACTIVATE:
+                return MA_NOACTIVATE
+            if msg in (WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE):
+                x, y = ctypes.c_short(lp & 0xFFFF).value, ctypes.c_short((lp >> 16) & 0xFFFF).value
+                if msg == WM_LBUTTONDOWN:
+                    key = hit_rect(self.rects, x, y)
+                    if key == "grip":
+                        self.drag = (x, y)
+                        u32.SetCapture(hwnd)
+                    else:
+                        self.pressed = key
+                    return 0
+                if msg == WM_MOUSEMOVE and self.drag is not None:
+                    p = wintypes.POINT()
+                    u32.GetCursorPos(ctypes.byref(p))
+                    nx, ny = self._clamp(p.x - self.drag[0], p.y - self.drag[1])
+                    u32.SetWindowPos(hwnd, None, nx, ny, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+                    return 0
+                if msg == WM_LBUTTONUP:
+                    if self.drag is not None:
+                        self.drag = None
+                        u32.ReleaseCapture()
+                    elif self.pressed is not None:
+                        if hit_rect(self.rects, x, y) == self.pressed:
+                            self.clicks.append(self.pressed)     # handled by the tk timer
+                        self.pressed = None
+                    return 0
+            if msg == WM_CAPTURECHANGED:
+                self.drag = None
+            if msg == WM_SETCURSOR:
+                p = wintypes.POINT()
+                u32.GetCursorPos(ctypes.byref(p))
+                r = wintypes.RECT()
+                u32.GetWindowRect(hwnd, ctypes.byref(r))
+                key = hit_rect(self.rects, p.x - r.left, p.y - r.top)
+                cur = IDC_SIZEALL if key == "grip" or self.drag else IDC_HAND if key else IDC_ARROW
+                u32.SetCursor(u32.LoadCursorW(None, ctypes.c_void_p(cur)))
+                return 1
+        except Exception:
+            pass
+        return u32.DefWindowProcW(hwnd, msg, wp, lp)
+
+    def _hover_now(self):
+        if self.drag is not None:
+            return "grip"
+        p = wintypes.POINT()
+        u32.GetCursorPos(ctypes.byref(p))
+        r = wintypes.RECT()
+        u32.GetWindowRect(self.hwnd, ctypes.byref(r))
+        return hit_rect(self.rects, p.x - r.left, p.y - r.top)
+
+    def _tick(self):
+        if not self.hwnd:
+            return
+        try:
+            while self.clicks:
+                key = self.clicks.pop(0)
+                if self.mode == "rec":
+                    self.ctl._live_act(key)
+                if not self.hwnd:
+                    return
+            self.hover = self._hover_now()
+            self._render()
+        except Exception:
+            self.ctl.log("screenrec panel tick:\n" + traceback.format_exc())
+        if self.hwnd:
+            self.root.after(TICK_MS, self._tick)
+
+    def _render(self, force=False):
+        if self.mode == "saving":
+            img, rects, w, h = self.art.render(("saving",), {}, None, progress=self.progress)
+        else:
+            el = self.ctl.elapsed()
+            blink = int(el * 2) % 2 == 0 or el < 0.5
+            states = {t: self.ctl.live_state(t) for t in TOGGLES}
+            img, rects, w, h = self.art.render(REC_ITEMS, states, self.hover, el, blink)
+        key = self.art._cache[0]
+        if key == self._key and not force:
+            return
+        self._key = key
+        self.rects, self.size = rects, (w, h)
+        self._blit(img)
+
+    def _blit(self, img):
+        W, H = img.size
+        a = img.split()[3]
+        r, g, b, _ = img.convert("RGBa").split()
+        data = Image.merge("RGBA", (b, g, r, a)).tobytes()
+        if self._dc is None or self._dc[3] != (W, H):
+            self._free_dc()
+            bmi = recorder.BITMAPINFOHEADER()
+            bmi.biSize = ctypes.sizeof(bmi)
+            bmi.biWidth, bmi.biHeight, bmi.biPlanes, bmi.biBitCount = W, -H, 1, 32
+            mdc = g32.CreateCompatibleDC(None)
+            bits = ctypes.c_void_p()
+            hbm = g32.CreateDIBSection(mdc, ctypes.byref(bmi), 0, ctypes.byref(bits), None, 0)
+            old = g32.SelectObject(mdc, hbm)
+            self._dc = (mdc, hbm, old, (W, H), bits)
+        mdc, _hbm, _old, _sz, bits = self._dc
+        ctypes.memmove(bits, data, len(data))
+        blend = recorder.BLENDFUNCTION(0, 0, 255, 1)
+        sdc = u32.GetDC(None)
+        try:
+            u32.UpdateLayeredWindow(self.hwnd, sdc, None, ctypes.byref(recorder.SIZE(W, H)), mdc,
+                                    ctypes.byref(wintypes.POINT(0, 0)), 0, ctypes.byref(blend), 2)
+        finally:
+            u32.ReleaseDC(None, sdc)
+
+    def _free_dc(self):
+        if self._dc:
+            mdc, hbm, old, _sz, _bits = self._dc
+            g32.SelectObject(mdc, old)
+            g32.DeleteObject(hbm)
+            g32.DeleteDC(mdc)
+            self._dc = None
+
+    def move(self, x, y):
+        x, y = self._clamp(x, y)
+        u32.SetWindowPos(self.hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+
+    def saving(self, p=0.0):
+        self.mode, self.progress = "saving", p
+        self.pressed = None
+
+    def position(self):
+        r = wintypes.RECT()
+        u32.GetWindowRect(self.hwnd, ctypes.byref(r))
+        return r.left, r.top
+
+    def destroy(self):
+        if self.hwnd:
+            if self.drag is not None:
+                u32.ReleaseCapture()
+            _PANELS.pop(self.hwnd, None)
+            u32.DestroyWindow(self.hwnd)
+            self.hwnd = None
+        self._free_dc()
 
 
 # ---------------------------------------------------------------------------
@@ -420,12 +762,14 @@ class ScreenRecController:
         self.session = None
         self.meta = None
         self.frame = None
-        self._shown = False             # pill + frame are up (after the first frame)
+        self._shown = False             # panel + frame are up (after the first frame)
+        self.panel = None               # LivePanel of the running recording
+        self.save_panel = None          # the same panel after Stop, showing the saving progress
+        self._panel_pos = None          # where the overlay's panel was: the live one starts there
+        self.live = {}                  # switches of the running recording
         self._jobs_left = 0
         self._job_q = queue.Queue()
         self._ui_q = queue.Queue()
-        self.ind = recorder.Indicator(self.root, self.stop, log, cls="HDContainerVideoIndicator",
-                                      exclude=True, shift=self._ind_shift)
         threading.Thread(target=self._worker, daemon=True, name="hdc-screenrec-save").start()
         self.hook = vs.KeyHook(log)
         self.hook.start()
@@ -552,17 +896,44 @@ class ScreenRecController:
     def _on_region(self, img, quiet=False):     # Capture's own end, never reached by Picker
         self.capture = None
 
-    def _on_pick(self, rect):
+    def _on_pick(self, rect, pos=None):
         self.capture = None
+        self._panel_pos = pos
         self.root.after(START_DELAY_MS, lambda: self.start(rect))
 
-    def _ind_shift(self):
-        """Logical px to move left: the recorder's own pill sits where ours would."""
-        rec = getattr(self.app, "recorder", None)
-        ind = getattr(rec, "ind", None)
-        if ind is not None and ind.state is not None and ind._pill_w:
-            return ind._pill_w / max(0.5, ind.s) + 8
-        return 0
+    # ---- the live panel's side ----
+    def live_state(self, key):
+        return bool(self.live.get(key, self.saved(key)))
+
+    def elapsed(self):
+        if self.session is None or self.meta is None:
+            return 0.0
+        return max(0.0, time.time() - self.meta["started"])
+
+    def _live_act(self, key):
+        """A click on the live panel (tk thread)."""
+        sess = self.session
+        if key == "stop":
+            self.stop()
+        elif key in TOGGLES and sess is not None:
+            on = not self.live_state(key)
+            self.live[key] = on
+            self.set_now(key, on)                   # remembered for the next recording too
+            sess.set_option(key, on)
+            if key in ("system", "mic") and on and self.meta is not None:
+                self.meta["audio_used"] = True
+                try:
+                    self._write_meta(self.meta)
+                except Exception:
+                    self.log("screenrec sidecar:\n" + traceback.format_exc())
+            self.log("screenrec: %s %s" % (key, "on" if on else "off"))
+
+    def _panel_default_pos(self, rect, w, h):
+        x, y, rw, rh = rect
+        ml, mt, mr, mb = screenshot.monitor_at(x + rw // 2, y + rh // 2)
+        m = int(12 * _dpi())
+        py = y + rh + m if y + rh + m + h <= mb - m else max(mt + m, y - m - h) if y - m - h >= mt + m else mb - m - h - int(60 * _dpi())
+        return max(ml + m, min(mr - m - w, x + rw // 2 - w // 2)), py
 
     def _write_meta(self, meta):
         with open(meta["side"], "w", encoding="utf-8") as f:
@@ -576,9 +947,10 @@ class ScreenRecController:
         stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
         stem = os.path.join(self.dir, "vid-" + stamp)
         system, mic = self.saved("system"), self.saved("mic")
-        meta = {"video": stem + ".mp4", "wav": stem + ".wav" if (system or mic) else None, "side": stem + ".json",
+        self.live = {t: bool(self.saved(t)) for t in TOGGLES}
+        meta = {"video": stem + ".mp4", "wav": stem + ".wav", "side": stem + ".json",
                 "folder": self.saved("folder"), "name": "%s %s" % (V("file"), time.strftime("%Y-%m-%d %H-%M")),
-                "started": time.time(), "offset": 0}
+                "started": time.time(), "offset": 0, "audio_used": bool(system or mic)}
         try:
             self._write_meta(meta)
             self.session = rv.VideoSession(rect, meta["video"], meta["wav"], self.log, fps=self.saved("fps"),
@@ -597,13 +969,19 @@ class ScreenRecController:
         self.root.after(int(START_CHECK_S * 1000), lambda s=self.session: self._start_check(s))
 
     def _show_live(self, sess):
-        """The first frame is in (the encoder needs ~0.5 s to start): only now show the pill and
+        """The first frame is in (the encoder needs ~0.5 s to start): only now show the panel and
         the frame, so they mean "recording" and the timer matches the video."""
         self._shown = True
         since = max(0.0, (ra.qpc_hns() - sess.t0) / 1e7)
         self.meta["started"] = time.time() - since
-        if self.saved("indicator"):
-            self.ind.show_rec(self.meta["started"], sess.levels if sess.audio is not None else None)
+        try:
+            pos = self._panel_pos
+            panel = LivePanel(self.root, self, pos or (0, 0), self.log)
+            if pos is None:
+                panel.move(*self._panel_default_pos(sess.rect, *panel.size))
+            self.panel = panel
+        except Exception:
+            self.log("screenrec panel failed:\n" + traceback.format_exc())
         if self.saved("frame"):
             try:
                 self.frame = RegionFrame(self.root, sess.rect, self.log)
@@ -621,7 +999,7 @@ class ScreenRecController:
             meta, self.session, self.meta = self.meta, None, None
             sess.stop(wait=False)
             self._hide_frame()
-            self.ind.hide()
+            self._drop_panel()
             self._job_q.put(("drop", meta, sess))
             self.app._notify(V("tab"), V("err_start"), kind="error")
             return
@@ -631,7 +1009,7 @@ class ScreenRecController:
         except Exception:
             self.log("screenrec sidecar:\n" + traceback.format_exc())
         a = sess.audio
-        if a is not None:
+        if a is not None and (a.system or a.mic):
             srcs = [s for s in list(a.out_srcs.values()) if s.alive]
             if a.mic_src is not None and a.mic_src.alive:
                 srcs.append(a.mic_src)
@@ -645,6 +1023,11 @@ class ScreenRecController:
             self.frame.destroy()
             self.frame = None
 
+    def _drop_panel(self):
+        if self.panel is not None:
+            self.panel.destroy()
+            self.panel = None
+
     def stop(self):
         sess, meta = self.session, self.meta
         if sess is None:
@@ -654,10 +1037,11 @@ class ScreenRecController:
         self._hide_frame()
         self.log("screenrec: stopped after %s" % fmt_time(time.time() - meta["started"]))
         self._jobs_left += 1
-        if self.saved("indicator"):
-            self.ind.show_saving(0.0)
-        else:
-            self.ind.hide()
+        if self.panel is not None:              # the same panel now shows the saving progress
+            if self.save_panel is not None:
+                self.save_panel.destroy()
+            self.save_panel, self.panel = self.panel, None
+            self.save_panel.saving(0.0)
         self._job_q.put(("save", meta, sess))
 
     def menu_text(self):
@@ -676,6 +1060,7 @@ class ScreenRecController:
                 if job[0] == "save":
                     job[2].thread.join()
                     job[1]["offset"] = job[2].audio_offset
+                    job[1]["audio_used"] = job[2].audio_used
                     self._save(job[1], recovered=False)
                 elif job[0] == "drop":
                     if len(job) > 2:
@@ -713,6 +1098,7 @@ class ScreenRecController:
         video, wav = meta["video"], meta.get("wav")
         if wav and not os.path.exists(wav):
             wav = None
+        mux_wav = wav if meta.get("audio_used", True) else None     # never switched on: no silent track
         stem = os.path.splitext(video)[0]
         dest_dir = self._dest_dir(meta.get("folder", ""))
         name = meta.get("name") or os.path.basename(stem)
@@ -731,7 +1117,7 @@ class ScreenRecController:
                     last[0] = p
                     self._post(lambda p=p: self._progress(p))
             total = int(max(1.0, time.time() - meta.get("started", time.time())) * 1e7)
-            rv.mux(video, wav, int(meta.get("offset") or 0), tmp, total_hns=total, progress=prog)
+            rv.mux(video, mux_wav, int(meta.get("offset") or 0), tmp, total_hns=total, progress=prog)
             out = self._unique(dest_dir, name, ".mp4")
             shutil.move(tmp, out)
         except Exception:
@@ -739,8 +1125,8 @@ class ScreenRecController:
             try:                        # keep the raw files rather than lose the recording
                 out = self._unique(dest_dir, name, ".mp4")
                 shutil.move(video, out)
-                if wav:
-                    shutil.move(wav, self._unique(dest_dir, name, ".wav"))
+                if mux_wav:
+                    shutil.move(mux_wav, self._unique(dest_dir, name, ".wav"))
                 warn = V("err_raw")
             except Exception:
                 self.log("screenrec raw save failed:\n" + traceback.format_exc())
@@ -780,13 +1166,14 @@ class ScreenRecController:
 
     # ---- results (tk thread) ----
     def _progress(self, p):
-        if self.ind.state == "saving":
-            self.ind.progress = p
+        if self.save_panel is not None:
+            self.save_panel.progress = p
 
     def _saved(self, path, warn, recovered):
         self._jobs_left = max(0, self._jobs_left - 1)
-        if self.ind.state == "saving" and self._jobs_left == 0:
-            self.ind.hide()
+        if self.save_panel is not None and self._jobs_left == 0:
+            self.save_panel.destroy()
+            self.save_panel = None
         if path is None:
             self.app._notify(V("tab"), warn or V("err_save"), kind="error")
             return
@@ -816,7 +1203,10 @@ class ScreenRecController:
         if sess is not None:
             sess.stop(wait=True)
         self._hide_frame()
-        self.ind.destroy()
+        self._drop_panel()
+        if self.save_panel is not None:
+            self.save_panel.destroy()
+            self.save_panel = None
 
     # ---- settings tab ----
     def build_into(self, parent, win, pad):
@@ -854,7 +1244,7 @@ class ScreenRecController:
                 p.pack(side="left", padx=(0, 6))
                 p.bind("<Button-1>", lambda _e, v=val: (self.set(key, v), self._rebuild()))
 
-        note(V("intro"), pady=(8, 6))
+        tk.Frame(parent, bg=th["sf"], height=4).pack()
 
         header(V("sec_what"))
         check(V("src_system"), "system")
@@ -866,17 +1256,13 @@ class ScreenRecController:
             btn.pack(side="left")
         check(V("src_cursor"), "cursor")
         check(V("src_clicks"), "clicks")
-        note(V("what_note"), pady=(4, 2))
 
         header(V("sec_video"))
         pills(V("fps"), [(f, str(f)) for f in FPS_CHOICES], "fps")
         pills(V("quality"), [(q, V("q_" + q)) for q in QUALITY_CHOICES], "quality")
-        note(V("video_note"), pady=(2, 2))
 
         header(V("sec_during"))
-        check(V("show_ind"), "indicator")
         check(V("show_frame"), "frame")
-        note(V("during_note"), pady=(0, 2), indent=34)
 
         header(R("sec_save"))
         folder = self.get("folder")

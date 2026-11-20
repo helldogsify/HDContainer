@@ -104,13 +104,13 @@ except Exception:
     recorder = None
     _RECORDER_IMPORT_ERR = traceback.format_exc()
 
-try:                                   # screen recording: region -> MP4 with sound (indicator hidden from capture)
+try:                                   # screen recording: region -> MP4 with sound (panel and frame hidden from capture)
     import screenrec
 except Exception:
     screenrec = None
     _SCREENREC_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.14.0"
+VERSION = "1.14.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -1987,7 +1987,7 @@ class TrayApp:
         else:
             log("recorder import failed:\n" + globals().get("_RECORDER_IMPORT_ERR", ""))
 
-        # screen recording: own keyboard hook (Ctrl+Shift+Y); temp files in %LOCALAPPDATA%\HDContainer\screenrec
+        # screen recording: own keyboard hook (Ctrl+Shift+B); temp files in %LOCALAPPDATA%\HDContainer\screenrec
         self.screenrec = None
         if screenrec is not None:
             try:
@@ -4591,8 +4591,6 @@ class TrayApp:
 
     def _hotkey_voice_mode(self, parent, pad, keys):
         """Dictation key: hold to talk, or press / press again (was on the Voice input page)."""
-        if voice_sys is not None and keys[0] == 0 and keys[1] in voice_sys.SIDED_MODIFIERS:
-            self._hotkey_note(parent, pad, voice.V("hk_single_note"))
         cur = self.voice.get("mode")
         for val, label in (("hold", voice.V("mode_hold")), ("toggle", voice.V("mode_toggle"))):
             on = val == cur
@@ -4614,8 +4612,7 @@ class TrayApp:
 
     def _build_hotkeys(self, parent, win, pad):
         d = self._gen_draft
-        tk.Label(parent, text=T("hk_intro"), bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM, justify="left",
-                 wraplength=560, anchor="w").pack(anchor="w", fill="x", padx=pad, pady=(8, 10))
+        tk.Frame(parent, bg=COL_SURFACE, height=8).pack()
         used = {}
         for name, mod in self._hotkey_rows():
             on = bool(mod.get("enabled"))
@@ -4638,18 +4635,12 @@ class TrayApp:
                      font=("Consolas", 11), padx=12, pady=5).pack(side="right", padx=8)
             if on and mod is self.voice:
                 self._hotkey_voice_mode(parent, pad, keys)
-            elif on and mod is self.recorder:
-                self._hotkey_note(parent, pad, recorder.R("hk_note"))
-            elif on and mod is self.screenrec:
-                self._hotkey_note(parent, pad, screenrec.V("hk_note"))
         if any(len(v) > 1 for v in used.values()):
             tk.Label(parent, text=T("hk_dup"), bg=COL_SURFACE, fg=COL_DANGER, font=FONT_SM, anchor="w").pack(
                 anchor="w", padx=pad, pady=(4, 0))
 
         tk.Label(parent, text=T("hk_exclude"), bg=COL_SURFACE, fg=COL_TEXT, font=("Segoe UI Semibold", 11)).pack(
             anchor="w", padx=pad, pady=(24, 6))
-        tk.Label(parent, text=T("hk_exclude_note"), bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM, justify="left",
-                 wraplength=560, anchor="w").pack(anchor="w", fill="x", padx=pad, pady=(0, 6))
 
         def set_list(names):
             d["hotkey_exclude"] = sorted({n.lower() for n in names if n})

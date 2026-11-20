@@ -865,7 +865,7 @@ class ScreenshotController:
                 dot.bind("<Button-1>", pick)
                 lb.bind("<Button-1>", pick)
 
-        note(SS("intro"), pady=(16, 6))
+        tk.Frame(parent, bg=th["sf"], height=10).pack()
         check(SS("enable"), "enabled")
 
 
@@ -885,7 +885,6 @@ class ScreenshotController:
                                 fg="white" if on else th["tx"], font=th["font_sm"], padx=10, pady=3, cursor="hand2")
                 pill.pack(side="left", padx=(0, 6))
                 pill.bind("<Button-1>", lambda _e, v=d: (self.set("keep_days", v), self._rebuild()))
-            note(SS("hist_note", self.dir), pady=(2, 6))
         row = tk.Frame(parent, bg=th["sf"])
         row.pack(fill="x", padx=pad, pady=(4, 2))
         a._ghost_btn(row, SS("hist_open"), self.open_history).pack(side="left")
