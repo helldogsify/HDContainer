@@ -252,24 +252,8 @@ def foreground_fullscreen():
     return r.left <= l and r.top <= t and r.right >= rt and r.bottom >= b
 
 
-def foreground_exe():
-    return vs.process_exe(vs.window_pid(user32.GetForegroundWindow()))
-
-
-def running_programs():
-    """Sorted exe names of the programs that have a visible titled top-level window."""
-    names = set()
-
-    def cb(h, _l):
-        if user32.IsWindowVisible(h) and user32.GetWindowTextLengthW(h) > 0 and not user32.GetWindow(h, 4):
-            n = vs.process_exe(vs.window_pid(h))
-            if n:
-                names.add(n)
-        return True
-    user32.EnumWindows(vs.WNDENUMPROC(cb), None)
-    me = os.path.basename(sys.executable).lower()
-    return sorted(names - {me, "explorer.exe", "applicationframehost.exe", "textinputhost.exe",
-                           "shellexperiencehost.exe", "searchhost.exe", "startmenuexperiencehost.exe"})
+foreground_exe = vs.foreground_exe
+running_programs = vs.running_programs
 
 
 def take_foreground(hwnd):
@@ -433,8 +417,7 @@ class ScreenshotController:
         self._io_q = queue.Queue()
         self._ui_q = queue.Queue()      # callables for the tk thread, posted by the worker
         threading.Thread(target=self._io_worker, daemon=True, name="hdc-shot-io").start()
-        self.hook = vs.KeyHook(log)
-        self.hook.block = self._excluded_now
+        self.hook = vs.KeyHook(log)       # program exclusions: vs.HOTKEY_EXCLUDE, shared by all hotkeys
         self.hook.start()
         self.register_hotkey()
         self.root.after(25, self._loop)
@@ -483,11 +466,6 @@ class ScreenshotController:
         self.hook.configure(self.get("hk_mods"), self.get("hk_vk"), self.get("enabled"))
         self.hook.mask_taps = False
         self.log("screenshot hotkey %s hook=%s" % (self.hotkey_text(), "ok" if self.hook._hook else "FAILED"))
-
-    def _excluded_now(self):
-        """Keyboard-hook thread: is a program from the exclusion list in front? (saved settings only)"""
-        ex = self.app.settings.get("screenshot", {}).get("exclude")
-        return bool(ex) and foreground_exe() in {x.lower() for x in ex}
 
     def hotkey_text(self):
         return vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk"))
@@ -891,25 +869,7 @@ class ScreenshotController:
         check(SS("enable"), "enabled")
 
         header(SS("sec_hotkey"))
-        row = tk.Frame(parent, bg=th["sf"])
-        row.pack(fill="x", padx=pad, pady=(6, 2))
-        tk.Label(row, text=self.hotkey_text(), bg=th["sf2"], fg=th["tx"], font=("Consolas", 11),
-                 padx=12, pady=5).pack(side="left")
-        a._ghost_btn(row, SS("change"), self._capture_hotkey).pack(side="left", padx=10)
-
-        header(SS("sec_exclude"))
-        note(SS("exclude_note"))
-        for exe in self.get("exclude"):
-            row = tk.Frame(parent, bg=th["sf"])
-            row.pack(fill="x", padx=pad, pady=1)
-            tk.Label(row, text=exe, bg=th["sf2"], fg=th["tx"], font=th["font"], padx=10, pady=3).pack(side="left")
-            x = tk.Label(row, text="✕", bg=th["sf"], fg=th["dim"], font=th["font"], padx=8, cursor="hand2")
-            x.pack(side="left")
-            x.bind("<Button-1>", lambda _e, n=exe: self._exclude_set([v for v in self.get("exclude") if v != n]))
-        row = tk.Frame(parent, bg=th["sf"])
-        row.pack(fill="x", padx=pad, pady=(6, 2))
-        add = a._ghost_btn(row, SS("exclude_add"), lambda: self._exclude_menu(add))
-        add.pack(side="left")
+        a._hotkey_link(parent, self.hotkey_text(), pad)
 
         header(SS("sec_after"))
         radio([(True, SS("open_editor")), (False, SS("copy_now"))], "editor")
@@ -932,31 +892,6 @@ class ScreenshotController:
         row.pack(fill="x", padx=pad, pady=(4, 2))
         a._ghost_btn(row, SS("hist_open"), self.open_history).pack(side="left")
         tk.Frame(parent, bg=th["sf"], height=16).pack()
-
-    def _exclude_set(self, names):
-        self.set("exclude", sorted({n.lower() for n in names if n}))
-        self._rebuild()
-
-    def _exclude_menu(self, btn):
-        cur = set(self.get("exclude"))
-        m = tk.Menu(btn, tearoff=0)
-        progs = [n for n in running_programs() if n not in cur]
-        for n in progs:
-            m.add_command(label=n, command=lambda n=n: self._exclude_set(self.get("exclude") + [n]))
-        if not progs:
-            m.add_command(label=SS("exclude_none"), state="disabled")
-        m.add_separator()
-        m.add_command(label=SS("exclude_file"), command=self._exclude_browse)
-        try:
-            m.tk_popup(btn.winfo_rootx(), btn.winfo_rooty() + btn.winfo_height())
-        finally:
-            m.grab_release()
-
-    def _exclude_browse(self):
-        tab = self._tab
-        p = filedialog.askopenfilename(parent=tab[1] if tab else None, filetypes=[(SS("exe_files"), "*.exe")])
-        if p:
-            self._exclude_set(self.get("exclude") + [os.path.basename(p)])
 
     def _rebuild(self):
         tab = self._tab
@@ -1006,6 +941,7 @@ class ScreenshotController:
             except Exception:
                 pass
         self._rebuild()
+        getattr(self.app, "_hotkeys_refresh", lambda: None)()
         if bad:
             self.app._info(SS("sec_hotkey"), SS("hk_bad"))
 

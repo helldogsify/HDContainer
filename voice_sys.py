@@ -14,6 +14,8 @@ import base64
 import ctypes
 import io
 import math
+import os
+import sys
 import threading
 import time
 import wave
@@ -295,6 +297,37 @@ def hosts_process(fg, pid):
 #  нативного колбэка внутри mainloop роняет интерпретатор) — только кладёт
 #  события в очередь, которую tk разбирает по таймеру.
 # ---------------------------------------------------------------------------
+# Programs (exe names, lower case) that get every HDContainer hotkey back while they are in
+# front: games and apps that use the same keys. Set by the app from settings["hotkey_exclude"];
+# read on the hook thread, so it is replaced as a whole, never mutated.
+HOTKEY_EXCLUDE = frozenset()
+
+
+def foreground_exe():
+    return process_exe(window_pid(user32.GetForegroundWindow()))
+
+
+def hotkeys_excluded_now():
+    ex = HOTKEY_EXCLUDE
+    return bool(ex) and (foreground_exe() or "").lower() in ex
+
+
+def running_programs():
+    """Sorted exe names of the programs that have a visible titled top-level window."""
+    names = set()
+
+    def cb(h, _l):
+        if user32.IsWindowVisible(h) and user32.GetWindowTextLengthW(h) > 0 and not user32.GetWindow(h, 4):
+            n = process_exe(window_pid(h))
+            if n:
+                names.add(n.lower())
+        return True
+    user32.EnumWindows(WNDENUMPROC(cb), None)
+    me = os.path.basename(sys.executable).lower()
+    return sorted(names - {me, "explorer.exe", "applicationframehost.exe", "textinputhost.exe",
+                           "shellexperiencehost.exe", "searchhost.exe", "startmenuexperiencehost.exe"})
+
+
 WH_KEYBOARD_LL = 13
 WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP = 0x100, 0x101, 0x104, 0x105
 LLKHF_INJECTED = 0x10
@@ -441,7 +474,7 @@ class KeyHook:
             return False
         if self.modifier_only:
             if vk == self.vk:
-                if not up and not repeat:
+                if not up and not repeat and not self._blocked():
                     self._active, self._chorded = True, False
                     self._press_t = time.time()
                     self.events.put(("press",))
@@ -483,6 +516,11 @@ class KeyHook:
         return False
 
     def _blocked(self):
+        try:
+            if hotkeys_excluded_now():
+                return True
+        except Exception:
+            pass
         if self.block is None:
             return False
         try:

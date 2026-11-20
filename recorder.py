@@ -767,14 +767,9 @@ class RecorderController:
                 p.bind("<Button-1>", lambda _e, v=val: (self.set(key, v), self._rebuild()))
 
         note(R("intro"), pady=(8, 6))
-        check(R("enable"), "enabled")
 
-        header(R("sec_hotkey"))
-        row = tk.Frame(parent, bg=th["sf"])
-        row.pack(fill="x", padx=pad, pady=(6, 2))
-        tk.Label(row, text=self.hotkey_text(), bg=th["sf2"], fg=th["tx"], font=("Consolas", 11),
-                 padx=12, pady=5).pack(side="left")
-        a._ghost_btn(row, R("change"), self._capture_hotkey).pack(side="left", padx=10)
+        header(R("sec_hotkey"), top=12)
+        a._hotkey_link(parent, self.hotkey_text() if self.get("enabled") else None, pad)
         note(R("hk_note"), pady=(6, 2))
 
         header(R("sec_sources"))
@@ -923,5 +918,6 @@ class RecorderController:
             except Exception:
                 pass
         self._rebuild()
+        getattr(self.app, "_hotkeys_refresh", lambda: None)()
         if msg:
             self.app._info(R("sec_hotkey"), msg)

@@ -93,13 +93,18 @@ except Exception:
     screenshot = None
     _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
 
+try:                                   # shared hotkey exclusions live in voice_sys (read by every KeyHook)
+    import voice_sys
+except Exception:
+    voice_sys = None
+
 try:                                   # recorder: computer sound + microphone -> one file (work calls)
     import recorder
 except Exception:
     recorder = None
     _RECORDER_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.13.0"
+VERSION = "1.13.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -300,7 +305,7 @@ ICON_DOWNLOAD = chr(0xE896)
 ICON_REC, ICON_STOP = chr(0xE7C8), chr(0xE71A)       # recorder: record dot, stop square
 # Settings window: sidebar width and section glyphs (Segoe MDL2 Assets)
 SETTINGS_SIDE_W = 210
-SETTINGS_ICONS = {"general": chr(0xE713), "voice": chr(0xE720), "recorder": chr(0xE7C8),
+SETTINGS_ICONS = {"general": chr(0xE713), "hotkeys": chr(0xE765), "voice": chr(0xE720), "recorder": chr(0xE7C8),
                   "screenshot": chr(0xE722), "boxes": chr(0xE7B8), "convert": chr(0xE8AB),
                   "torrents": chr(0xE896)}
 
@@ -435,6 +440,18 @@ STRINGS = {
     "lay_grid": {"en": "Grid", "ru": "Сетка", "es": "Cuadrícula", "pt": "Grade", "de": "Raster", "fr": "Grille", "zh": "网格"},
     "lay_master": {"en": "Master + stack", "ru": "Главное + стек", "es": "Principal + pila", "pt": "Principal + pilha", "de": "Haupt + Stapel", "fr": "Principal + pile", "zh": "主 + 堆叠"},
     "edit_container": {"en": "Edit container", "ru": "Изменить контейнер", "es": "Editar contenedor", "pt": "Editar contêiner", "de": "Container bearbeiten", "fr": "Modifier le conteneur", "zh": "编辑容器"},
+    "tab_hotkeys": {"en": "Hotkeys", "ru": "Горячие клавиши", "es": "Atajos", "pt": "Atalhos", "de": "Tastenkürzel", "fr": "Raccourcis", "zh": "快捷键"},
+    "hk_intro": {"en": "Every keyboard shortcut of HDContainer. The box turns a shortcut on or off.", "ru": "Все сочетания клавиш HDContainer. Галочка включает и выключает сочетание.", "es": "Todos los atajos de HDContainer. La casilla activa o desactiva cada uno.", "pt": "Todos os atalhos do HDContainer. A caixa liga ou desliga cada um.", "de": "Alle Tastenkürzel von HDContainer. Das Kästchen schaltet ein Kürzel ein oder aus.", "fr": "Tous les raccourcis de HDContainer. La case active ou désactive chacun.", "zh": "HDContainer 的所有快捷键。勾选框用于开启或关闭。"},
+    "hk_dup": {"en": "Two shortcuts use the same keys: only one of them will work.", "ru": "У двух функций одинаковые клавиши — сработает только одна.", "es": "Dos atajos usan las mismas teclas: solo funcionará uno.", "pt": "Dois atalhos usam as mesmas teclas: só um vai funcionar.", "de": "Zwei Kürzel nutzen dieselben Tasten: nur eins wird funktionieren.", "fr": "Deux raccourcis utilisent les mêmes touches : un seul fonctionnera.", "zh": "两个功能使用了相同的按键：只有一个会生效。"},
+    "hk_change_in": {"en": "change in Hotkeys", "ru": "изменить в «Горячих клавишах»", "es": "cambiar en Atajos", "pt": "alterar em Atalhos", "de": "in Tastenkürzel ändern", "fr": "modifier dans Raccourcis", "zh": "在“快捷键”中更改"},
+    "hk_off": {"en": "off", "ru": "выключено", "es": "desactivado", "pt": "desligado", "de": "aus", "fr": "désactivé", "zh": "已关闭"},
+    "hk_change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
+    "hk_exclude": {"en": "Not in these programs", "ru": "Не срабатывать в программах", "es": "No en estos programas", "pt": "Não nestes programas", "de": "Nicht in diesen Programmen", "fr": "Pas dans ces programmes", "zh": "在这些程序中不触发"},
+    "hk_exclude_note": {"en": "While one of them is in front, all HDContainer hotkeys (dictation, recorder, screenshots) go to it as usual — for games that use the same keys.", "ru": "Пока такая программа на переднем плане, все горячие клавиши HDContainer (диктовка, диктофон, скриншоты) достаются ей, как обычно, — для игр, где эти клавиши заняты.", "es": "Mientras una de ellas está delante, todos los atajos de HDContainer (dictado, grabadora, capturas) le llegan a ella como siempre: para juegos que usan las mismas teclas.", "pt": "Enquanto uma delas estiver em primeiro plano, todos os atalhos do HDContainer (ditado, gravador, capturas) vão para ela como sempre — para jogos que usam as mesmas teclas.", "de": "Solange eines davon im Vordergrund ist, gehen alle HDContainer-Kürzel (Diktat, Rekorder, Bildschirmfotos) wie gewohnt an das Programm — für Spiele, die dieselben Tasten nutzen.", "fr": "Tant que l'un d'eux est au premier plan, tous les raccourcis de HDContainer (dictée, dictaphone, captures) lui reviennent comme d'habitude — pour les jeux qui utilisent les mêmes touches.", "zh": "当其中某个程序在前台时，HDContainer 的所有快捷键（听写、录音机、截图）照常交给它——适用于占用同样按键的游戏。"},
+    "hk_exclude_add": {"en": "Add a program…", "ru": "Добавить программу…", "es": "Añadir programa…", "pt": "Adicionar programa…", "de": "Programm hinzufügen…", "fr": "Ajouter un programme…", "zh": "添加程序…"},
+    "hk_exclude_file": {"en": "Choose an .exe file…", "ru": "Выбрать файл .exe…", "es": "Elegir un archivo .exe…", "pt": "Escolher um arquivo .exe…", "de": ".exe-Datei wählen…", "fr": "Choisir un fichier .exe…", "zh": "选择 .exe 文件…"},
+    "hk_exclude_none": {"en": "No other programs with windows are running", "ru": "Других программ с окнами сейчас нет", "es": "No hay otros programas con ventanas", "pt": "Não há outros programas com janelas", "de": "Keine anderen Programme mit Fenstern", "fr": "Aucun autre programme avec fenêtre", "zh": "没有其他带窗口的程序在运行"},
+    "hk_exe_files": {"en": "Programs", "ru": "Программы", "es": "Programas", "pt": "Programas", "de": "Programme", "fr": "Programmes", "zh": "程序"},
     "tab_general": {"en": "General", "ru": "Общие", "es": "General", "pt": "Geral", "de": "Allgemein", "fr": "Général", "zh": "常规"},
     "save": {"en": "Save", "ru": "Сохранить", "es": "Guardar", "pt": "Salvar", "de": "Speichern", "fr": "Enregistrer", "zh": "保存"},
     "lbl_name": {"en": "Name", "ru": "Имя", "es": "Nombre", "pt": "Nome", "de": "Name", "fr": "Nom", "zh": "名称"},
@@ -1873,6 +1890,10 @@ class TrayApp:
         _DEFER[0] = self._defer
         self._pending_update = None   # (tag, url), выставляется фоновым потоком
         self.settings = load_settings()
+        # hotkey exclusions used to belong to screenshots only (<= 1.13.0): carry them over once
+        if "hotkey_exclude" not in self.settings and self.settings.get("screenshot", {}).get("exclude"):
+            self.settings["hotkey_exclude"] = sorted({x.lower() for x in self.settings["screenshot"]["exclude"]})
+        self._apply_hotkey_exclude()
         global LANG
         LANG = self.settings.get("lang") or detect_lang()
         self.hinst = kernel32.GetModuleHandleW(None)
@@ -4377,8 +4398,25 @@ class TrayApp:
         # смена языка: перерисовать окно, НЕ теряя несохранённых правок
         self._open_settings(self._settings_tab, rebuild=True)
 
+    def _apply_hotkey_exclude(self):
+        if voice_sys is not None:
+            voice_sys.HOTKEY_EXCLUDE = frozenset(x.lower() for x in self.settings.get("hotkey_exclude", []) if x)
+
+    def _hotkey_rows(self):
+        """(name, module) of every feature that has a hotkey, in Settings order."""
+        rows = []
+        if self.voice is not None:
+            rows.append((voice.V("menu"), self.voice))
+        if self.recorder is not None:
+            rows.append((recorder.R("tab"), self.recorder))
+        if self.screenshot is not None:
+            rows.append((screenshot.SS("tab"), self.screenshot))
+        return rows
+
     def _settings_tabs(self):
         tabs = [("general", T("tab_general"))]
+        if self._hotkey_rows():
+            tabs.append(("hotkeys", T("tab_hotkeys")))
         if self.voice is not None:
             tabs.append(("voice", voice.V("menu")))
         if self.recorder is not None:
@@ -4418,7 +4456,8 @@ class TrayApp:
         if getattr(self, "_gen_draft", None) is None:
             self._gen_draft = {"autostart": autostart_enabled(),
                                "autoupdate": self.settings.get("autoupdate", True),
-                               "convert_menu": self.settings.get("convert_menu", True)}
+                               "convert_menu": self.settings.get("convert_menu", True),
+                               "hotkey_exclude": list(self.settings.get("hotkey_exclude", []))}
         if self.voice is not None and self.voice.draft is None:
             self.voice.begin_edit()
         if self.torrents is not None and self.torrents.draft is None:
@@ -4497,8 +4536,98 @@ class TrayApp:
             self.screenshot.build_into(self._scroll_page(body, win), win, pad)
         elif tab == "recorder":
             self.recorder.build_into(self._scroll_page(body, win), win, pad)
+        elif tab == "hotkeys":
+            self._build_hotkeys(self._scroll_page(body, win), win, pad)
         else:
             self._build_general(self._scroll_page(body, win), pad)
+
+    def _hotkeys_refresh(self):
+        """A module captured a new hotkey: redraw the Hotkeys page if it is the one shown."""
+        try:
+            if getattr(self, "_settings_win", None) and self._settings_tab == "hotkeys":
+                self._settings_show("hotkeys")
+        except Exception:
+            log("hotkeys refresh:\n" + traceback.format_exc())
+
+    def _hotkey_link(self, parent, keys, pad):
+        """On a feature's page: its keys (None = off) and a link to Settings -> Hotkeys."""
+        row = tk.Frame(parent, bg=COL_SURFACE)
+        row.pack(fill="x", padx=pad, pady=(6, 2))
+        tk.Label(row, text=keys or T("hk_off"), bg=COL_SURFACE2, fg=COL_TEXT if keys else COL_TEXT_DIM,
+                 font=("Consolas", 11) if keys else FONT, padx=12, pady=5).pack(side="left")
+        ln = tk.Label(row, text=T("hk_change_in"), bg=COL_SURFACE, fg=COL_ACCENT, font=FONT_SM, cursor="hand2")
+        ln.pack(side="left", padx=12)
+        ln.bind("<Button-1>", lambda e: self._settings_show("hotkeys"))
+        return row
+
+    def _build_hotkeys(self, parent, win, pad):
+        d = self._gen_draft
+        tk.Label(parent, text=T("hk_intro"), bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM, justify="left",
+                 wraplength=560, anchor="w").pack(anchor="w", fill="x", padx=pad, pady=(8, 10))
+        used = {}
+        for name, mod in self._hotkey_rows():
+            on = bool(mod.get("enabled"))
+            keys = (mod.get("hk_mods"), mod.get("hk_vk"))
+            if on:
+                used.setdefault(keys, []).append(name)
+            row = tk.Frame(parent, bg=COL_SURFACE)
+            row.pack(fill="x", padx=pad, pady=5)
+
+            def setter(v, mod=mod):
+                mod.set("enabled", bool(v))
+                self.root.after(1, lambda: self._settings_show("hotkeys"))
+            chk, _st, _draw = self._make_check(row, on, setter)
+            chk.pack(side="left")
+            tk.Label(row, text=name, bg=COL_SURFACE, fg=COL_TEXT if on else COL_TEXT_DIM, font=FONT).pack(
+                side="left", padx=(12, 0))
+            self._ghost_btn(row, T("hk_change"), mod._capture_hotkey).pack(side="right")
+            label = voice_sys.hotkey_label(*keys) if voice_sys is not None else "?"
+            tk.Label(row, text=label, bg=COL_SURFACE2, fg=COL_TEXT if on else COL_TEXT_DIM,
+                     font=("Consolas", 11), padx=12, pady=5).pack(side="right", padx=8)
+        if any(len(v) > 1 for v in used.values()):
+            tk.Label(parent, text=T("hk_dup"), bg=COL_SURFACE, fg=COL_DANGER, font=FONT_SM, anchor="w").pack(
+                anchor="w", padx=pad, pady=(4, 0))
+
+        tk.Label(parent, text=T("hk_exclude"), bg=COL_SURFACE, fg=COL_TEXT, font=("Segoe UI Semibold", 11)).pack(
+            anchor="w", padx=pad, pady=(24, 6))
+        tk.Label(parent, text=T("hk_exclude_note"), bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM, justify="left",
+                 wraplength=560, anchor="w").pack(anchor="w", fill="x", padx=pad, pady=(0, 6))
+
+        def set_list(names):
+            d["hotkey_exclude"] = sorted({n.lower() for n in names if n})
+            self._settings_show("hotkeys")
+        for exe in d["hotkey_exclude"]:
+            row = tk.Frame(parent, bg=COL_SURFACE)
+            row.pack(fill="x", padx=pad, pady=1)
+            tk.Label(row, text=exe, bg=COL_SURFACE2, fg=COL_TEXT, font=FONT, padx=10, pady=3).pack(side="left")
+            x = tk.Label(row, text="✕", bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT, padx=8, cursor="hand2")
+            x.pack(side="left")
+            x.bind("<Button-1>", lambda _e, n=exe: set_list([v for v in d["hotkey_exclude"] if v != n]))
+
+        def browse():
+            from tkinter import filedialog
+            p = filedialog.askopenfilename(parent=win, filetypes=[(T("hk_exe_files"), "*.exe")])
+            if p:
+                set_list(d["hotkey_exclude"] + [os.path.basename(p)])
+
+        def menu():
+            cur = set(d["hotkey_exclude"])
+            m = tk.Menu(add, tearoff=0)
+            progs = [n for n in (voice_sys.running_programs() if voice_sys is not None else []) if n not in cur]
+            for n in progs:
+                m.add_command(label=n, command=lambda n=n: set_list(d["hotkey_exclude"] + [n]))
+            if not progs:
+                m.add_command(label=T("hk_exclude_none"), state="disabled")
+            m.add_separator()
+            m.add_command(label=T("hk_exclude_file"), command=browse)
+            try:
+                m.tk_popup(add.winfo_rootx(), add.winfo_rooty() + add.winfo_height())
+            finally:
+                m.grab_release()
+        row = tk.Frame(parent, bg=COL_SURFACE)
+        row.pack(fill="x", padx=pad, pady=(8, 16))
+        add = self._ghost_btn(row, T("hk_exclude_add"), menu)
+        add.pack(side="left")
 
     def _settings_sidebar(self, side, tabs, current):
         """Section list of the Settings window: glyph + name; the current one is lit and joins the page."""
@@ -4607,6 +4736,9 @@ class TrayApp:
             if "convert_menu" in d:
                 self._set_setting("convert_menu", d["convert_menu"])
                 self._apply_convert_menu()
+            if "hotkey_exclude" in d:
+                self._set_setting("hotkey_exclude", sorted({x.lower() for x in d["hotkey_exclude"] if x}))
+                self._apply_hotkey_exclude()
         except Exception:
             log("settings save failed:\n" + traceback.format_exc())
         # each module on its own: one failing commit must not leave the others' drafts stale

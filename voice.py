@@ -1929,10 +1929,7 @@ class VoiceController:
 
         # горячая клавиша
         self._h(V("sec_hotkey"))
-        row = self._btn_row()
-        tk.Label(row, text=vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")), bg=self.c_sf2,
-                 fg=self.c_tx, font=("Consolas", 11), padx=12, pady=5).pack(side="left")
-        a._ghost_btn(row, V("change"), self._capture_hotkey).pack(side="left", padx=10)
+        a._hotkey_link(self._p, vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")), self._px())
         if self.get("hk_mods") == 0 and self.get("hk_vk") in vs.SIDED_MODIFIERS:
             self._note(V("hk_single_note"), pady=(4, 2))
         self._radio([("hold", V("mode_hold")), ("toggle", V("mode_toggle"))], "mode")
@@ -2099,8 +2096,9 @@ class VoiceController:
     # ---- действия окна ----
     def _capture_hotkey(self):
         dlg = self.app._dialog(V("sec_hotkey"), 420, 170)
-        tk.Label(dlg, text=V("press_combo"), bg=self.c_sf, fg=self.c_tx, font=("Segoe UI", 11),
-                 justify="center").pack(expand=True)
+        # may be called from Settings -> Hotkeys before the voice page ever set the colours
+        tk.Label(dlg, text=V("press_combo"), bg=getattr(self, "c_sf", "#232427"), fg=getattr(self, "c_tx", "#e6e8ea"),
+                 font=("Segoe UI", 11), justify="center").pack(expand=True)
         self._capture_dlg = dlg
         self.hook.capture = True
 
@@ -2133,6 +2131,7 @@ class VoiceController:
                 pass
         if self.win:
             self._rebuild()
+        getattr(self.app, "_hotkeys_refresh", lambda: None)()
         if bad:
             self.app._info(V("sec_hotkey"), V("hk_plain"))
 

@@ -1,10 +1,5 @@
-## New: Recorder
+## Settings → Hotkeys
 
-- **Ctrl+Shift+D** (or tray → *Recorder: start recording*) records everything the computer plays together with your microphone into one file — both sides of a Zoom, Meet or Telegram call. The same keys, the tray or a click on the indicator stop it, and an MP3 lands on your Desktop.
-- Settings → Recorder: hotkey, what to record (computer sound / microphone, which microphone), the indicator on or off, the folder (Desktop by default) and the format (MP3, M4A, WAV).
-- The recording indicator is a small red pill left of the clock with the time and the sound levels.
-- Audio is written to disk while recording; after a crash the recording is finished at the next start.
-
-## Settings: sections on the left
-
-- The Settings window got a sidebar instead of a row of tabs: seven tools no longer fit in one line. Every page now scrolls when it is longer than the window.
+- A new section lists every keyboard shortcut of HDContainer — dictation, recorder, screenshots — with a box to turn each on or off and a button to change it; it warns when two use the same keys.
+- **Not in these programs** now applies to all hotkeys, not only to screenshots: while one of the listed programs is in front (a game that uses the same keys), dictation, the recorder and screenshots leave the keys to it. The list you had for screenshots is carried over.
+- The feature pages show their keys with a link to this section.
