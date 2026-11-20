@@ -116,7 +116,7 @@ except Exception:
     macros = None
     _MACROS_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.15.1"
+VERSION = "1.15.2"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -395,6 +395,9 @@ STRINGS = {
     "tray_hist_voice": {"en": "Dictation", "ru": "Диктовки", "es": "Dictados", "pt": "Ditados", "de": "Diktate", "fr": "Dictées", "zh": "听写"},
     "tray_hist_shots": {"en": "Screenshots", "ru": "Скриншоты", "es": "Capturas", "pt": "Capturas", "de": "Bildschirmfotos", "fr": "Captures", "zh": "截图"},
     "tray_hist_dl": {"en": "Downloads", "ru": "Загрузки", "es": "Descargas", "pt": "Downloads", "de": "Downloads", "fr": "Téléchargements", "zh": "下载"},
+    "tray_shot": {"en": "Screenshot", "ru": "Скриншот", "es": "Captura", "pt": "Captura", "de": "Screenshot", "fr": "Capture", "zh": "截图"},
+    "tray_video": {"en": "Video", "ru": "Видео", "es": "Vídeo", "pt": "Vídeo", "de": "Video", "fr": "Vidéo", "zh": "录屏"},
+    "tray_rec": {"en": "Recorder", "ru": "Диктофон", "es": "Grabadora", "pt": "Gravador", "de": "Rekorder", "fr": "Dictaphone", "zh": "录音"},
     "tray_containers": {"en": "Containers", "ru": "Контейнеры", "es": "Contenedores", "pt": "Contêineres", "de": "Container", "fr": "Conteneurs", "zh": "容器"},
     "tray_downloads": {"en": "Downloads", "ru": "Загрузки", "es": "Descargas", "pt": "Downloads", "de": "Downloads", "fr": "Téléchargements", "zh": "下载"},
     "quit": {"en": "Quit", "ru": "Выход", "es": "Salir", "pt": "Sair", "de": "Beenden", "fr": "Quitter", "zh": "退出"},
@@ -2328,24 +2331,27 @@ class TrayApp:
             self.torrents.build_popup(frame, W, close)
         if self.containers or items or (self.torrents is not None and self.torrents.has_items()):
             sep()
-        # 2. capture tools
-        tools = False
+        # 2. capture tools: one row of tiles (a running recording shows its time in red)
+        tools = []
+
+        def rec_time(text):
+            return text.split("·")[-1].strip() if "·" in text else text
         if self.screenshot is not None:
             # a pause lets the menu vanish from the screen before it is captured
-            self._popup_action_row(frame, ICON_SHOT, screenshot.SS("menu"), W,
-                                   lambda: act(lambda: self.root.after(300, self.screenshot.shoot)))
-            tools = True
+            tools.append((ICON_SHOT, T("tray_shot"), False,
+                          lambda: act(lambda: self.root.after(300, self.screenshot.shoot))))
         if self.screenrec is not None:
-            # a pause lets the menu vanish from the screen before it is frozen
-            self._popup_action_row(frame, ICON_STOP if self.screenrec.recording else ICON_VIDEO,
-                                   self.screenrec.menu_text(), W,
-                                   lambda: act(lambda: self.root.after(300, self.screenrec.toggle)))
-            tools = True
+            on = self.screenrec.recording
+            tools.append((ICON_STOP if on else ICON_VIDEO,
+                          rec_time(self.screenrec.menu_text()) if on else T("tray_video"), on,
+                          lambda: act(lambda: self.root.after(300, self.screenrec.toggle))))
         if self.recorder is not None:
-            self._popup_action_row(frame, ICON_STOP if self.recorder.recording else ICON_REC,
-                                   self.recorder.menu_text(), W, lambda: act(self.recorder.toggle))
-            tools = True
+            on = self.recorder.recording
+            tools.append((ICON_STOP if on else ICON_REC,
+                          rec_time(self.recorder.menu_text()) if on else T("tray_rec"), on,
+                          lambda: act(self.recorder.toggle)))
         if tools:
+            self._popup_tools_row(frame, W, tools)
             sep()
         # 3. create
         self._popup_action_row(frame, ICON_ADD, T("create_container"), W,
@@ -2467,6 +2473,30 @@ class TrayApp:
             w.bind("<Button-1>", toggle)
             w.bind("<Enter>", lambda _e: [x.configure(bg=COL_HOVER) for x in widgets])
             w.bind("<Leave>", lambda _e: [x.configure(bg=COL_SURFACE) for x in widgets])
+
+    def _popup_tools_row(self, parent, width, tools):
+        """Equal tiles side by side: glyph over a short caption."""
+        row = tk.Frame(parent, bg=COL_SURFACE, width=width)
+        row.pack(fill="x", padx=8, pady=(4, 2))
+        for i, (glyph, label, on, cmd) in enumerate(tools):
+            row.columnconfigure(i, weight=1, uniform="tools")
+            fg = COL_DANGER if on else COL_TEXT
+            tile = tk.Frame(row, bg=COL_SURFACE, cursor="hand2")
+            tile.grid(row=0, column=i, sticky="nsew", padx=2)
+            g = tk.Label(tile, text=glyph, bg=COL_SURFACE, fg=COL_DANGER if on else COL_TEXT_DIM,
+                         font=(ICON_FONT, 14), cursor="hand2")
+            g.pack(pady=(8, 2))
+            t = tk.Label(tile, text=label, bg=COL_SURFACE, fg=fg, font=FONT_SM, cursor="hand2")
+            t.pack(pady=(0, 8))
+            parts = (tile, g, t)
+
+            def paint(c, parts=parts):
+                for w in parts:
+                    w.configure(bg=c)
+            for w in parts:
+                w.bind("<Enter>", lambda _e, p=paint: p(COL_HOVER))
+                w.bind("<Leave>", lambda _e, p=paint: p(COL_SURFACE))
+                w.bind("<Button-1>", lambda _e, c=cmd: c())
 
     def _popup_footer(self, parent, width, on_settings, on_quit):
         row = tk.Frame(parent, bg=COL_SURFACE, height=34, width=width)
