@@ -93,7 +93,13 @@ except Exception:
     screenshot = None
     _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.12.2"
+try:                                   # recorder: computer sound + microphone -> one file (work calls)
+    import recorder
+except Exception:
+    recorder = None
+    _RECORDER_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.13.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -291,6 +297,12 @@ ICON_ADD, ICON_SETTINGS, ICON_POWER = "\uE710", "\uE713", "\uE7E8"
 ICON_BOX = "\uE7B8"
 ICON_HISTORY = "\uE81C"
 ICON_DOWNLOAD = chr(0xE896)
+ICON_REC, ICON_STOP = chr(0xE7C8), chr(0xE71A)       # recorder: record dot, stop square
+# Settings window: sidebar width and section glyphs (Segoe MDL2 Assets)
+SETTINGS_SIDE_W = 210
+SETTINGS_ICONS = {"general": chr(0xE713), "voice": chr(0xE720), "recorder": chr(0xE7C8),
+                  "screenshot": chr(0xE722), "boxes": chr(0xE7B8), "convert": chr(0xE8AB),
+                  "torrents": chr(0xE896)}
 
 # ---------------------------------------------------------------------------
 # Настройки + язык (i18n)
@@ -1938,6 +1950,16 @@ class TrayApp:
         else:
             log("screenshot import failed:\n" + globals().get("_SCREENSHOT_IMPORT_ERR", ""))
 
+        # recorder: own keyboard hook (Ctrl+Shift+D); WAVs in %LOCALAPPDATA%\HDContainer\recordings
+        self.recorder = None
+        if recorder is not None:
+            try:
+                self.recorder = recorder.RecorderController(self, lambda: LANG, log, _local_dir())
+            except Exception:
+                log("recorder init failed:\n" + traceback.format_exc())
+        else:
+            log("recorder import failed:\n" + globals().get("_RECORDER_IMPORT_ERR", ""))
+
         # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
         # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
         # и перезапустит только то, что не выжило. Никаких ручных действий.
@@ -2243,6 +2265,9 @@ class TrayApp:
             # a pause lets the menu vanish from the screen before it is captured
             self._popup_action_row(frame, ICON_SHOT, screenshot.SS("menu"), W,
                                    lambda: act(lambda: self.root.after(300, self.screenshot.shoot)))
+        if self.recorder is not None:
+            self._popup_action_row(frame, ICON_STOP if self.recorder.recording else ICON_REC,
+                                   self.recorder.menu_text(), W, lambda: act(self.recorder.toggle))
         self._popup_action_row(frame, ICON_SETTINGS, T("settings"), W,
                                lambda: act(self._open_settings))
         if self.voice is not None:
@@ -3749,6 +3774,11 @@ class TrayApp:
                 self.screenshot.shutdown()
             except Exception:
                 log("screenshot shutdown failed:\n" + traceback.format_exc())
+        if getattr(self, "recorder", None) is not None:
+            try:
+                self.recorder.shutdown()
+            except Exception:
+                log("recorder shutdown failed:\n" + traceback.format_exc())
         for c in self.containers:
             if c.active:
                 c.sync_app_rects()   # запомнить размеры окон ДО отвязки
@@ -4351,15 +4381,17 @@ class TrayApp:
         tabs = [("general", T("tab_general"))]
         if self.voice is not None:
             tabs.append(("voice", voice.V("menu")))
+        if self.recorder is not None:
+            tabs.append(("recorder", recorder.R("tab")))
+        if self.screenshot is not None:
+            tabs.append(("screenshot", screenshot.SS("tab")))
+        if self.boxes is not None:
+            tabs.append(("boxes", boxes.B("tab")))
         if convert is not None:
             convert.LANG_GET = lambda: LANG
             tabs.append(("convert", convert.C("tab")))
         if self.torrents is not None:
             tabs.append(("torrents", torrents.S("tab")))
-        if self.boxes is not None:
-            tabs.append(("boxes", boxes.B("tab")))
-        if self.screenshot is not None:
-            tabs.append(("screenshot", screenshot.SS("tab")))
         return tabs
 
     def _open_settings(self, tab=None, rebuild=False):
@@ -4395,20 +4427,18 @@ class TrayApp:
             self.boxes.begin_edit()
         if self.screenshot is not None and self.screenshot.draft is None:
             self.screenshot.begin_edit()
+        if self.recorder is not None and self.recorder.draft is None:
+            self.recorder.begin_edit()
 
-        win = self._dialog(T("settings_title"), 640, 780)
+        # layout: sidebar of sections on the left (a tab row ran out of room at 7 sections),
+        # the section's page on the right, Save / Cancel along the bottom
+        sh = virtual_screen()[3]
+        win = self._dialog(T("settings_title"), SETTINGS_SIDE_W + 641, min(780, max(560, sh - 80)))
         win.resizable(False, True)
         self._settings_win = win
         win.protocol("WM_DELETE_WINDOW", self._settings_cancel)
         win.bind("<Escape>", lambda e: self._settings_cancel())
-        pad = 24
 
-        # вкладки (заполняет _settings_show)
-        bar = tk.Frame(win, bg=COL_SURFACE)
-        bar.pack(fill="x", padx=pad, pady=(16, 0))
-        tk.Frame(win, bg=COL_BORDER, height=1).pack(fill="x", padx=pad)
-
-        # низ: Сохранить / Отмена
         bottom = tk.Frame(win, bg=COL_SURFACE)
         bottom.pack(side="bottom", fill="x")
         tk.Frame(bottom, bg=COL_BORDER, height=1).pack(fill="x")
@@ -4417,9 +4447,17 @@ class TrayApp:
         self._accent_btn(brow, T("save"), self._settings_save).pack(side="right")
         self._ghost_btn(brow, T("cancel"), self._settings_cancel).pack(side="right", padx=(0, 8))
 
-        body = tk.Frame(win, bg=COL_SURFACE)
+        side = tk.Frame(win, bg=COL_BG, width=SETTINGS_SIDE_W)
+        side.pack(side="left", fill="y")
+        side.pack_propagate(False)
+        tk.Frame(win, bg=COL_BORDER, width=1).pack(side="left", fill="y")
+        page = tk.Frame(win, bg=COL_SURFACE)
+        page.pack(side="left", fill="both", expand=True)
+        title = tk.Label(page, text="", bg=COL_SURFACE, fg=COL_TEXT, font=("Segoe UI Semibold", 16), anchor="w")
+        title.pack(fill="x", padx=24, pady=(18, 2))
+        body = tk.Frame(page, bg=COL_SURFACE)
         body.pack(fill="both", expand=True)
-        self._settings_bar, self._settings_body = bar, body
+        self._settings_bar, self._settings_body, self._settings_title = side, body, title
         self._settings_show(tab)
 
     def _settings_show(self, tab):
@@ -4436,29 +4474,14 @@ class TrayApp:
             self.voice.win = None
         if self.screenshot is not None:
             self.screenshot._tab = None
+        if self.recorder is not None:
+            self.recorder._tab = None
         win.unbind("<MouseWheel>")
         for w in bar.winfo_children() + body.winfo_children():
             w.destroy()
         tabs = self._settings_tabs()
-        # every tab must fit the bar (6 tabs in 12 pt cut the last one): shrink type and gaps, not the window
-        win.update_idletasks()
-        avail = bar.winfo_width() if bar.winfo_width() > 1 else win.winfo_width() - 48
-        size, gap = 9, 8
-        for s_, g_ in ((12, 22), (11, 18), (11, 14), (10, 12), (10, 9)):
-            f_ = tkfont.Font(root=win, family="Segoe UI Semibold", size=s_)
-            if sum(f_.measure(lb_) for _k, lb_ in tabs) + g_ * (len(tabs) - 1) + 4 <= avail:
-                size, gap = s_, g_
-                break
-        for key, label in tabs:
-            cell = tk.Frame(bar, bg=COL_SURFACE)
-            cell.pack(side="left", padx=(0, gap))
-            on = key == tab
-            lb = tk.Label(cell, text=label, bg=COL_SURFACE, fg=COL_TEXT if on else COL_TEXT_DIM,
-                          font=("Segoe UI Semibold", size), cursor="hand2", pady=6)
-            lb.pack()
-            tk.Frame(cell, bg=COL_ACCENT if on else COL_SURFACE, height=2).pack(fill="x")
-            if not on:
-                lb.bind("<Button-1>", lambda e, k=key: self._settings_show(k))
+        self._settings_sidebar(bar, tabs, tab)
+        self._settings_title.configure(text=dict(tabs).get(tab, ""))
         pad = 24
         if tab == "voice":
             self.voice.build_into(body, win)
@@ -4467,13 +4490,62 @@ class TrayApp:
             convert.LOG = log
             convert.build_settings(self, body, win, pad)
         elif tab == "torrents":
-            self.torrents.build_into(body, win, pad)
+            self.torrents.build_into(self._scroll_page(body, win), win, pad)
         elif tab == "boxes":
             self.boxes.build_into(body, win, pad)
         elif tab == "screenshot":
-            self.screenshot.build_into(body, win, pad)
+            self.screenshot.build_into(self._scroll_page(body, win), win, pad)
+        elif tab == "recorder":
+            self.recorder.build_into(self._scroll_page(body, win), win, pad)
         else:
-            self._build_general(body, pad)
+            self._build_general(self._scroll_page(body, win), pad)
+
+    def _settings_sidebar(self, side, tabs, current):
+        """Section list of the Settings window: glyph + name; the current one is lit and joins the page."""
+        tk.Label(side, text="HDContainer", bg=COL_BG, fg=COL_TEXT_DIM, font=("Segoe UI Semibold", 9),
+                 anchor="w").pack(fill="x", padx=20, pady=(20, 10))
+        for key, label in tabs:
+            on = key == current
+            bg = COL_SURFACE if on else COL_BG
+            row = tk.Frame(side, bg=bg, height=40, cursor="hand2")
+            row.pack(fill="x", padx=(8, 0), pady=1)
+            row.pack_propagate(False)
+            mark = tk.Frame(row, bg=COL_ACCENT if on else bg, width=3)
+            mark.pack(side="left", fill="y", pady=9)
+            g = tk.Label(row, text=SETTINGS_ICONS.get(key, ""), bg=bg, fg=COL_ACCENT if on else COL_TEXT_DIM,
+                         font=(ICON_FONT, 12), width=2, cursor="hand2")
+            g.pack(side="left", padx=(10, 8))
+            t = tk.Label(row, text=label, bg=bg, fg=COL_TEXT if on else COL_TEXT_DIM, anchor="w",
+                         font=("Segoe UI Semibold", 10) if on else FONT, cursor="hand2")
+            t.pack(side="left", fill="x", expand=True, padx=(0, 8))
+            if on:
+                continue
+            parts = (row, mark, g, t)
+
+            def paint(c, parts=parts):
+                for w in parts:
+                    w.configure(bg=c)
+            for w in parts:
+                w.bind("<Enter>", lambda e, p=paint: p(COL_HOVER))
+                w.bind("<Leave>", lambda e, p=paint: p(COL_BG))
+                w.bind("<Button-1>", lambda e, k=key: self._settings_show(k))
+
+    def _scroll_page(self, parent, win):
+        """A scrollable frame for a settings page that does not scroll by itself."""
+        cv = tk.Canvas(parent, bg=COL_SURFACE, highlightthickness=0, bd=0)
+        sb = self._dark_scrollbar(parent, cv)
+        sb.pack(side="right", fill="y")
+        cv.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(cv, bg=COL_SURFACE)
+        wid = cv.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.bind("<Configure>", lambda e: cv.itemconfigure(wid, width=e.width))
+
+        def wheel(e):
+            if cv.yview() != (0.0, 1.0):        # nothing to scroll: keep the page still
+                cv.yview_scroll(int(-e.delta / 120) * 3, "units")
+        win.bind("<MouseWheel>", wheel)
+        return inner
 
     def _build_general(self, win, pad):
         tk.Frame(win, bg=COL_SURFACE, height=10).pack()
@@ -4538,7 +4610,7 @@ class TrayApp:
         except Exception:
             log("settings save failed:\n" + traceback.format_exc())
         # each module on its own: one failing commit must not leave the others' drafts stale
-        for mod in (self.voice, self.torrents, self.boxes, self.screenshot):
+        for mod in (self.voice, self.torrents, self.boxes, self.screenshot, self.recorder):
             if mod is None:
                 continue
             try:
@@ -4560,6 +4632,8 @@ class TrayApp:
             self.boxes.discard()
         if self.screenshot is not None:
             self.screenshot.discard()
+        if self.recorder is not None:
+            self.recorder.discard()
         self._settings_close_win()
 
     def _info(self, title, prompt):

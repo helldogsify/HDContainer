@@ -4,7 +4,7 @@
 
 # HDContainer
 
-### One small tray app for Windows that does six everyday jobs: groups a task's windows into one app, keeps your desktop tidy in boxes, turns your voice into text, takes and annotates screenshots, converts files from the right‑click menu, and downloads torrents.
+### One small tray app for Windows that does seven everyday jobs: groups a task's windows into one app, keeps your desktop tidy in boxes, turns your voice into text, records your calls, takes and annotates screenshots, converts files from the right‑click menu, and downloads torrents.
 
 [![Download](https://img.shields.io/badge/Download-Setup.exe-4c8bf5?style=for-the-badge)](https://github.com/helldogsify/HDContainer/releases/latest)
 [![Release](https://img.shields.io/github/v/release/helldogsify/HDContainer?style=for-the-badge)](https://github.com/helldogsify/HDContainer/releases/latest)
@@ -21,11 +21,12 @@
 | **[Window containers](#window-containers)** | A set of windows becomes one program: one taskbar button, one Alt+Tab entry. Switch your whole workspace with a single keystroke. |
 | **[Desktop boxes](#desktop-boxes)** | Panels on the desktop that hold files and shortcuts. They roll up into a title bar, open on hover, line up with even gaps and stay under your windows. |
 | **[Voice input](#voice-input)** | Hold **Left Alt** and talk. The text appears where your cursor is, cleaned up by an LLM. Select text first and your words become an instruction for it. |
+| **[Recorder](#recorder)** | Press **Ctrl+Shift+D** and everything the computer plays plus your microphone goes into one audio file — a Zoom or Meet call with both sides. Press again and an MP3 lands on your Desktop. |
 | **[Screenshots](#screenshots)** | Press **Ctrl+Shift+A**: the screen freezes, drag to pick a region or click for the whole screen. Draw, mark and crop in a small editor, then one button puts it in the clipboard. Captures are kept for 30 days. |
 | **[Convert to](#convert-files-from-the-right-click-menu)** | Right‑click any image, audio, video, document or table in Explorer → **Convert to** → pick a format. |
 | **[Torrents](#torrents)** | Open a `.torrent` file and it starts downloading. Progress, pause and delete are in the tray menu. |
 
-Everything lives in the **system tray** — there is no main window. Click the tray icon for the menu; **Settings** has a tab for each tool. Installs per‑user, **no admin rights**, updates itself.
+Everything lives in the **system tray** — there is no main window. Click the tray icon for the menu; **Settings** has a section for each tool. Installs per‑user, **no admin rights**, updates itself.
 
 ## Window containers
 
@@ -100,6 +101,17 @@ Everything is set up in **Settings → Voice input**:
 API keys are stored encrypted with Windows DPAPI under your user account.
 
 **One Claude Code for all your PCs.** On the computer that has Claude Code, turn on *Voice input → Share Claude Code with other computers*. On your other computers, choose *Claude on another computer* and paste the address and key it shows. Those computers then need neither Claude Code nor an API key. The shared endpoint is OpenAI‑compatible, accepts only private networks (Tailscale, LAN) and requires the key. It keeps a Claude process warmed up, and the other PC asks it to warm up as soon as you start talking.
+
+## Recorder
+
+For quick recordings of work calls. Press **Ctrl+Shift+D** (or tray → **Recorder: start recording**) and HDContainer records everything the computer plays — the other people in Zoom, Google Meet, Telegram, a video — together with your microphone, into one file. Press the same keys again, pick **Stop recording** in the tray, or click the indicator, and the recording is saved to your Desktop (or a folder you choose) as MP3, M4A or WAV.
+
+- While it records, a small red pill left of the clock shows the time and the sound levels; a click stops it. It can be turned off.
+- All default playback devices are recorded, so call apps that play through the "communications" device are heard too; plugging in headphones mid-call is followed.
+- Audio is written to disk as it comes: if the app or the PC crashes, the recording is finished and saved at the next start.
+- MP3 and M4A are about 0.7 MB per minute (encoded by Windows itself, nothing to install). With headphones the result is cleaner: without them the microphone hears the speakers too.
+
+Check the rules of your country and of the people you call: in many places a call may be recorded only when everyone knows.
 
 ## Screenshots
 
