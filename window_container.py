@@ -104,7 +104,13 @@ except Exception:
     recorder = None
     _RECORDER_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.13.2"
+try:                                   # screen recording: region -> MP4 with sound (indicator hidden from capture)
+    import screenrec
+except Exception:
+    screenrec = None
+    _SCREENREC_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.14.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -303,9 +309,11 @@ ICON_BOX = "\uE7B8"
 ICON_HISTORY = "\uE81C"
 ICON_DOWNLOAD = chr(0xE896)
 ICON_REC, ICON_STOP = chr(0xE7C8), chr(0xE71A)       # recorder: record dot, stop square
+ICON_VIDEO = chr(0xE714)                             # screen recording: video camera
 # Settings window: sidebar width and section glyphs (Segoe MDL2 Assets)
 SETTINGS_SIDE_W = 210
 SETTINGS_ICONS = {"general": chr(0xE713), "hotkeys": chr(0xE765), "voice": chr(0xE720), "recorder": chr(0xE7C8),
+                  "screenrec": chr(0xE714),
                   "screenshot": chr(0xE722), "boxes": chr(0xE7B8), "convert": chr(0xE8AB),
                   "torrents": chr(0xE896)}
 
@@ -445,7 +453,7 @@ STRINGS = {
     "hk_dup": {"en": "Two shortcuts use the same keys: only one of them will work.", "ru": "У двух функций одинаковые клавиши — сработает только одна.", "es": "Dos atajos usan las mismas teclas: solo funcionará uno.", "pt": "Dois atalhos usam as mesmas teclas: só um vai funcionar.", "de": "Zwei Kürzel nutzen dieselben Tasten: nur eins wird funktionieren.", "fr": "Deux raccourcis utilisent les mêmes touches : un seul fonctionnera.", "zh": "两个功能使用了相同的按键：只有一个会生效。"},
     "hk_change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
     "hk_exclude": {"en": "Not in these programs", "ru": "Не срабатывать в программах", "es": "No en estos programas", "pt": "Não nestes programas", "de": "Nicht in diesen Programmen", "fr": "Pas dans ces programmes", "zh": "在这些程序中不触发"},
-    "hk_exclude_note": {"en": "While one of them is in front, all HDContainer hotkeys (dictation, recorder, screenshots) go to it as usual — for games that use the same keys.", "ru": "Пока такая программа на переднем плане, все горячие клавиши HDContainer (диктовка, диктофон, скриншоты) достаются ей, как обычно, — для игр, где эти клавиши заняты.", "es": "Mientras una de ellas está delante, todos los atajos de HDContainer (dictado, grabadora, capturas) le llegan a ella como siempre: para juegos que usan las mismas teclas.", "pt": "Enquanto uma delas estiver em primeiro plano, todos os atalhos do HDContainer (ditado, gravador, capturas) vão para ela como sempre — para jogos que usam as mesmas teclas.", "de": "Solange eines davon im Vordergrund ist, gehen alle HDContainer-Kürzel (Diktat, Rekorder, Bildschirmfotos) wie gewohnt an das Programm — für Spiele, die dieselben Tasten nutzen.", "fr": "Tant que l'un d'eux est au premier plan, tous les raccourcis de HDContainer (dictée, dictaphone, captures) lui reviennent comme d'habitude — pour les jeux qui utilisent les mêmes touches.", "zh": "当其中某个程序在前台时，HDContainer 的所有快捷键（听写、录音机、截图）照常交给它——适用于占用同样按键的游戏。"},
+    "hk_exclude_note": {"en": "While one of them is in front, all HDContainer hotkeys (dictation, recorder, screen recording, screenshots) go to it as usual — for games that use the same keys.", "ru": "Пока такая программа на переднем плане, все горячие клавиши HDContainer (диктовка, диктофон, запись видео, скриншоты) достаются ей, как обычно, — для игр, где эти клавиши заняты.", "es": "Mientras una de ellas está delante, todos los atajos de HDContainer (dictado, grabadora, grabación de pantalla, capturas) le llegan a ella como siempre: para juegos que usan las mismas teclas.", "pt": "Enquanto uma delas estiver em primeiro plano, todos os atalhos do HDContainer (ditado, gravador, gravação de tela, capturas) vão para ela como sempre — para jogos que usam as mesmas teclas.", "de": "Solange eines davon im Vordergrund ist, gehen alle HDContainer-Kürzel (Diktat, Rekorder, Bildschirmaufnahme, Bildschirmfotos) wie gewohnt an das Programm — für Spiele, die dieselben Tasten nutzen.", "fr": "Tant que l'un d'eux est au premier plan, tous les raccourcis de HDContainer (dictée, dictaphone, enregistrement d'écran, captures) lui reviennent comme d'habitude — pour les jeux qui utilisent les mêmes touches.", "zh": "当其中某个程序在前台时，HDContainer 的所有快捷键（听写、录音机、录屏、截图）照常交给它——适用于占用同样按键的游戏。"},
     "hk_exclude_add": {"en": "Add a program…", "ru": "Добавить программу…", "es": "Añadir programa…", "pt": "Adicionar programa…", "de": "Programm hinzufügen…", "fr": "Ajouter un programme…", "zh": "添加程序…"},
     "hk_exclude_file": {"en": "Choose an .exe file…", "ru": "Выбрать файл .exe…", "es": "Elegir un archivo .exe…", "pt": "Escolher um arquivo .exe…", "de": ".exe-Datei wählen…", "fr": "Choisir un fichier .exe…", "zh": "选择 .exe 文件…"},
     "hk_exclude_none": {"en": "No other programs with windows are running", "ru": "Других программ с окнами сейчас нет", "es": "No hay otros programas con ventanas", "pt": "Não há outros programas com janelas", "de": "Keine anderen Programme mit Fenstern", "fr": "Aucun autre programme avec fenêtre", "zh": "没有其他带窗口的程序在运行"},
@@ -1979,6 +1987,16 @@ class TrayApp:
         else:
             log("recorder import failed:\n" + globals().get("_RECORDER_IMPORT_ERR", ""))
 
+        # screen recording: own keyboard hook (Ctrl+Shift+Y); temp files in %LOCALAPPDATA%\HDContainer\screenrec
+        self.screenrec = None
+        if screenrec is not None:
+            try:
+                self.screenrec = screenrec.ScreenRecController(self, lambda: LANG, log, _local_dir())
+            except Exception:
+                log("screenrec init failed:\n" + traceback.format_exc())
+        else:
+            log("screenrec import failed:\n" + globals().get("_SCREENREC_IMPORT_ERR", ""))
+
         # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
         # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
         # и перезапустит только то, что не выжило. Никаких ручных действий.
@@ -2287,6 +2305,11 @@ class TrayApp:
         if self.recorder is not None:
             self._popup_action_row(frame, ICON_STOP if self.recorder.recording else ICON_REC,
                                    self.recorder.menu_text(), W, lambda: act(self.recorder.toggle))
+        if self.screenrec is not None:
+            # a pause lets the menu vanish from the screen before it is frozen
+            self._popup_action_row(frame, ICON_STOP if self.screenrec.recording else ICON_VIDEO,
+                                   self.screenrec.menu_text(), W,
+                                   lambda: act(lambda: self.root.after(300, self.screenrec.toggle)))
         self._popup_action_row(frame, ICON_SETTINGS, T("settings"), W,
                                lambda: act(self._open_settings))
         if self.voice is not None:
@@ -3798,6 +3821,11 @@ class TrayApp:
                 self.recorder.shutdown()
             except Exception:
                 log("recorder shutdown failed:\n" + traceback.format_exc())
+        if getattr(self, "screenrec", None) is not None:
+            try:
+                self.screenrec.shutdown()
+            except Exception:
+                log("screenrec shutdown failed:\n" + traceback.format_exc())
         for c in self.containers:
             if c.active:
                 c.sync_app_rects()   # запомнить размеры окон ДО отвязки
@@ -4407,6 +4435,8 @@ class TrayApp:
             rows.append((voice.V("menu"), self.voice))
         if self.recorder is not None:
             rows.append((recorder.R("tab"), self.recorder))
+        if self.screenrec is not None:
+            rows.append((screenrec.V("tab"), self.screenrec))
         if self.screenshot is not None:
             rows.append((screenshot.SS("tab"), self.screenshot))
         return rows
@@ -4419,6 +4449,8 @@ class TrayApp:
             tabs.append(("voice", voice.V("menu")))
         if self.recorder is not None:
             tabs.append(("recorder", recorder.R("tab")))
+        if self.screenrec is not None:
+            tabs.append(("screenrec", screenrec.V("tab")))
         if self.screenshot is not None:
             tabs.append(("screenshot", screenshot.SS("tab")))
         if self.boxes is not None:
@@ -4466,6 +4498,8 @@ class TrayApp:
             self.screenshot.begin_edit()
         if self.recorder is not None and self.recorder.draft is None:
             self.recorder.begin_edit()
+        if self.screenrec is not None and self.screenrec.draft is None:
+            self.screenrec.begin_edit()
 
         # layout: sidebar of sections on the left (a tab row ran out of room at 7 sections),
         # the section's page on the right, Save / Cancel along the bottom
@@ -4513,6 +4547,8 @@ class TrayApp:
             self.screenshot._tab = None
         if self.recorder is not None:
             self.recorder._tab = None
+        if self.screenrec is not None:
+            self.screenrec._tab = None
         win.unbind("<MouseWheel>")
         for w in bar.winfo_children() + body.winfo_children():
             w.destroy()
@@ -4534,6 +4570,8 @@ class TrayApp:
             self.screenshot.build_into(self._scroll_page(body, win), win, pad)
         elif tab == "recorder":
             self.recorder.build_into(self._scroll_page(body, win), win, pad)
+        elif tab == "screenrec":
+            self.screenrec.build_into(self._scroll_page(body, win), win, pad)
         elif tab == "hotkeys":
             self._build_hotkeys(self._scroll_page(body, win), win, pad)
         else:
@@ -4602,6 +4640,8 @@ class TrayApp:
                 self._hotkey_voice_mode(parent, pad, keys)
             elif on and mod is self.recorder:
                 self._hotkey_note(parent, pad, recorder.R("hk_note"))
+            elif on and mod is self.screenrec:
+                self._hotkey_note(parent, pad, screenrec.V("hk_note"))
         if any(len(v) > 1 for v in used.values()):
             tk.Label(parent, text=T("hk_dup"), bg=COL_SURFACE, fg=COL_DANGER, font=FONT_SM, anchor="w").pack(
                 anchor="w", padx=pad, pady=(4, 0))
@@ -4760,7 +4800,7 @@ class TrayApp:
         except Exception:
             log("settings save failed:\n" + traceback.format_exc())
         # each module on its own: one failing commit must not leave the others' drafts stale
-        for mod in (self.voice, self.torrents, self.boxes, self.screenshot, self.recorder):
+        for mod in (self.voice, self.torrents, self.boxes, self.screenshot, self.recorder, self.screenrec):
             if mod is None:
                 continue
             try:
@@ -4784,6 +4824,8 @@ class TrayApp:
             self.screenshot.discard()
         if self.recorder is not None:
             self.recorder.discard()
+        if self.screenrec is not None:
+            self.screenrec.discard()
         self._settings_close_win()
 
     def _info(self, title, prompt):

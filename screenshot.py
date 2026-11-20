@@ -993,7 +993,7 @@ class Capture:
         ml, mt, mr, _mb = monitor_at(pt.x, pt.y)
         hx = (ml + mr) // 2 - self.ox
         hy = mt - self.oy + 28
-        t = cv.create_text(hx, hy, text=SS("hint"), fill="#e6e8ea", font=("Segoe UI", 11), anchor="n")
+        t = cv.create_text(hx, hy, text=self.hint_text(), fill="#e6e8ea", font=("Segoe UI", 11), anchor="n")
         bb = cv.bbox(t)
         self.hint_bg = cv.create_rectangle(bb[0] - 16, bb[1] - 8, bb[2] + 16, bb[3] + 8, fill="#1b1b1d", outline="#2a2b2c")
         cv.tag_raise(t, self.hint_bg)
@@ -1014,6 +1014,9 @@ class Capture:
         top.attributes("-alpha", OVERLAY_ALPHA)
         self.deadline = time.time() + OVERLAY_TIMEOUT
         self._pump()
+
+    def hint_text(self):
+        return SS("hint")
 
     def _pump(self):
         if self.done:

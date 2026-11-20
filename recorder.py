@@ -197,6 +197,7 @@ _d(u32.UpdateLayeredWindow, wintypes.BOOL,
 _d(u32.SystemParametersInfoW, wintypes.BOOL, [wintypes.UINT, wintypes.UINT, ctypes.c_void_p, wintypes.UINT])
 _d(u32.LoadCursorW, wintypes.HANDLE, [wintypes.HINSTANCE, ctypes.c_void_p])
 _d(u32.GetCursorPos, wintypes.BOOL, [ctypes.POINTER(wintypes.POINT)])
+_d(u32.SetWindowDisplayAffinity, wintypes.BOOL, [wintypes.HWND, wintypes.DWORD])
 _d(k32.GetModuleHandleW, wintypes.HINSTANCE, [wintypes.LPCWSTR])
 _d(g32.CreateCompatibleDC, wintypes.HDC, [wintypes.HDC])
 _d(g32.DeleteDC, wintypes.BOOL, [wintypes.HDC])
@@ -213,6 +214,7 @@ SW_HIDE = 0
 WM_LBUTTONUP, WM_MOUSEACTIVATE, MA_NOACTIVATE = 0x0202, 0x0021, 3
 ULW_ALPHA = 2
 SPI_GETWORKAREA = 0x30
+WDA_EXCLUDEFROMCAPTURE = 0x11       # Windows 10 2004+
 REC_RED = (255, 69, 58)
 PILL_BG = (9, 12, 22, 232)
 
@@ -238,8 +240,11 @@ class Indicator:
     GAP_RIGHT = 118                 # logical px from the work-area edge: leaves room for the dictation orb
     SS = 3                          # supersampling
 
-    def __init__(self, root, on_click, log):
+    def __init__(self, root, on_click, log, cls="HDContainerRecIndicator", exclude=False, shift=None):
         self.root, self.on_click, self.log = root, on_click, log
+        self.cls = cls                  # one window class per indicator: the class holds the wndproc
+        self.exclude = exclude          # True: left out of screen capture (the screen recorder's own pill)
+        self.shift = shift              # callable -> extra logical px to the left (room for another pill)
         self.hwnd = None
         self.state = None           # "rec" / "saving" / None
         self.start = 0.0
@@ -261,11 +266,13 @@ class Indicator:
         wc.lpfnWndProc = self._proc
         wc.hInstance = hinst
         wc.hCursor = u32.LoadCursorW(None, ctypes.c_void_p(32649))      # IDC_HAND
-        wc.lpszClassName = "HDContainerRecIndicator"
+        wc.lpszClassName = self.cls
         u32.RegisterClassExW(ctypes.byref(wc))
         ex = WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
-        self.hwnd = u32.CreateWindowExW(ex, "HDContainerRecIndicator", "HDContainer recorder",
+        self.hwnd = u32.CreateWindowExW(ex, self.cls, "HDContainer recorder",
                                         WS_POPUP, 0, 0, self.W, self.H, None, None, hinst, None)
+        if self.exclude and self.hwnd and not u32.SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE):
+            self.log("recorder indicator: not excluded from capture (Windows older than 10 2004?)")
 
     def _wndproc(self, hwnd, msg, wp, lp):
         if msg == WM_MOUSEACTIVATE:
@@ -279,7 +286,13 @@ class Indicator:
         rc = wintypes.RECT()
         u32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rc), 0)
         cy = rc.bottom - int(68 * self.s)            # same line as the dictation orb
-        return rc.right - int(self.GAP_RIGHT * self.s) - self.W, cy - self.H // 2
+        extra = 0
+        if self.shift is not None:
+            try:
+                extra = int(self.shift() or 0)
+            except Exception:
+                extra = 0
+        return rc.right - int((self.GAP_RIGHT + extra) * self.s) - self.W, cy - self.H // 2
 
     def show_rec(self, start, levels):
         self.state, self.start, self.levels = "rec", start, levels
@@ -356,7 +369,8 @@ class Indicator:
         else:
             text = "%s %d%%" % (R("saving"), int(self.progress * 100))
         tw = d.textlength(text, font=self.f_time)
-        pw = int(tw + (78 if self.state == "rec" else 46) * u)
+        bars = self.state == "rec" and self.levels is not None
+        pw = int(tw + (78 if bars else 50 if self.state == "rec" else 46) * u)
         ph = int(32 * u)
         x1 = W - int(2 * u)
         x0 = x1 - pw
@@ -379,14 +393,14 @@ class Indicator:
                 d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=REC_RED + (255,))
             tx = cx + int(13 * u)
             d.text((tx, cy), text, font=self.f_time, fill=(236, 240, 247, 255), anchor="lm")
-            # level bars: computer sound (2 left) and microphone (2 right)
-            out, mic = self.levels()
+            # level bars: computer sound (2 left) and microphone (2 right); none without sound
+            out, mic = self.levels() if bars else (0.0, 0.0)
             tgt = [out, out * 0.7, mic * 0.7, mic]
             for i in range(4):
                 self._bars[i] += (tgt[i] - self._bars[i]) * 0.5
             bx = tx + tw + int(10 * u)
             bw, gap = 3 * u, 2.4 * u
-            for i, v in enumerate(self._bars):
+            for i, v in enumerate(self._bars if bars else ()):
                 hh = (3 + 14 * min(1.0, v)) * u
                 x = bx + i * (bw + gap) + (2 * u if i >= 2 else 0)
                 col = (236, 240, 247, 230) if i < 2 else REC_RED + (230,)
@@ -886,6 +900,9 @@ class RecorderController:
         sh = getattr(self.app, "screenshot", None)
         if sh is not None and sh.get("enabled") and (sh.get("hk_mods"), sh.get("hk_vk")) == (mods, vk):
             return __import__("screenshot").SS("tab")
+        sr = getattr(self.app, "screenrec", None)
+        if sr is not None and sr.get("enabled") and (sr.get("hk_mods"), sr.get("hk_vk")) == (mods, vk):
+            return __import__("screenrec").V("tab")
         vo = getattr(self.app, "voice", None)
         if vo is not None:
             try:
