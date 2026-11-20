@@ -1,4 +1,3 @@
-## Recorder
+## Key scripts
 
-- The recorder hotkey and the tray button now open a small panel above the clock first: computer sound and microphone switches (with the microphone choice) and «Record». The hotkey pressed again, Enter or the button starts the recording; Esc or «Cancel» closes the panel.
-- *Settings → Recorder → Show the panel before recording* turns the panel off: then the recording starts at once, as before.
+- Game chat: Enter pressed in a script's program now pauses the script until the next Enter (open chat / send), however long you type. Esc also ends the pause (chat closed without sending). Enter in other programs does not count.

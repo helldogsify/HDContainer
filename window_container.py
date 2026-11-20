@@ -116,7 +116,7 @@ except Exception:
     macros = None
     _MACROS_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.15.3"
+VERSION = "1.15.4"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"

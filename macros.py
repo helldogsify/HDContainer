@@ -5,8 +5,8 @@ sequence of key presses with random pauses (e.g. E -> E, 2, E).
 Rules of a script (settings["macros"]["scripts"], a list of dicts):
   * fires only while one of its programs (exe names) is in front;
   * the trigger may carry Ctrl/Alt/Shift/Win, which must match exactly;
-  * it does not fire if Enter was pressed within the last N seconds (game chat): the key then
-    goes through untouched;
+  * Enter pressed in a script's program pauses scripts until the next Enter (game chat: open /
+    send), Esc ends the pause (chat closed); while paused the key goes through untouched;
   * each step = key down, hold, key up; between steps a pause; both random in their ranges
     with a human-like spread (human_ms);
   * switched on and off from the tray menu.
@@ -48,7 +48,7 @@ MSTR = {
     "prog_none": {"en": "No programs with windows", "ru": "Нет программ с окнами", "es": "No hay programas con ventanas", "pt": "Nenhum programa com janelas", "de": "Keine Programme mit Fenstern", "fr": "Aucun programme avec fenêtre", "zh": "没有带窗口的程序"},
     "prog_file": {"en": "Choose .exe…", "ru": "Выбрать .exe…", "es": "Elegir .exe…", "pt": "Escolher .exe…", "de": ".exe wählen…", "fr": "Choisir un .exe…", "zh": "选择 .exe…"},
     "exe_files": {"en": "Programs", "ru": "Программы", "es": "Programas", "pt": "Programas", "de": "Programme", "fr": "Programmes", "zh": "程序"},
-    "enter": {"en": "Not if Enter was pressed in the last", "ru": "Не срабатывать, если Enter нажимали за последние", "es": "No si se pulsó Enter en los últimos", "pt": "Não se Enter foi pressionado nos últimos", "de": "Nicht, wenn Enter gedrückt wurde in den letzten", "fr": "Pas si Entrée a été pressée dans les dernières", "zh": "若最近按过 Enter 则不触发，时长"},
+    "enter": {"en": "Enter pauses the script until the next Enter (chat)", "ru": "Enter выключает скрипт до следующего Enter (чат)", "es": "Enter pausa el script hasta el siguiente Enter (chat)", "pt": "Enter pausa o script até o próximo Enter (chat)", "de": "Enter pausiert das Skript bis zum nächsten Enter (Chat)", "fr": "Entrée met le script en pause jusqu'à la prochaine Entrée (chat)", "zh": "按 Enter 暂停脚本，直到再次按 Enter（聊天）"},
     "sec": {"en": "s", "ru": "с", "es": "s", "pt": "s", "de": "s", "fr": "s", "zh": "秒"},
     "name": {"en": "Name", "ru": "Название", "es": "Nombre", "pt": "Nome", "de": "Name", "fr": "Nom", "zh": "名称"},
     "delete": {"en": "Delete", "ru": "Удалить", "es": "Eliminar", "pt": "Excluir", "de": "Löschen", "fr": "Supprimer", "zh": "删除"},
@@ -263,7 +263,7 @@ class MacroEngine:
         self.events = queue.Queue()           # ("captured", mods, vk) / ("capture_cancel",) / ("fired", id)
         self.scripts = ()                     # tuple of _Compiled, replaced as a whole
         self.capture = False
-        self.last_enter = -1e9                # monotonic time of the last physical Enter event
+        self.chat = False                     # Enter pressed in a script's program: paused until the next Enter
         self._down = set()
         self._swallowed = set()               # triggers whose key-up (and auto-repeat) we eat
         self._passing = {}                    # vk -> script: the real press is the first step,
@@ -313,6 +313,7 @@ class MacroEngine:
         self._down.clear()
         self._swallowed.clear()
         self._passing.clear()
+        self.chat = False
         self._thread = threading.Thread(target=run, daemon=True, name="hdc-macro-hook")
         self._thread.start()
         ready.wait(2.0)
@@ -346,10 +347,17 @@ class MacroEngine:
             self._down.discard(vk)
         else:
             self._down.add(vk)
-        if vk == VK_RETURN:
-            self.last_enter = time.monotonic()
         if self.capture:
             return self._handle_capture(vk, up, repeat)
+        if not up and not repeat and vk in (VK_RETURN, vs.VK_ESCAPE):
+            # chat in a game: Enter opens it, Enter sends, Esc closes it. Only keys pressed in a
+            # script's program count, so Enter in a messenger does not flip the state
+            scripts = self.scripts
+            if scripts:
+                exe = (vs.foreground_exe() or "").lower()
+                if any(exe in sc.programs for sc in scripts):
+                    self.chat = (not self.chat) if vk == VK_RETURN else False
+            return False
         if vk in self._swallowed:
             if up:
                 self._swallowed.discard(vk)
@@ -375,7 +383,7 @@ class MacroEngine:
                 exe = (vs.foreground_exe() or "").lower()
             if exe not in s.programs:
                 continue
-            if s.enter_block and time.monotonic() - self.last_enter < s.enter_s:
+            if s.enter_block and self.chat:
                 return False                    # chat typing: the key goes through as it is
             if self._busy:                      # a press during playback is dropped, not queued
                 self._swallowed.add(vk)
@@ -712,8 +720,6 @@ class MacroController:
         chk2, _s2, _d2 = a._make_check(r, s["enter_block"], lambda v: s.__setitem__("enter_block", bool(v)), bg=bg)
         chk2.pack(side="left")
         tk.Label(r, text="  " + M("enter"), bg=bg, fg=th["tx"], font=th["font_sm"]).pack(side="left")
-        self._num(r, s, "enter_s", 0, 600, th, is_float=True).pack(side="left", padx=(6, 4))
-        tk.Label(r, text=M("sec"), bg=bg, fg=th["tx"], font=th["font_sm"]).pack(side="left")
 
         bad = problems(s)
         if bad:

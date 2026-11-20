@@ -128,7 +128,7 @@ Every capture is kept on your PC for 30 days (7 to 90 in Settings), like the dic
 
 - The pause between keys and how long each key is held are random within the ranges you set, spread the way people press keys (most presses near the typical value, a few longer), never the same twice. Under each range a dot says whether it looks human: green, yellow with advice, red when no person presses that fast or that evenly.
 - If the first key of the sequence is the trigger itself (E → E, 2, E), your own press goes to the program as it is, and the rest follows after you release it.
-- *Not if Enter was pressed in the last 3 s*: while you type in a game chat the key works as usual.
+- *Enter pauses the script until the next Enter*: Enter opens a game chat, Enter sends it (Esc closes it), and in between the key works as usual. Only Enter in the script's program counts.
 - The keys are sent as scan codes, the way games read them. Programs running as administrator do not accept keys from a normal program, and games with anti-cheat can tell synthetic keys apart: check the game's rules before using scripts there.
 
 ## Convert files from the right-click menu
