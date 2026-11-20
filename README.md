@@ -23,6 +23,7 @@
 | **[Voice input](#voice-input)** | Hold **Left Alt** and talk. The text appears where your cursor is, cleaned up by an LLM. Select text first and your words become an instruction for it. |
 | **[Recorder](#recorder)** | Press **Ctrl+Shift+D** and everything the computer plays plus your microphone goes into one audio file — a Zoom or Meet call with both sides. Press again and an MP3 lands on your Desktop. |
 | **[Screenshots](#screenshots)** | Press **Ctrl+Shift+A**: the screen freezes, drag to pick a region or click for the whole screen. Draw, mark and crop in a small editor, then one button puts it in the clipboard. Captures are kept for 30 days. |
+| **[Key scripts](#key-scripts)** | One key becomes a sequence in the program you choose: press **E** in a game and it gets **E, 2, E** with human-like random timing. Switch each script on and off from the tray menu. |
 | **[Convert to](#convert-files-from-the-right-click-menu)** | Right‑click any image, audio, video, document or table in Explorer → **Convert to** → pick a format. |
 | **[Torrents](#torrents)** | Open a `.torrent` file and it starts downloading. Progress, pause and delete are in the tray menu. |
 
@@ -121,6 +122,15 @@ The capture opens in a small editor: **pen**, **marker**, **frame**, **arrow** a
 
 Every capture is kept on your PC for 30 days (7 to 90 in Settings), like the dictation history: tray → **Screenshot history** shows them as thumbnails; copy one again, open it in the editor or delete it. The editor can be skipped: *Settings → Screenshots → Copy to the clipboard right away*.
 
+## Key scripts
+
+*Settings → Key scripts → New script*: pick the **key**, the keys it **presses** in order, and the **programs** it works in (it never fires anywhere else). Each script has a switch in the tray menu.
+
+- The pause between keys and how long each key is held are random within the ranges you set, spread the way people press keys (most presses near the typical value, a few longer), never the same twice. Under each range a dot says whether it looks human: green, yellow with advice, red when no person presses that fast or that evenly.
+- If the first key of the sequence is the trigger itself (E → E, 2, E), your own press goes to the program as it is, and the rest follows after you release it.
+- *Not if Enter was pressed in the last 3 s*: while you type in a game chat the key works as usual.
+- The keys are sent as scan codes, the way games read them. Programs running as administrator do not accept keys from a normal program, and games with anti-cheat can tell synthetic keys apart: check the game's rules before using scripts there.
+
 ## Convert files from the right-click menu
 
 Right-click any image, audio, video, document or data file in Explorer (or a whole selection of them) → **Convert to** → pick a format. The result lands next to the original with the same name and the new extension (`report.docx` → `report.md`; if the name is taken you get `report (2).md`). A selection is converted one file after another in a single progress window.
@@ -171,6 +181,7 @@ The app is Python — `tkinter` for the UI and `ctypes` for the Win32 work — p
 | Voice input | `voice.py`, `voice_engines.py`, `voice_sys.py` | microphone through `winmm`, selection and text fields through UI Automation, pasting with `SendInput`; whisper.cpp server downloaded on first use; LLM connectors are plain HTTP or a `claude` subprocess |
 | Converter | `convert.py` | Pillow + pillow‑heif; FFmpeg, Pandoc and Poppler downloaded on demand; Edge/Chrome for PDF |
 | Torrents | `torrents.py` | [libtorrent](https://libtorrent.org/) |
+| Key scripts | `macros.py` | low-level keyboard hook (installed only while a script is on) and `SendInput` with scan codes |
 
 ## Build from source
 

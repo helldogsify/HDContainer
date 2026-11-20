@@ -110,7 +110,13 @@ except Exception:
     screenrec = None
     _SCREENREC_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.14.1"
+try:                                   # key scripts: a key in a chosen program -> a sequence of keys
+    import macros
+except Exception:
+    macros = None
+    _MACROS_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.15.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -313,7 +319,7 @@ ICON_VIDEO = chr(0xE714)                             # screen recording: video c
 # Settings window: sidebar width and section glyphs (Segoe MDL2 Assets)
 SETTINGS_SIDE_W = 210
 SETTINGS_ICONS = {"general": chr(0xE713), "hotkeys": chr(0xE765), "voice": chr(0xE720), "recorder": chr(0xE7C8),
-                  "screenrec": chr(0xE714),
+                  "screenrec": chr(0xE714), "macros": chr(0xE945),
                   "screenshot": chr(0xE722), "boxes": chr(0xE7B8), "convert": chr(0xE8AB),
                   "torrents": chr(0xE896)}
 
@@ -1997,6 +2003,16 @@ class TrayApp:
         else:
             log("screenrec import failed:\n" + globals().get("_SCREENREC_IMPORT_ERR", ""))
 
+        # key scripts: own keyboard hook, installed only while a script is active
+        self.macros = None
+        if macros is not None:
+            try:
+                self.macros = macros.MacroController(self, lambda: LANG, log)
+            except Exception:
+                log("macros init failed:\n" + traceback.format_exc())
+        else:
+            log("macros import failed:\n" + globals().get("_MACROS_IMPORT_ERR", ""))
+
         # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
         # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
         # и перезапустит только то, что не выжило. Никаких ручных действий.
@@ -2290,6 +2306,12 @@ class TrayApp:
             self._popup_container_row(frame, c, W, close)
         if self.containers:
             tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
+        if self.macros is not None:
+            items = self.macros.tray_items()
+            for it in items:
+                self._popup_macro_row(frame, it, W, act)
+            if items:
+                tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
         if self.torrents is not None and self.torrents.has_items():
             self.torrents.build_popup(frame, W, close)
             tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
@@ -2373,6 +2395,31 @@ class TrayApp:
         for wdg in (row, name):
             wdg.bind("<Enter>", enter)
             wdg.bind("<Leave>", leave)
+
+    def _popup_macro_row(self, parent, item, width, act):
+        """Key script in the tray menu: switch on the left, name opens Settings -> Key scripts."""
+        sid, name, on, runnable = item
+        row = tk.Frame(parent, bg=COL_SURFACE, height=32, width=width)
+        row.pack(fill="x")
+        row.pack_propagate(False)
+
+        def on_toggle(want):
+            self.macros.set_enabled(sid, want)
+            self.root.after(1, self._repopup)
+        chk, _st, _draw = self._make_check(row, on, on_toggle)
+        chk.pack(side="left", padx=(14, 10))
+        lbl = tk.Label(row, text=name, bg=COL_SURFACE, fg=COL_TEXT if (on and runnable) else COL_TEXT_DIM,
+                       font=FONT, cursor="hand2", anchor="w")
+        lbl.pack(side="left", fill="x", expand=True, padx=(0, 14))
+        lbl.bind("<Button-1>", lambda _e: act(lambda: self._open_settings("macros")))
+        widgets = (row, chk, lbl)
+
+        def paint(c):
+            for w in widgets:
+                w.configure(bg=c)
+        for w in (row, lbl):
+            w.bind("<Enter>", lambda _e: paint(COL_HOVER))
+            w.bind("<Leave>", lambda _e: paint(COL_SURFACE))
 
     def _popup_action_row(self, parent, glyph, text, width, command):
         row = tk.Frame(parent, bg=COL_SURFACE, height=32, width=width)
@@ -3826,6 +3873,11 @@ class TrayApp:
                 self.screenrec.shutdown()
             except Exception:
                 log("screenrec shutdown failed:\n" + traceback.format_exc())
+        if getattr(self, "macros", None) is not None:
+            try:
+                self.macros.shutdown()
+            except Exception:
+                log("macros shutdown failed:\n" + traceback.format_exc())
         for c in self.containers:
             if c.active:
                 c.sync_app_rects()   # запомнить размеры окон ДО отвязки
@@ -4453,6 +4505,8 @@ class TrayApp:
             tabs.append(("screenrec", screenrec.V("tab")))
         if self.screenshot is not None:
             tabs.append(("screenshot", screenshot.SS("tab")))
+        if self.macros is not None:
+            tabs.append(("macros", macros.M("tab")))
         if self.boxes is not None:
             tabs.append(("boxes", boxes.B("tab")))
         if convert is not None:
@@ -4500,6 +4554,8 @@ class TrayApp:
             self.recorder.begin_edit()
         if self.screenrec is not None and self.screenrec.draft is None:
             self.screenrec.begin_edit()
+        if self.macros is not None and self.macros.draft is None:
+            self.macros.begin_edit()
 
         # layout: sidebar of sections on the left (a tab row ran out of room at 7 sections),
         # the section's page on the right, Save / Cancel along the bottom
@@ -4549,6 +4605,8 @@ class TrayApp:
             self.recorder._tab = None
         if self.screenrec is not None:
             self.screenrec._tab = None
+        if self.macros is not None:
+            self.macros._tab = None
         win.unbind("<MouseWheel>")
         for w in bar.winfo_children() + body.winfo_children():
             w.destroy()
@@ -4572,6 +4630,8 @@ class TrayApp:
             self.recorder.build_into(self._scroll_page(body, win), win, pad)
         elif tab == "screenrec":
             self.screenrec.build_into(self._scroll_page(body, win), win, pad)
+        elif tab == "macros":
+            self.macros.build_into(self._scroll_page(body, win), win, pad)
         elif tab == "hotkeys":
             self._build_hotkeys(self._scroll_page(body, win), win, pad)
         else:
@@ -4791,7 +4851,8 @@ class TrayApp:
         except Exception:
             log("settings save failed:\n" + traceback.format_exc())
         # each module on its own: one failing commit must not leave the others' drafts stale
-        for mod in (self.voice, self.torrents, self.boxes, self.screenshot, self.recorder, self.screenrec):
+        for mod in (self.voice, self.torrents, self.boxes, self.screenshot, self.recorder, self.screenrec,
+                    self.macros):
             if mod is None:
                 continue
             try:
@@ -4817,6 +4878,8 @@ class TrayApp:
             self.recorder.discard()
         if self.screenrec is not None:
             self.screenrec.discard()
+        if self.macros is not None:
+            self.macros.discard()
         self._settings_close_win()
 
     def _info(self, title, prompt):

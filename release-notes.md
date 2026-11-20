@@ -1,11 +1,7 @@
-## Screen recording: the panel stays
+## Key scripts
 
-- The panel with the switches stays on the screen during the recording: computer sound, microphone, cursor and click rings switch at once; it shows the recording time and has «Stop». The corner indicator is gone.
-- Drag the panel anywhere by the dotted grip, before and during the recording. It is not in the video.
-- After «Stop» the same panel shows the saving progress.
-- Default hotkey: **Ctrl+Shift+B**.
-- A recording with no sound switched on is saved without an audio track.
-
-## Settings
-
-- Explanatory captions removed from all pages.
+- New: one key becomes a sequence of keys in the program you choose. Example: **E** in a game presses **E, 2, E**.
+- Pauses between keys and key holds are random within your ranges, with a human-like spread. A dot under each range rates it: green human-like, yellow with advice, red not human.
+- When the first key of the sequence is the trigger itself, your real press goes through and the rest follows its release.
+- Optional: no firing if Enter was pressed in the last N seconds (game chat).
+- Each script has its own switch in the tray menu. *Settings → Key scripts*.
