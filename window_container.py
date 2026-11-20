@@ -104,7 +104,7 @@ except Exception:
     recorder = None
     _RECORDER_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.13.1"
+VERSION = "1.13.2"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -443,8 +443,6 @@ STRINGS = {
     "tab_hotkeys": {"en": "Hotkeys", "ru": "Горячие клавиши", "es": "Atajos", "pt": "Atalhos", "de": "Tastenkürzel", "fr": "Raccourcis", "zh": "快捷键"},
     "hk_intro": {"en": "Every keyboard shortcut of HDContainer. The box turns a shortcut on or off.", "ru": "Все сочетания клавиш HDContainer. Галочка включает и выключает сочетание.", "es": "Todos los atajos de HDContainer. La casilla activa o desactiva cada uno.", "pt": "Todos os atalhos do HDContainer. A caixa liga ou desliga cada um.", "de": "Alle Tastenkürzel von HDContainer. Das Kästchen schaltet ein Kürzel ein oder aus.", "fr": "Tous les raccourcis de HDContainer. La case active ou désactive chacun.", "zh": "HDContainer 的所有快捷键。勾选框用于开启或关闭。"},
     "hk_dup": {"en": "Two shortcuts use the same keys: only one of them will work.", "ru": "У двух функций одинаковые клавиши — сработает только одна.", "es": "Dos atajos usan las mismas teclas: solo funcionará uno.", "pt": "Dois atalhos usam as mesmas teclas: só um vai funcionar.", "de": "Zwei Kürzel nutzen dieselben Tasten: nur eins wird funktionieren.", "fr": "Deux raccourcis utilisent les mêmes touches : un seul fonctionnera.", "zh": "两个功能使用了相同的按键：只有一个会生效。"},
-    "hk_change_in": {"en": "change in Hotkeys", "ru": "изменить в «Горячих клавишах»", "es": "cambiar en Atajos", "pt": "alterar em Atalhos", "de": "in Tastenkürzel ändern", "fr": "modifier dans Raccourcis", "zh": "在“快捷键”中更改"},
-    "hk_off": {"en": "off", "ru": "выключено", "es": "desactivado", "pt": "desligado", "de": "aus", "fr": "désactivé", "zh": "已关闭"},
     "hk_change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
     "hk_exclude": {"en": "Not in these programs", "ru": "Не срабатывать в программах", "es": "No en estos programas", "pt": "Não nestes programas", "de": "Nicht in diesen Programmen", "fr": "Pas dans ces programmes", "zh": "在这些程序中不触发"},
     "hk_exclude_note": {"en": "While one of them is in front, all HDContainer hotkeys (dictation, recorder, screenshots) go to it as usual — for games that use the same keys.", "ru": "Пока такая программа на переднем плане, все горячие клавиши HDContainer (диктовка, диктофон, скриншоты) достаются ей, как обычно, — для игр, где эти клавиши заняты.", "es": "Mientras una de ellas está delante, todos los atajos de HDContainer (dictado, grabadora, capturas) le llegan a ella como siempre: para juegos que usan las mismas teclas.", "pt": "Enquanto uma delas estiver em primeiro plano, todos os atalhos do HDContainer (ditado, gravador, capturas) vão para ela como sempre — para jogos que usam as mesmas teclas.", "de": "Solange eines davon im Vordergrund ist, gehen alle HDContainer-Kürzel (Diktat, Rekorder, Bildschirmfotos) wie gewohnt an das Programm — für Spiele, die dieselben Tasten nutzen.", "fr": "Tant que l'un d'eux est au premier plan, tous les raccourcis de HDContainer (dictée, dictaphone, captures) lui reviennent comme d'habitude — pour les jeux qui utilisent les mêmes touches.", "zh": "当其中某个程序在前台时，HDContainer 的所有快捷键（听写、录音机、截图）照常交给它——适用于占用同样按键的游戏。"},
@@ -4549,16 +4547,32 @@ class TrayApp:
         except Exception:
             log("hotkeys refresh:\n" + traceback.format_exc())
 
-    def _hotkey_link(self, parent, keys, pad):
-        """On a feature's page: its keys (None = off) and a link to Settings -> Hotkeys."""
-        row = tk.Frame(parent, bg=COL_SURFACE)
-        row.pack(fill="x", padx=pad, pady=(6, 2))
-        tk.Label(row, text=keys or T("hk_off"), bg=COL_SURFACE2, fg=COL_TEXT if keys else COL_TEXT_DIM,
-                 font=("Consolas", 11) if keys else FONT, padx=12, pady=5).pack(side="left")
-        ln = tk.Label(row, text=T("hk_change_in"), bg=COL_SURFACE, fg=COL_ACCENT, font=FONT_SM, cursor="hand2")
-        ln.pack(side="left", padx=12)
-        ln.bind("<Button-1>", lambda e: self._settings_show("hotkeys"))
-        return row
+    def _hotkey_note(self, parent, pad, text):
+        tk.Label(parent, text=text, bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM, justify="left",
+                 wraplength=520, anchor="w").pack(anchor="w", fill="x", padx=(pad + 34, pad), pady=(0, 4))
+
+    def _hotkey_voice_mode(self, parent, pad, keys):
+        """Dictation key: hold to talk, or press / press again (was on the Voice input page)."""
+        if voice_sys is not None and keys[0] == 0 and keys[1] in voice_sys.SIDED_MODIFIERS:
+            self._hotkey_note(parent, pad, voice.V("hk_single_note"))
+        cur = self.voice.get("mode")
+        for val, label in (("hold", voice.V("mode_hold")), ("toggle", voice.V("mode_toggle"))):
+            on = val == cur
+            row = tk.Frame(parent, bg=COL_SURFACE)
+            row.pack(fill="x", padx=(pad + 34, pad), pady=1)
+            dot = tk.Label(row, text="◉" if on else "○", bg=COL_SURFACE, fg=COL_ACCENT if on else COL_TEXT_DIM,
+                           font=("Segoe UI Symbol", 11), cursor="hand2")
+            dot.pack(side="left")
+            lb = tk.Label(row, text=label, bg=COL_SURFACE, fg=COL_TEXT if on else COL_TEXT_DIM, font=FONT_SM,
+                          cursor="hand2", anchor="w")
+            lb.pack(side="left", padx=(6, 0))
+
+            def pick(_e=None, v=val):
+                self.voice.set("mode", v)
+                self._settings_show("hotkeys")
+            dot.bind("<Button-1>", pick)
+            lb.bind("<Button-1>", pick)
+        tk.Frame(parent, bg=COL_SURFACE, height=6).pack()
 
     def _build_hotkeys(self, parent, win, pad):
         d = self._gen_draft
@@ -4584,6 +4598,10 @@ class TrayApp:
             label = voice_sys.hotkey_label(*keys) if voice_sys is not None else "?"
             tk.Label(row, text=label, bg=COL_SURFACE2, fg=COL_TEXT if on else COL_TEXT_DIM,
                      font=("Consolas", 11), padx=12, pady=5).pack(side="right", padx=8)
+            if on and mod is self.voice:
+                self._hotkey_voice_mode(parent, pad, keys)
+            elif on and mod is self.recorder:
+                self._hotkey_note(parent, pad, recorder.R("hk_note"))
         if any(len(v) > 1 for v in used.values()):
             tk.Label(parent, text=T("hk_dup"), bg=COL_SURFACE, fg=COL_DANGER, font=FONT_SM, anchor="w").pack(
                 anchor="w", padx=pad, pady=(4, 0))

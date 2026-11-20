@@ -1928,11 +1928,7 @@ class VoiceController:
         self._check(V("enable"), "enabled")
 
         # горячая клавиша
-        self._h(V("sec_hotkey"))
-        a._hotkey_link(self._p, vs.hotkey_label(self.get("hk_mods"), self.get("hk_vk")), self._px())
-        if self.get("hk_mods") == 0 and self.get("hk_vk") in vs.SIDED_MODIFIERS:
-            self._note(V("hk_single_note"), pady=(4, 2))
-        self._radio([("hold", V("mode_hold")), ("toggle", V("mode_toggle"))], "mode")
+        # the key and its mode (hold / press-press) are in Settings -> Hotkeys
 
         # микрофон
         self._h(V("sec_mic"))

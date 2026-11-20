@@ -868,8 +868,6 @@ class ScreenshotController:
         note(SS("intro"), pady=(16, 6))
         check(SS("enable"), "enabled")
 
-        header(SS("sec_hotkey"))
-        a._hotkey_link(parent, self.hotkey_text(), pad)
 
         header(SS("sec_after"))
         radio([(True, SS("open_editor")), (False, SS("copy_now"))], "editor")

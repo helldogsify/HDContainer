@@ -768,9 +768,6 @@ class RecorderController:
 
         note(R("intro"), pady=(8, 6))
 
-        header(R("sec_hotkey"), top=12)
-        a._hotkey_link(parent, self.hotkey_text() if self.get("enabled") else None, pad)
-        note(R("hk_note"), pady=(6, 2))
 
         header(R("sec_sources"))
         check(R("src_system"), "system")
