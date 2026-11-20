@@ -1,3 +1,4 @@
-## Tray menu
+## Recorder
 
-- Screenshot, video and recorder are now one row of three buttons in the tray menu. A running recording shows its time in red on its button; a click stops it.
+- The recorder hotkey and the tray button now open a small panel above the clock first: computer sound and microphone switches (with the microphone choice) and «Record». The hotkey pressed again, Enter or the button starts the recording; Esc or «Cancel» closes the panel.
+- *Settings → Recorder → Show the panel before recording* turns the panel off: then the recording starts at once, as before.

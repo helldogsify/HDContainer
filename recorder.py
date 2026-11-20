@@ -57,6 +57,11 @@ RSTR = {
     "press_combo": {"en": "Press the new key combination…\nEsc — cancel", "ru": "Нажми новое сочетание клавиш…\nEsc — отмена", "es": "Pulsa la nueva combinación de teclas…\nEsc — cancelar", "pt": "Pressione a nova combinação de teclas…\nEsc — cancelar", "de": "Neue Tastenkombination drücken…\nEsc — abbrechen", "fr": "Appuie sur la nouvelle combinaison…\nEsc — annuler", "zh": "按下新的快捷键组合…\nEsc — 取消"},
     "hk_bad": {"en": "The recorder hotkey must be a combination (Ctrl/Alt/Shift/Win + key) or an F-key.", "ru": "Горячая клавиша диктофона должна быть сочетанием (Ctrl/Alt/Shift/Win + клавиша) или F-клавишей.", "es": "El atajo de la grabadora debe ser una combinación (Ctrl/Alt/Shift/Win + tecla) o una tecla F.", "pt": "O atalho do gravador deve ser uma combinação (Ctrl/Alt/Shift/Win + tecla) ou uma tecla F.", "de": "Der Rekorder-Hotkey muss eine Kombination (Strg/Alt/Umschalt/Win + Taste) oder eine F-Taste sein.", "fr": "Le raccourci du dictaphone doit être une combinaison (Ctrl/Alt/Maj/Win + touche) ou une touche F.", "zh": "录音机快捷键必须是组合键（Ctrl/Alt/Shift/Win + 键）或 F 键。"},
     "hk_taken": {"en": "These keys are already used for %s.", "ru": "Эти клавиши уже заняты: %s.", "es": "Estas teclas ya se usan para: %s.", "pt": "Estas teclas já são usadas para: %s.", "de": "Diese Tasten sind schon belegt: %s.", "fr": "Ces touches sont déjà utilisées : %s.", "zh": "这些按键已被占用：%s。"},
+    "p_system": {"en": "Computer sound", "ru": "Звук компьютера", "es": "Sonido del ordenador", "pt": "Som do computador", "de": "Computerton", "fr": "Son de l'ordinateur", "zh": "电脑声音"},
+    "p_mic": {"en": "Microphone", "ru": "Микрофон", "es": "Micrófono", "pt": "Microfone", "de": "Mikrofon", "fr": "Micro", "zh": "麦克风"},
+    "p_start": {"en": "Record", "ru": "Записать", "es": "Grabar", "pt": "Gravar", "de": "Aufnehmen", "fr": "Enregistrer", "zh": "录音"},
+    "p_cancel": {"en": "Cancel", "ru": "Отмена", "es": "Cancelar", "pt": "Cancelar", "de": "Abbrechen", "fr": "Annuler", "zh": "取消"},
+    "ask_first": {"en": "Show the panel before recording", "ru": "Показывать панель перед записью", "es": "Mostrar el panel antes de grabar", "pt": "Mostrar o painel antes de gravar", "de": "Vor der Aufnahme das Panel zeigen", "fr": "Afficher le panneau avant l'enregistrement", "zh": "录音前显示面板"},
     "sec_sources": {"en": "What to record", "ru": "Что записывать", "es": "Qué grabar", "pt": "O que gravar", "de": "Was aufnehmen", "fr": "Quoi enregistrer", "zh": "录制内容"},
     "src_system": {"en": "Computer sound — the other people, videos, everything that plays", "ru": "Звук компьютера — собеседники, видео, всё, что играет", "es": "Sonido del ordenador: los demás, vídeos, todo lo que suena", "pt": "Som do computador — os outros, vídeos, tudo o que toca", "de": "Computerton — die anderen, Videos, alles, was läuft", "fr": "Son de l'ordinateur — les autres, les vidéos, tout ce qui joue", "zh": "电脑声音——对方、视频以及所有播放的声音"},
     "src_mic": {"en": "Microphone — your voice", "ru": "Микрофон — твой голос", "es": "Micrófono: tu voz", "pt": "Microfone — a sua voz", "de": "Mikrofon — deine Stimme", "fr": "Micro — ta voix", "zh": "麦克风——你的声音"},
@@ -97,6 +102,7 @@ DEFAULTS = {
     "enabled": True,
     "hk_mods": vs.MOD_CONTROL | vs.MOD_SHIFT, "hk_vk": 0x44,     # Ctrl+Shift+D ("Dictaphone")
     "indicator": True,
+    "ask": True,                    # hotkey / tray open the start panel first
     "system": True, "mic": True,
     "mic_id": "",                   # WASAPI endpoint id; "" = the default microphone
     "folder": "",                   # "" = the Desktop
@@ -466,6 +472,7 @@ class RecorderController:
         self._job_q = queue.Queue()
         self._ui_q = queue.Queue()
         self.ind = Indicator(self.root, self.toggle, log)
+        self.panel = None               # start panel (tk Toplevel) while it is open
         threading.Thread(target=self._worker, daemon=True, name="hdc-rec-save").start()
         self.hook = vs.KeyHook(log)
         self.hook.start()
@@ -546,8 +553,126 @@ class RecorderController:
     def toggle(self):
         if self.session is not None:
             self.stop()
+        elif self.panel is not None:
+            self.start()                # the hotkey pressed again on the panel
+        elif self.saved("ask"):
+            self.open_panel()
         else:
             self.start()
+
+    def set_now(self, k, v):
+        """Straight into the saved settings (panel switches), and into an open draft."""
+        d = dict(self.app.settings.get("recorder", {}))
+        d[k] = v
+        self.app._set_setting("recorder", d)
+        if self.draft is not None:
+            self.draft[k] = v
+
+    # ---- start panel ----
+    def close_panel(self):
+        pn, self.panel = self.panel, None
+        if pn is not None:
+            try:
+                pn.destroy()
+            except Exception:
+                pass
+
+    def open_panel(self):
+        self.close_panel()
+        th = _theme()
+        a = self.app
+        win = tk.Toplevel(self.root)
+        self.panel = win
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.configure(bg=th["bd"])
+        body = tk.Frame(win, bg=th["sf"])
+        body.pack(padx=1, pady=1, fill="both", expand=True)
+        W = 300
+        tk.Frame(body, bg=th["sf"], width=W, height=1).pack()
+        head = tk.Frame(body, bg=th["sf"])
+        head.pack(fill="x", padx=16, pady=(12, 6))
+        tk.Label(head, text=R("tab"), bg=th["sf"], fg=th["tx"], font=("Segoe UI Semibold", 11)).pack(side="left")
+        tk.Label(head, text=self.hotkey_text(saved=True), bg=th["sf"], fg=th["dim"], font=th["font_sm"]).pack(
+            side="right")
+
+        def switch_row(text, key, sub=None, sub_cmd=None):
+            row = tk.Frame(body, bg=th["sf"], cursor="hand2")
+            row.pack(fill="x", padx=16, pady=3)
+            cv = tk.Canvas(row, width=34, height=18, bg=th["sf"], highlightthickness=0, bd=0, cursor="hand2")
+            cv.pack(side="right")
+            col = tk.Frame(row, bg=th["sf"], cursor="hand2")
+            col.pack(side="left", fill="x", expand=True)
+            lbl = tk.Label(col, text=text, bg=th["sf"], fg=th["tx"], font=th["font"], anchor="w", cursor="hand2")
+            lbl.pack(anchor="w")
+            st = {"on": bool(self.saved(key))}
+
+            def paint():
+                a._draw_switch(cv, st["on"])
+                paint_start()
+
+            def flip(_e=None):
+                st["on"] = not st["on"]
+                self.set_now(key, st["on"])
+                paint()
+            for w in (row, col, lbl, cv):
+                w.bind("<Button-1>", flip)
+            if sub:
+                sl = tk.Label(col, text=sub + "  ⌄", bg=th["sf"], fg=th["dim"], font=th["font_sm"], anchor="w",
+                              cursor="hand2")
+                sl.pack(anchor="w")
+                sl.bind("<Button-1>", lambda _e: (sub_cmd(sl), "break")[-1])
+            return paint
+
+        btns = {}
+
+        def paint_start():
+            b = btns.get("start")
+            if b is not None:
+                ok = bool(self.saved("system") or self.saved("mic"))
+                b.configure(bg=th["err"] if ok else th["sf2"], fg="white" if ok else th["dim"])
+
+        paints = [switch_row(R("p_system"), "system"),
+                  switch_row(R("p_mic"), "mic", self._mic_label(), self._panel_mic_menu)]
+        row = tk.Frame(body, bg=th["sf"])
+        row.pack(fill="x", padx=16, pady=(12, 14))
+        start = tk.Label(row, text="●  " + R("p_start"), bg=th["err"], fg="white", font=th["font"], padx=16, pady=7,
+                         cursor="hand2")
+        start.pack(side="right")
+        start.bind("<Button-1>", lambda _e: self.start())
+        btns["start"] = start
+        a._ghost_btn(row, R("p_cancel"), self.close_panel).pack(side="right", padx=(0, 8))
+        for pt in paints:
+            pt()
+        win.bind("<Escape>", lambda _e: self.close_panel())
+        win.bind("<Return>", lambda _e: self.start())
+
+        # bottom-right of the work area, above the clock
+        win.update_idletasks()
+        rc = wintypes.RECT()
+        u32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rc), 0)
+        m = int(16 * _dpi_scale())
+        w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+        win.geometry("+%d+%d" % (rc.right - w - m, rc.bottom - h - m))
+        win.lift()
+        win.focus_force()
+
+    def _panel_mic_menu(self, anchor):
+        m = tk.Menu(anchor, tearoff=0)
+
+        def pick(i):
+            self.set_now("mic_id", i)
+            self.open_panel()
+        m.add_command(label=R("mic_default"), command=lambda: pick(""))
+        mics = self._mics()
+        if mics:
+            m.add_separator()
+        for i, n in mics:
+            m.add_command(label=n, command=lambda i=i: pick(i))
+        try:
+            m.tk_popup(anchor.winfo_rootx(), anchor.winfo_rooty() + anchor.winfo_height())
+        finally:
+            m.grab_release()
 
     def _dest_dir(self, folder):
         for d in (folder, desktop_dir(), self.dir):
@@ -556,6 +681,7 @@ class RecorderController:
         return self.dir
 
     def start(self):
+        self.close_panel()
         if self.session is not None:
             return
         system, mic = self.saved("system"), self.saved("mic")
@@ -741,6 +867,7 @@ class RecorderController:
             self.hook.stop()
         except Exception:
             pass
+        self.close_panel()
         sess, self.session = self.session, None
         if sess is not None:
             sess.stop(wait=True)
@@ -793,6 +920,7 @@ class RecorderController:
             btn.pack(side="left")
 
         header(R("sec_indicator"))
+        check(R("ask_first"), "ask")
         check(R("show_ind"), "indicator")
 
         header(R("sec_save"))
