@@ -116,7 +116,7 @@ except Exception:
     macros = None
     _MACROS_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.15.0"
+VERSION = "1.15.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -391,6 +391,12 @@ STRINGS = {
     "add_to_current": {"en": "Add windows to current (%s)", "ru": "Добавить окна в текущий (%s)", "es": "Añadir ventanas al actual (%s)", "pt": "Adicionar janelas ao atual (%s)", "de": "Fenster zum aktuellen hinzufügen (%s)", "fr": "Ajouter au conteneur actuel (%s)", "zh": "添加窗口到当前 (%s)"},
     "current": {"en": "current", "ru": "текущий", "es": "actual", "pt": "atual", "de": "aktuell", "fr": "actuel", "zh": "当前"},
     "settings": {"en": "Settings", "ru": "Настройки", "es": "Ajustes", "pt": "Configurações", "de": "Einstellungen", "fr": "Paramètres", "zh": "设置"},
+    "tray_history": {"en": "History", "ru": "История", "es": "Historial", "pt": "Histórico", "de": "Verlauf", "fr": "Historique", "zh": "历史记录"},
+    "tray_hist_voice": {"en": "Dictation", "ru": "Диктовки", "es": "Dictados", "pt": "Ditados", "de": "Diktate", "fr": "Dictées", "zh": "听写"},
+    "tray_hist_shots": {"en": "Screenshots", "ru": "Скриншоты", "es": "Capturas", "pt": "Capturas", "de": "Bildschirmfotos", "fr": "Captures", "zh": "截图"},
+    "tray_hist_dl": {"en": "Downloads", "ru": "Загрузки", "es": "Descargas", "pt": "Downloads", "de": "Downloads", "fr": "Téléchargements", "zh": "下载"},
+    "tray_containers": {"en": "Containers", "ru": "Контейнеры", "es": "Contenedores", "pt": "Contêineres", "de": "Container", "fr": "Conteneurs", "zh": "容器"},
+    "tray_downloads": {"en": "Downloads", "ru": "Загрузки", "es": "Descargas", "pt": "Downloads", "de": "Downloads", "fr": "Téléchargements", "zh": "下载"},
     "quit": {"en": "Quit", "ru": "Выход", "es": "Salir", "pt": "Sair", "de": "Beenden", "fr": "Quitter", "zh": "退出"},
     "new_container": {"en": "New container", "ru": "Новый контейнер", "es": "Nuevo contenedor", "pt": "Novo contêiner", "de": "Neuer Container", "fr": "Nouveau conteneur", "zh": "新建容器"},
     "name_label": {"en": "Container name:", "ru": "Название контейнера:", "es": "Nombre del contenedor:", "pt": "Nome do contêiner:", "de": "Container-Name:", "fr": "Nom du conteneur :", "zh": "容器名称："},
@@ -2269,6 +2275,7 @@ class TrayApp:
     def _show_menu(self):
         pt = POINT()
         user32.GetCursorPos(ctypes.byref(pt))
+        self._popup_hist_open = False          # every fresh menu starts with History folded
         self._popup_at(pt.x, pt.y)
 
     def _popup_at(self, px, py):
@@ -2302,49 +2309,72 @@ class TrayApp:
             self.root.after(1, fn)
 
         W = 268
-        for c in self.containers:
-            self._popup_container_row(frame, c, W, close)
+
+        def sep():
+            tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
+
+        # 1. states: containers, key scripts, downloads (each under its own caption)
         if self.containers:
-            tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
-        if self.macros is not None:
-            items = self.macros.tray_items()
+            self._popup_caption(frame, T("tray_containers"))
+            for c in self.containers:
+                self._popup_container_row(frame, c, W, close)
+        items = self.macros.tray_items() if self.macros is not None else []
+        if items:
+            self._popup_caption(frame, macros.M("tab"))
             for it in items:
-                self._popup_macro_row(frame, it, W, act)
-            if items:
-                tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
+                self._popup_macro_row(frame, it, W)
         if self.torrents is not None and self.torrents.has_items():
+            self._popup_caption(frame, T("tray_downloads"))
             self.torrents.build_popup(frame, W, close)
-            tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
-        self._popup_action_row(frame, ICON_ADD, T("create_container"), W,
-                               lambda: act(self._create_container))
-        if self.boxes is not None:
-            self._popup_action_row(frame, ICON_BOX, boxes.B("new_box"), W,
-                                   lambda: act(self.boxes.new_box_dialog))
+        if self.containers or items or (self.torrents is not None and self.torrents.has_items()):
+            sep()
+        # 2. capture tools
+        tools = False
         if self.screenshot is not None:
             # a pause lets the menu vanish from the screen before it is captured
             self._popup_action_row(frame, ICON_SHOT, screenshot.SS("menu"), W,
                                    lambda: act(lambda: self.root.after(300, self.screenshot.shoot)))
-        if self.recorder is not None:
-            self._popup_action_row(frame, ICON_STOP if self.recorder.recording else ICON_REC,
-                                   self.recorder.menu_text(), W, lambda: act(self.recorder.toggle))
+            tools = True
         if self.screenrec is not None:
             # a pause lets the menu vanish from the screen before it is frozen
             self._popup_action_row(frame, ICON_STOP if self.screenrec.recording else ICON_VIDEO,
                                    self.screenrec.menu_text(), W,
                                    lambda: act(lambda: self.root.after(300, self.screenrec.toggle)))
-        self._popup_action_row(frame, ICON_SETTINGS, T("settings"), W,
-                               lambda: act(self._open_settings))
+            tools = True
+        if self.recorder is not None:
+            self._popup_action_row(frame, ICON_STOP if self.recorder.recording else ICON_REC,
+                                   self.recorder.menu_text(), W, lambda: act(self.recorder.toggle))
+            tools = True
+        if tools:
+            sep()
+        # 3. create
+        self._popup_action_row(frame, ICON_ADD, T("create_container"), W,
+                               lambda: act(self._create_container))
+        if self.boxes is not None:
+            self._popup_action_row(frame, ICON_BOX, boxes.B("new_box"), W,
+                                   lambda: act(self.boxes.new_box_dialog))
+        # 4. history: one row, unfolds in place
+        hist = []
         if self.voice is not None:
-            self._popup_action_row(frame, ICON_HISTORY, voice.V("hist_menu"), W,
-                                   lambda: act(self.voice.open_history))
+            hist.append((T("tray_hist_voice"), self.voice.open_history))
         if self.screenshot is not None:
-            self._popup_action_row(frame, ICON_PHOTO, screenshot.SS("hist_menu"), W,
-                                   lambda: act(self.screenshot.open_history))
+            hist.append((T("tray_hist_shots"), self.screenshot.open_history))
         if self.torrents is not None:
-            self._popup_action_row(frame, ICON_DOWNLOAD, torrents.S("hist_menu"), W,
-                                   lambda: act(self.torrents.open_history))
-        self._popup_action_row(frame, ICON_POWER, T("quit"), W,
-                               lambda: act(self._quit))
+            hist.append((T("tray_hist_dl"), self.torrents.open_history))
+        if hist:
+            opened = bool(getattr(self, "_popup_hist_open", False))
+
+            def fold():
+                self._popup_hist_open = not opened
+                self.root.after(1, self._repopup)
+            self._popup_action_row(frame, ICON_HISTORY, T("tray_history"), W, fold,
+                                   trail=chr(0xE70E) if opened else chr(0xE70D))
+            if opened:
+                for label, fn in hist:
+                    self._popup_action_row(frame, "", label, W, lambda fn=fn: act(fn), indent=30)
+        sep()
+        # 5. footer: Settings on the left, Quit as a power glyph on the right
+        self._popup_footer(frame, W, lambda: act(self._open_settings), lambda: act(self._quit))
 
         win.update_idletasks()
         w = frame.winfo_reqwidth() + 2
@@ -2396,42 +2426,89 @@ class TrayApp:
             wdg.bind("<Enter>", enter)
             wdg.bind("<Leave>", leave)
 
-    def _popup_macro_row(self, parent, item, width, act):
-        """Key script in the tray menu: switch on the left, name opens Settings -> Key scripts."""
+    def _popup_caption(self, parent, text):
+        tk.Label(parent, text=text.upper(), bg=COL_SURFACE, fg=COL_TEXT_DIM, font=("Segoe UI Semibold", 8),
+                 anchor="w").pack(fill="x", padx=16, pady=(8, 2))
+
+    def _draw_switch(self, cv, on):
+        """iOS-like switch on a 34x18 canvas."""
+        cv.delete("all")
+        fill = COL_ACCENT if on else "#4a4b50"
+        r = 8
+        cv.create_oval(1, 1, 1 + 2 * r, 1 + 2 * r, fill=fill, outline=fill)
+        cv.create_oval(33 - 2 * r, 1, 33, 1 + 2 * r, fill=fill, outline=fill)
+        cv.create_rectangle(1 + r, 1, 33 - r, 1 + 2 * r, fill=fill, outline=fill)
+        x = 33 - r if on else 1 + r
+        cv.create_oval(x - 6, 3, x + 6, 15, fill="white" if on else "#c9ccd1", outline="")
+
+    def _popup_macro_row(self, parent, item, width):
+        """Key script in the tray menu: a click anywhere on the row switches it, the menu stays open."""
         sid, name, on, runnable = item
-        row = tk.Frame(parent, bg=COL_SURFACE, height=32, width=width)
+        st = {"on": bool(on)}
+        row = tk.Frame(parent, bg=COL_SURFACE, height=32, width=width, cursor="hand2")
         row.pack(fill="x")
         row.pack_propagate(False)
+        cv = tk.Canvas(row, width=34, height=18, bg=COL_SURFACE, highlightthickness=0, bd=0, cursor="hand2")
+        cv.pack(side="right", padx=(8, 14))
+        lbl = tk.Label(row, text=name, bg=COL_SURFACE, font=FONT, anchor="w", cursor="hand2")
+        lbl.pack(side="left", fill="x", expand=True, padx=(16, 0))
 
-        def on_toggle(want):
-            self.macros.set_enabled(sid, want)
-            self.root.after(1, self._repopup)
-        chk, _st, _draw = self._make_check(row, on, on_toggle)
-        chk.pack(side="left", padx=(14, 10))
-        lbl = tk.Label(row, text=name, bg=COL_SURFACE, fg=COL_TEXT if (on and runnable) else COL_TEXT_DIM,
-                       font=FONT, cursor="hand2", anchor="w")
-        lbl.pack(side="left", fill="x", expand=True, padx=(0, 14))
-        lbl.bind("<Button-1>", lambda _e: act(lambda: self._open_settings("macros")))
-        widgets = (row, chk, lbl)
+        def paint():
+            self._draw_switch(cv, st["on"])
+            lbl.configure(fg=COL_TEXT if (st["on"] and runnable) else COL_TEXT_DIM)
 
-        def paint(c):
-            for w in widgets:
-                w.configure(bg=c)
-        for w in (row, lbl):
-            w.bind("<Enter>", lambda _e: paint(COL_HOVER))
-            w.bind("<Leave>", lambda _e: paint(COL_SURFACE))
+        def toggle(_e=None):
+            st["on"] = not st["on"]
+            paint()
+            self.macros.set_enabled(sid, st["on"])
+        paint()
+        widgets = (row, cv, lbl)
+        for w in widgets:
+            w.bind("<Button-1>", toggle)
+            w.bind("<Enter>", lambda _e: [x.configure(bg=COL_HOVER) for x in widgets])
+            w.bind("<Leave>", lambda _e: [x.configure(bg=COL_SURFACE) for x in widgets])
 
-    def _popup_action_row(self, parent, glyph, text, width, command):
+    def _popup_footer(self, parent, width, on_settings, on_quit):
+        row = tk.Frame(parent, bg=COL_SURFACE, height=34, width=width)
+        row.pack(fill="x")
+        row.pack_propagate(False)
+        q = tk.Label(row, text=ICON_POWER, bg=COL_SURFACE, fg=COL_TEXT_DIM, font=(ICON_FONT, 11),
+                     cursor="hand2", padx=14)
+        q.pack(side="right", fill="y")
+        left = tk.Frame(row, bg=COL_SURFACE, cursor="hand2")
+        left.pack(side="left", fill="both", expand=True)
+        g = tk.Label(left, text=ICON_SETTINGS, bg=COL_SURFACE, fg=COL_TEXT_DIM, font=(ICON_FONT, 11), width=2,
+                     cursor="hand2")
+        g.pack(side="left", padx=(14, 8))
+        t = tk.Label(left, text=T("settings"), bg=COL_SURFACE, fg=COL_TEXT, font=FONT, anchor="w", cursor="hand2")
+        t.pack(side="left", fill="x", expand=True)
+        for group, cmd in (((left, g, t), on_settings), ((q,), on_quit)):
+            def paint(c, group=group):
+                for w in group:
+                    w.configure(bg=c)
+            for w in group:
+                w.bind("<Enter>", lambda _e, p=paint: p(COL_HOVER))
+                w.bind("<Leave>", lambda _e, p=paint: p(COL_SURFACE))
+                w.bind("<Button-1>", lambda _e, c=cmd: c())
+        q.bind("<Enter>", lambda _e: (q.configure(bg=COL_HOVER, fg=COL_DANGER)))
+        q.bind("<Leave>", lambda _e: (q.configure(bg=COL_SURFACE, fg=COL_TEXT_DIM)))
+
+    def _popup_action_row(self, parent, glyph, text, width, command, indent=0, trail=""):
         row = tk.Frame(parent, bg=COL_SURFACE, height=32, width=width)
         row.pack(fill="x")
         row.pack_propagate(False)
         g = tk.Label(row, text=glyph, bg=COL_SURFACE, fg=COL_TEXT_DIM,
                      font=(ICON_FONT, 11), width=2, cursor="hand2")
-        g.pack(side="left", padx=(14, 8))
-        t = tk.Label(row, text=text, bg=COL_SURFACE, fg=COL_TEXT, font=FONT,
+        g.pack(side="left", padx=(14 + indent, 8))
+        widgets = [row, g]
+        if trail:
+            tr = tk.Label(row, text=trail, bg=COL_SURFACE, fg=COL_TEXT_DIM, font=(ICON_FONT, 8), cursor="hand2")
+            tr.pack(side="right", padx=(0, 16))
+            widgets.append(tr)
+        t = tk.Label(row, text=text, bg=COL_SURFACE, fg=COL_TEXT_DIM if indent else COL_TEXT, font=FONT,
                      anchor="w", cursor="hand2")
         t.pack(side="left", fill="x", expand=True, padx=(0, 14))
-        widgets = (row, g, t)
+        widgets.append(t)
 
         def enter(_e):
             for w in widgets:

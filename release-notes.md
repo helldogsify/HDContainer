@@ -1,7 +1,4 @@
-## Key scripts
+## Tray menu
 
-- New: one key becomes a sequence of keys in the program you choose. Example: **E** in a game presses **E, 2, E**.
-- Pauses between keys and key holds are random within your ranges, with a human-like spread. A dot under each range rates it: green human-like, yellow with advice, red not human.
-- When the first key of the sequence is the trigger itself, your real press goes through and the rest follows its release.
-- Optional: no firing if Enter was pressed in the last N seconds (game chat).
-- Each script has its own switch in the tray menu. *Settings → Key scripts*.
+- Key scripts have their own section in the tray menu with a switch per script: one click turns a script on or off, the menu stays open.
+- The menu is grouped: containers, key scripts and downloads under captions; then screenshot, video and recorder; then create; one «History» row that unfolds into dictation, screenshots and downloads; Settings and Quit share the bottom row.
