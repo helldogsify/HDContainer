@@ -98,6 +98,11 @@ try:                                   # shared hotkey exclusions live in voice_
 except Exception:
     voice_sys = None
 
+try:                                   # installed programs for the program pickers
+    import programs
+except Exception:
+    programs = None
+
 try:                                   # recorder: computer sound + microphone -> one file (work calls)
     import recorder
 except Exception:
@@ -116,7 +121,7 @@ except Exception:
     macros = None
     _MACROS_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.15.4"
+VERSION = "1.15.5"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -471,7 +476,12 @@ STRINGS = {
     "hk_exclude_note": {"en": "While one of them is in front, all HDContainer hotkeys (dictation, recorder, screen recording, screenshots) go to it as usual — for games that use the same keys.", "ru": "Пока такая программа на переднем плане, все горячие клавиши HDContainer (диктовка, диктофон, запись видео, скриншоты) достаются ей, как обычно, — для игр, где эти клавиши заняты.", "es": "Mientras una de ellas está delante, todos los atajos de HDContainer (dictado, grabadora, grabación de pantalla, capturas) le llegan a ella como siempre: para juegos que usan las mismas teclas.", "pt": "Enquanto uma delas estiver em primeiro plano, todos os atalhos do HDContainer (ditado, gravador, gravação de tela, capturas) vão para ela como sempre — para jogos que usam as mesmas teclas.", "de": "Solange eines davon im Vordergrund ist, gehen alle HDContainer-Kürzel (Diktat, Rekorder, Bildschirmaufnahme, Bildschirmfotos) wie gewohnt an das Programm — für Spiele, die dieselben Tasten nutzen.", "fr": "Tant que l'un d'eux est au premier plan, tous les raccourcis de HDContainer (dictée, dictaphone, enregistrement d'écran, captures) lui reviennent comme d'habitude — pour les jeux qui utilisent les mêmes touches.", "zh": "当其中某个程序在前台时，HDContainer 的所有快捷键（听写、录音机、录屏、截图）照常交给它——适用于占用同样按键的游戏。"},
     "hk_exclude_add": {"en": "Add a program…", "ru": "Добавить программу…", "es": "Añadir programa…", "pt": "Adicionar programa…", "de": "Programm hinzufügen…", "fr": "Ajouter un programme…", "zh": "添加程序…"},
     "hk_exclude_file": {"en": "Choose an .exe file…", "ru": "Выбрать файл .exe…", "es": "Elegir un archivo .exe…", "pt": "Escolher um arquivo .exe…", "de": ".exe-Datei wählen…", "fr": "Choisir un fichier .exe…", "zh": "选择 .exe 文件…"},
-    "hk_exclude_none": {"en": "No other programs with windows are running", "ru": "Других программ с окнами сейчас нет", "es": "No hay otros programas con ventanas", "pt": "Não há outros programas com janelas", "de": "Keine anderen Programme mit Fenstern", "fr": "Aucun autre programme avec fenêtre", "zh": "没有其他带窗口的程序在运行"},
+    "pp_title": {"en": "Choose a program", "ru": "Выбор программы", "es": "Elegir un programa", "pt": "Escolher um programa", "de": "Programm wählen", "fr": "Choisir un programme", "zh": "选择程序"},
+    "pp_search": {"en": "Search: name or .exe", "ru": "Поиск: название или .exe", "es": "Buscar: nombre o .exe", "pt": "Buscar: nome ou .exe", "de": "Suche: Name oder .exe", "fr": "Recherche : nom ou .exe", "zh": "搜索：名称或 .exe"},
+    "pp_loading": {"en": "Looking for installed programs…", "ru": "Ищу установленные программы…", "es": "Buscando programas instalados…", "pt": "Procurando programas instalados…", "de": "Suche installierte Programme…", "fr": "Recherche des programmes installés…", "zh": "正在查找已安装的程序…"},
+    "pp_empty": {"en": "Nothing found", "ru": "Ничего не найдено", "es": "No se encontró nada", "pt": "Nada encontrado", "de": "Nichts gefunden", "fr": "Rien trouvé", "zh": "未找到"},
+    "pp_hint": {"en": "● running now. Double click or Enter adds.", "ru": "● запущена сейчас. Двойной щелчок или Enter добавляет.", "es": "● en ejecución. Doble clic o Enter añade.", "pt": "● em execução. Clique duplo ou Enter adiciona.", "de": "● läuft gerade. Doppelklick oder Enter fügt hinzu.", "fr": "● en cours. Double clic ou Entrée ajoute.", "zh": "● 正在运行。双击或回车添加。"},
+    "pp_add": {"en": "Add", "ru": "Добавить", "es": "Añadir", "pt": "Adicionar", "de": "Hinzufügen", "fr": "Ajouter", "zh": "添加"},
     "hk_exe_files": {"en": "Programs", "ru": "Программы", "es": "Programas", "pt": "Programas", "de": "Programme", "fr": "Programmes", "zh": "程序"},
     "tab_general": {"en": "General", "ru": "Общие", "es": "General", "pt": "Geral", "de": "Allgemein", "fr": "Général", "zh": "常规"},
     "save": {"en": "Save", "ru": "Сохранить", "es": "Guardar", "pt": "Salvar", "de": "Speichern", "fr": "Enregistrer", "zh": "保存"},
@@ -4514,6 +4524,119 @@ class TrayApp:
         self.root.wait_window(win)
         return res["v"]
 
+    def _pick_program(self, exclude=()):
+        """Modal picker of a program for a per-program setting: the running ones first (marked ●),
+        then the installed ones (programs.py: Start menu, Steam, Epic, App Paths), a search field
+        and «Choose an .exe file…». Returns the exe name in lower case, or None."""
+        exclude = {e.lower() for e in exclude}
+        res = {"v": None}
+        state = {"ready": False}
+        win = self._dialog(T("pp_title"), 560, 560)
+        var = tk.StringVar()
+        ent = tk.Entry(win, textvariable=var, font=FONT, bg=COL_BG, fg=COL_TEXT,
+                       insertbackground=COL_TEXT, relief="flat", highlightthickness=1,
+                       highlightbackground=COL_BORDER, highlightcolor=COL_ACCENT)
+        ent.pack(fill="x", padx=18, pady=(18, 4), ipady=5)
+        tk.Label(win, text=T("pp_search"), bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM,
+                 anchor="w").pack(fill="x", padx=18)
+        row = tk.Frame(win, bg=COL_SURFACE)
+        row.pack(side="bottom", fill="x", padx=18, pady=(10, 16))
+        hint = tk.Label(win, text=T("pp_hint"), bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM, anchor="w")
+        hint.pack(side="bottom", fill="x", padx=18)
+        box = tk.Frame(win, bg=COL_BG, highlightthickness=1, highlightbackground=COL_BORDER)
+        box.pack(fill="both", expand=True, padx=18, pady=(8, 4))
+        sb = tk.Scrollbar(box, orient="vertical")
+        lb = tk.Listbox(box, font=FONT, bg=COL_BG, fg=COL_TEXT, selectbackground=COL_ACCENT,
+                        selectforeground="white", relief="flat", bd=0, highlightthickness=0,
+                        activestyle="none", exportselection=False, yscrollcommand=sb.set)
+        sb.configure(command=lb.yview)
+        sb.pack(side="right", fill="y")
+        lb.pack(side="left", fill="both", expand=True, padx=(6, 0), pady=4)
+        shown = []                                   # exe per listbox row (None = info row)
+        running = [n for n in (voice_sys.running_programs() if voice_sys is not None else [])
+                   if n not in exclude]
+
+        def rows():
+            inst = (programs.get(lambda: state.update(ready=True)) if programs is not None else None) or []
+            names = {}
+            for name, exe in inst:
+                names.setdefault(exe, name)
+            out = sorted(((names.get(e, os.path.splitext(e)[0]), e, True) for e in running),
+                         key=lambda r: r[0].lower())
+            run = set(running)
+            out += [(n, e, False) for n, e in inst if e not in run and e not in exclude]
+            return out, (programs is not None and programs.get() is None)
+
+        def fill(*_a):
+            q = var.get().strip().lower()
+            items, loading = rows()
+            lb.delete(0, "end")
+            shown.clear()
+            twice = {n for n in (r[0] for r in items) if sum(1 for r in items if r[0] == n) > 1}
+            for name, exe, live in items:
+                if q and q not in name.lower() and q not in exe:
+                    continue
+                label = "%s   ·  %s" % (name, exe) if name in twice else name
+                lb.insert("end", ("●  " if live else "     ") + label)
+                shown.append(exe)
+            info = T("pp_loading") if loading else (T("pp_empty") if not shown else None)
+            if info:
+                lb.insert("end", "     " + info)
+                lb.itemconfigure("end", fg=COL_TEXT_DIM, selectforeground=COL_TEXT_DIM,
+                                 selectbackground=COL_BG)
+                shown.append(None)
+            if shown and shown[0]:
+                lb.selection_set(0)
+
+        def poll():
+            try:
+                if not win.winfo_exists():
+                    return
+            except tk.TclError:
+                return
+            if state["ready"]:
+                state["ready"] = False
+                fill()
+            if programs is not None and (programs.get() is None or state["ready"]):
+                win.after(150, poll)
+
+        def ok(*_a):
+            sel = lb.curselection()
+            exe = shown[sel[0]] if sel and sel[0] < len(shown) else None
+            if exe:
+                res["v"] = exe
+                win.destroy()
+
+        def browse():
+            from tkinter import filedialog
+            p = filedialog.askopenfilename(parent=win, filetypes=[(T("hk_exe_files"), "*.exe")])
+            if p:
+                res["v"] = os.path.basename(p).lower()
+                win.destroy()
+
+        def move(d):
+            sel = lb.curselection()
+            i = max(0, min(lb.size() - 1, (sel[0] if sel else -1) + d))
+            lb.selection_clear(0, "end")
+            lb.selection_set(i)
+            lb.see(i)
+            return "break"
+        var.trace_add("write", fill)
+        ent.bind("<Return>", ok)
+        ent.bind("<Down>", lambda e: move(1))
+        ent.bind("<Up>", lambda e: move(-1))
+        lb.bind("<Double-Button-1>", ok)
+        lb.bind("<Return>", ok)
+        win.bind("<Escape>", lambda e: win.destroy())
+        self._accent_btn(row, T("pp_add"), ok).pack(side="right")
+        self._ghost_btn(row, T("cancel"), win.destroy).pack(side="right", padx=(0, 8))
+        self._ghost_btn(row, T("hk_exclude_file"), browse).pack(side="left")
+        fill()
+        poll()
+        ent.focus_set()
+        self.root.wait_window(win)
+        return res["v"]
+
     def _set_setting(self, key, v, user=False):
         self.settings[key] = v
         save_settings(self.settings, force=user)
@@ -4820,26 +4943,10 @@ class TrayApp:
             x.pack(side="left")
             x.bind("<Button-1>", lambda _e, n=exe: set_list([v for v in d["hotkey_exclude"] if v != n]))
 
-        def browse():
-            from tkinter import filedialog
-            p = filedialog.askopenfilename(parent=win, filetypes=[(T("hk_exe_files"), "*.exe")])
-            if p:
-                set_list(d["hotkey_exclude"] + [os.path.basename(p)])
-
         def menu():
-            cur = set(d["hotkey_exclude"])
-            m = tk.Menu(add, tearoff=0)
-            progs = [n for n in (voice_sys.running_programs() if voice_sys is not None else []) if n not in cur]
-            for n in progs:
-                m.add_command(label=n, command=lambda n=n: set_list(d["hotkey_exclude"] + [n]))
-            if not progs:
-                m.add_command(label=T("hk_exclude_none"), state="disabled")
-            m.add_separator()
-            m.add_command(label=T("hk_exclude_file"), command=browse)
-            try:
-                m.tk_popup(add.winfo_rootx(), add.winfo_rooty() + add.winfo_height())
-            finally:
-                m.grab_release()
+            exe = self._pick_program(d["hotkey_exclude"])
+            if exe:
+                set_list(d["hotkey_exclude"] + [exe])
         row = tk.Frame(parent, bg=COL_SURFACE)
         row.pack(fill="x", padx=pad, pady=(8, 16))
         add = self._ghost_btn(row, T("hk_exclude_add"), menu)

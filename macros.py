@@ -7,8 +7,9 @@ Rules of a script (settings["macros"]["scripts"], a list of dicts):
   * the trigger may carry Ctrl/Alt/Shift/Win, which must match exactly;
   * Enter pressed in a script's program pauses scripts until the next Enter (game chat: open /
     send), Esc ends the pause (chat closed); while paused the key goes through untouched;
-  * each step = key down, hold, key up; between steps a pause; both random in their ranges
-    with a human-like spread (human_ms);
+  * each step = key down, hold, key up; the next key goes down «interval» after the previous
+    one went down (press to press, as other macro tools count it); both random in their
+    ranges with a human-like spread (human_ms);
   * switched on and off from the tray menu.
 
 Engine: own WH_KEYBOARD_LL hook on its own thread, installed only while some script is active
@@ -41,13 +42,21 @@ MSTR = {
     "not_set": {"en": "not set", "ru": "не задана", "es": "sin asignar", "pt": "não definida", "de": "nicht gesetzt", "fr": "non définie", "zh": "未设置"},
     "steps": {"en": "Presses", "ru": "Нажимает", "es": "Pulsa", "pt": "Pressiona", "de": "Drückt", "fr": "Appuie sur", "zh": "依次按下"},
     "add_key": {"en": "+ Key", "ru": "+ Клавиша", "es": "+ Tecla", "pt": "+ Tecla", "de": "+ Taste", "fr": "+ Touche", "zh": "+ 按键"},
-    "delay": {"en": "Pause between keys, ms", "ru": "Пауза между клавишами, мс", "es": "Pausa entre teclas, ms", "pt": "Pausa entre teclas, ms", "de": "Pause zwischen Tasten, ms", "fr": "Pause entre les touches, ms", "zh": "按键间隔，毫秒"},
+    "between": {"en": "Between presses", "ru": "Между нажатиями", "es": "Entre pulsaciones", "pt": "Entre toques", "de": "Zwischen Tastendrücken", "fr": "Entre les appuis", "zh": "按键间隔"},
+    "m_random": {"en": "Random", "ru": "Случайно", "es": "Aleatorio", "pt": "Aleatório", "de": "Zufällig", "fr": "Aléatoire", "zh": "随机"},
+    "m_fixed": {"en": "Constant", "ru": "Постоянно", "es": "Constante", "pt": "Constante", "de": "Konstant", "fr": "Constant", "zh": "固定"},
+    "m_auto": {"en": "Auto", "ru": "Авто", "es": "Auto", "pt": "Auto", "de": "Auto", "fr": "Auto", "zh": "自动"},
+    "m_manual": {"en": "Manual", "ru": "Вручную", "es": "Manual", "pt": "Manual", "de": "Manuell", "fr": "Manuel", "zh": "手动"},
+    "avg": {"en": "≈ %d ms on average", "ru": "≈ %d мс в среднем", "es": "≈ %d ms de media", "pt": "≈ %d ms em média", "de": "≈ %d ms im Schnitt", "fr": "≈ %d ms en moyenne", "zh": "平均 ≈ %d 毫秒"},
+    "every": {"en": "every %d ms", "ru": "каждые %d мс", "es": "cada %d ms", "pt": "a cada %d ms", "de": "alle %d ms", "fr": "toutes les %d ms", "zh": "每 %d 毫秒"},
+    "more": {"en": "More", "ru": "Подробнее", "es": "Más", "pt": "Mais", "de": "Mehr", "fr": "Plus", "zh": "更多"},
+    "hold_auto_note": {"en": "about %d–%d ms, picked from the interval", "ru": "примерно %d–%d мс, подбирается по интервалу", "es": "unos %d–%d ms, según el intervalo", "pt": "cerca de %d–%d ms, conforme o intervalo", "de": "etwa %d–%d ms, passend zum Abstand", "fr": "environ %d–%d ms, selon l'intervalle", "zh": "约 %d–%d 毫秒，按间隔自动选择"},
+    "r_fixed": {"en": "The same time every press is easy to spot as a robot", "ru": "Одинаковое время каждый раз легко распознать как робота", "es": "El mismo tiempo cada vez delata a un robot", "pt": "O mesmo tempo sempre denuncia um robô", "de": "Immer dieselbe Zeit verrät einen Roboter", "fr": "Le même temps à chaque fois trahit un robot", "zh": "每次时间都一样，很容易被识别为机器人"},
+    "interval": {"en": "From press to press, ms", "ru": "От нажатия до нажатия, мс", "es": "De pulsación a pulsación, ms", "pt": "De toque a toque, ms", "de": "Von Druck zu Druck, ms", "fr": "D'appui à appui, ms", "zh": "两次按下间隔，毫秒"},
+    "r_overlap": {"en": "The hold is longer than the interval: make the hold shorter than %d ms", "ru": "Удержание длиннее интервала: сделай удержание короче %d мс", "es": "La pulsación dura más que el intervalo: hazla menor de %d ms", "pt": "O toque dura mais que o intervalo: deixe-o abaixo de %d ms", "de": "Halten dauert länger als der Abstand: unter %d ms halten", "fr": "Le maintien dépasse l'intervalle : garde-le sous %d ms", "zh": "按住时间超过间隔：请短于 %d 毫秒"},
     "hold": {"en": "Key hold, ms", "ru": "Удержание клавиши, мс", "es": "Mantener tecla, ms", "pt": "Segurar tecla, ms", "de": "Taste halten, ms", "fr": "Maintien de la touche, ms", "zh": "按住时长，毫秒"},
     "programs": {"en": "Only in", "ru": "Только в программах", "es": "Solo en", "pt": "Só em", "de": "Nur in", "fr": "Seulement dans", "zh": "仅在以下程序中"},
     "add_prog": {"en": "+ Program", "ru": "+ Программа", "es": "+ Programa", "pt": "+ Programa", "de": "+ Programm", "fr": "+ Programme", "zh": "+ 程序"},
-    "prog_none": {"en": "No programs with windows", "ru": "Нет программ с окнами", "es": "No hay programas con ventanas", "pt": "Nenhum programa com janelas", "de": "Keine Programme mit Fenstern", "fr": "Aucun programme avec fenêtre", "zh": "没有带窗口的程序"},
-    "prog_file": {"en": "Choose .exe…", "ru": "Выбрать .exe…", "es": "Elegir .exe…", "pt": "Escolher .exe…", "de": ".exe wählen…", "fr": "Choisir un .exe…", "zh": "选择 .exe…"},
-    "exe_files": {"en": "Programs", "ru": "Программы", "es": "Programas", "pt": "Programas", "de": "Programme", "fr": "Programmes", "zh": "程序"},
     "enter": {"en": "Enter pauses the script until the next Enter (chat)", "ru": "Enter выключает скрипт до следующего Enter (чат)", "es": "Enter pausa el script hasta el siguiente Enter (chat)", "pt": "Enter pausa o script até o próximo Enter (chat)", "de": "Enter pausiert das Skript bis zum nächsten Enter (Chat)", "fr": "Entrée met le script en pause jusqu'à la prochaine Entrée (chat)", "zh": "按 Enter 暂停脚本，直到再次按 Enter（聊天）"},
     "sec": {"en": "s", "ru": "с", "es": "s", "pt": "s", "de": "s", "fr": "s", "zh": "秒"},
     "name": {"en": "Name", "ru": "Название", "es": "Nombre", "pt": "Nome", "de": "Name", "fr": "Nom", "zh": "名称"},
@@ -96,21 +105,25 @@ DEFAULT_SCRIPT = {
     "name": "", "enabled": True,
     "trigger_vk": 0, "trigger_mods": 0,
     "steps": [],                    # [[mods, vk], ...]
-    "delay_min": 70, "delay_max": 160,
-    "hold_min": 55, "hold_max": 120,
+    "interval_mode": "random",      # random: [interval_min, interval_max]; fixed: interval_fixed
+    "interval_min": 120, "interval_max": 160,   # key down -> next key down
+    "interval_fixed": 130,
+    "hold_mode": "auto",            # auto: from the interval (auto_hold); manual: [hold_min, hold_max]
+    "hold_min": 30, "hold_max": 70,
     "programs": [],                 # exe names, lower case
     "enter_block": True, "enter_s": 3.0,
 }
 VK_RETURN = 0x0D
 
-# Human limits, ms: (red below, yellow below, yellow above, red above, suggested low, suggested high).
-# A tap of a key by a person lasts ~50-150 ms (fast players ~40); a deliberate next key in a
-# combo comes ~70-300 ms after the previous release; under ~35 ms between different keys is
-# beyond human motor timing.
+# Human limits, ms: (red below, yellow below, yellow above, red above).
+# A fast tap in a game combo is held ~30-80 ms (under ~15 ms is a machine); keys of a practised
+# combo follow each other every ~80-300 ms from press to press, under ~50 ms is beyond human
+# motor timing for different keys.
 HUMAN = {
-    "hold": (25, 45, 250, 600),
-    "delay": (35, 70, 400, 1500),
+    "hold": (15, 30, 200, 500),
+    "interval": (50, 80, 500, 1500),
 }
+MIN_GAP_MS = 8                      # a released key and the next press are never closer than this
 RATE_COLORS = {"ok": "#30d158", "warn": "#ffd60a", "bad": None}      # None = theme danger colour
 
 
@@ -129,7 +142,7 @@ def rate(kind, lo, hi):
         return "warn", M("r_fast", yel_lo)
     if hi > yel_hi:
         return "warn", M("r_slow", yel_hi)
-    need = max(20, int(round(lo * 0.3 / 5.0)) * 5)
+    need = max(15, int(round(lo * 0.15 / 5.0)) * 5)      # practised combos vary by ~10-15 %
     if hi - lo < need:
         return "warn", M("r_narrow", need)
     return "ok", M("r_ok")
@@ -171,13 +184,56 @@ def normalize(s):
         except Exception:
             pass
     out["steps"] = steps
-    for k in ("delay_min", "delay_max", "hold_min", "hold_max"):
+    if isinstance(s, dict) and "interval_min" not in s and "delay_min" in s:
+        # before 1.15.5 the pause ran from release to the next press: keep the same rhythm
+        for a in ("min", "max"):
+            out["interval_" + a] = _int(s.get("delay_" + a), 0, MS_MAX, 100) + _int(
+                s.get("hold_" + a), 0, MS_MAX, 50)
+    if isinstance(s, dict) and "hold_mode" not in s and ("hold_min" in s or "delay_min" in s):
+        out["hold_mode"] = "manual"     # scripts from before the casual UI keep their own hold
+    for k in ("interval_min", "interval_max", "interval_fixed", "hold_min", "hold_max"):
         out[k] = _int(out[k], 0, MS_MAX, DEFAULT_SCRIPT[k])
+    out["interval_mode"] = out["interval_mode"] if out["interval_mode"] in ("random", "fixed") else "random"
+    out["hold_mode"] = out["hold_mode"] if out["hold_mode"] in ("auto", "manual") else "auto"
     progs = out["programs"] if isinstance(out["programs"], list) else []
     out["programs"] = sorted({str(p).strip().lower() for p in progs if str(p).strip()})
     out["enter_block"] = bool(out["enter_block"])
     out["enter_s"] = _float(out["enter_s"], 0.0, 600.0, 3.0)
     return out
+
+
+BETA_MEAN = 2.2 / (2.2 + 3.2)        # mean of human_ms as a share of the range
+
+
+def mean_ms(lo, hi):
+    lo, hi = sorted((lo, hi))
+    return lo + (hi - lo) * BETA_MEAN
+
+
+def interval_range(s):
+    if s["interval_mode"] == "fixed":
+        return s["interval_fixed"], s["interval_fixed"]
+    return tuple(sorted((s["interval_min"], s["interval_max"])))
+
+
+def auto_hold(imin):
+    """Hold range picked from the shortest interval: a quick tap, always shorter than the interval."""
+    hi = max(25, min(70, imin - MIN_GAP_MS - 20))
+    return min(25, hi - 5), hi
+
+
+def hold_range(s):
+    if s["hold_mode"] == "auto":
+        return auto_hold(interval_range(s)[0])
+    return tuple(sorted((s["hold_min"], s["hold_max"])))
+
+
+def rate_overlap(s):
+    """(level, text) when the hold can outlast the press-to-press interval, else None."""
+    lo = interval_range(s)[0]
+    if max(s["hold_min"], s["hold_max"]) > lo - MIN_GAP_MS - 10:
+        return "bad", M("r_overlap", max(0, lo - MIN_GAP_MS - 10))
+    return None
 
 
 def problems(s):
@@ -192,17 +248,119 @@ def problems(s):
     return p
 
 
+class RangeSlider(tk.Canvas):
+    """Stretchable window on a ms scale: drag an edge to stretch it, drag the middle to move it,
+    the mouse wheel nudges the nearest edge by 1 ms. With k_lo None it is a single handle.
+    Values are written into the dict d at once; on_change() is called after every change."""
+    W, H, PAD, R = 230, 30, 9, 7
+
+    def __init__(self, parent, th, vmin, vmax, d, k_lo, k_hi, on_change):
+        super().__init__(parent, width=self.W, height=self.H, bg=th["bg"], highlightthickness=0, bd=0,
+                         cursor="hand2")
+        self.th, self.vmin, self.vmax, self.d = th, vmin, vmax, d
+        self.k_lo, self.k_hi, self.on_change = k_lo, k_hi, on_change
+        self.drag = None
+        self.bind("<Button-1>", self._press)
+        self.bind("<B1-Motion>", self._move)
+        self.bind("<ButtonRelease-1>", lambda _e: setattr(self, "drag", None))
+        self.bind("<MouseWheel>", self._wheel)
+        self._draw()
+
+    def _x(self, v):
+        span = self.W - 2 * self.PAD
+        return self.PAD + span * (min(max(v, self.vmin), self.vmax) - self.vmin) / float(self.vmax - self.vmin)
+
+    def _v(self, x):
+        span = self.W - 2 * self.PAD
+        return int(round(self.vmin + (x - self.PAD) * (self.vmax - self.vmin) / float(span)))
+
+    def _vals(self):
+        hi = self.d[self.k_hi]
+        lo = self.d[self.k_lo] if self.k_lo else hi
+        return lo, hi
+
+    def _set(self, lo, hi):
+        lo = max(self.vmin, min(self.vmax, lo))
+        hi = max(self.vmin, min(self.vmax, hi))
+        if self.k_lo:
+            self.d[self.k_lo], self.d[self.k_hi] = min(lo, hi), max(lo, hi)
+        else:
+            self.d[self.k_hi] = hi
+        self._draw()
+        self.on_change()
+
+    def _draw(self):
+        th = self.th
+        self.delete("all")
+        cy = 19
+        self.create_line(self.PAD, cy, self.W - self.PAD, cy, fill=th["sf2"], width=4, capstyle="round")
+        lo, hi = self._vals()
+        x0, x1 = self._x(lo), self._x(hi)
+        self.create_line(x0, cy, x1, cy, fill=th["ac"], width=6, capstyle="round")
+        handles = (x0, x1) if self.k_lo else (x1,)
+        for x in handles:
+            self.create_oval(x - self.R, cy - self.R, x + self.R, cy + self.R, fill="white", outline=th["ac"], width=2)
+        f = ("Segoe UI", 8)
+        if self.k_lo and x1 - x0 < 34:          # labels would overlap: one combined label
+            self.create_text((x0 + x1) / 2, 5, text="%d–%d" % (lo, hi), fill=th["tx"], font=f)
+        else:
+            for x, v in zip(handles, (lo, hi) if self.k_lo else (hi,)):
+                self.create_text(x, 5, text=str(v), fill=th["tx"], font=f)
+
+    def _press(self, e):
+        lo, hi = self._vals()
+        x0, x1 = self._x(lo), self._x(hi)
+        if not self.k_lo:
+            self.drag = ("hi",)
+            self._set(lo, self._v(e.x))
+        elif abs(e.x - x0) <= self.R + 2 and abs(e.x - x0) <= abs(e.x - x1):
+            self.drag = ("lo",)
+        elif abs(e.x - x1) <= self.R + 2:
+            self.drag = ("hi",)
+        elif x0 < e.x < x1:
+            self.drag = ("both", e.x, lo, hi)
+        else:                                   # click on the track: the nearer edge jumps there
+            self.drag = ("lo",) if abs(e.x - x0) < abs(e.x - x1) else ("hi",)
+            self._move(e)
+
+    def _move(self, e):
+        if not self.drag:
+            return
+        lo, hi = self._vals()
+        v = self._v(e.x)
+        if self.drag[0] == "lo":
+            self._set(min(v, hi), hi)
+        elif self.drag[0] == "hi":
+            self._set(lo, max(v, lo) if self.k_lo else v)
+        else:
+            _k, x_start, lo0, hi0 = self.drag
+            dv = self._v(e.x) - self._v(x_start)
+            dv = max(self.vmin - lo0, min(self.vmax - hi0, dv))
+            self._set(lo0 + dv, hi0 + dv)
+
+    def _wheel(self, e):
+        step = 1 if e.delta > 0 else -1
+        lo, hi = self._vals()
+        if not self.k_lo:
+            self._set(lo, hi + step)
+        elif abs(e.x - self._x(lo)) <= abs(e.x - self._x(hi)):
+            self._set(min(lo + step, hi), hi)
+        else:
+            self._set(lo, max(hi + step, lo))
+        return "break"
+
+
 class _Compiled:
     """Read-only view of an active script for the hook and the player threads."""
-    __slots__ = ("id", "name", "vk", "mods", "steps", "dmin", "dmax", "hmin", "hmax", "programs",
+    __slots__ = ("id", "name", "vk", "mods", "steps", "imin", "imax", "hmin", "hmax", "programs",
                  "enter_block", "enter_s")
 
     def __init__(self, s):
         self.id, self.name = s["id"], s["name"]
         self.vk, self.mods = s["trigger_vk"], s["trigger_mods"]
         self.steps = tuple((m, v) for m, v in s["steps"])
-        self.dmin, self.dmax = sorted((s["delay_min"], s["delay_max"]))
-        self.hmin, self.hmax = sorted((s["hold_min"], s["hold_max"]))
+        self.imin, self.imax = interval_range(s)
+        self.hmin, self.hmax = hold_range(s)
         self.programs = frozenset(s["programs"])
         self.enter_block, self.enter_s = s["enter_block"], s["enter_s"]
 
@@ -266,7 +424,7 @@ class MacroEngine:
         self.chat = False                     # Enter pressed in a script's program: paused until the next Enter
         self._down = set()
         self._swallowed = set()               # triggers whose key-up (and auto-repeat) we eat
-        self._passing = {}                    # vk -> script: the real press is the first step,
+        self._passing = {}                    # vk -> (script, t_down): the real press is the first step,
                                               # the rest plays after its release
         self._cap_single = None
         self._busy = False
@@ -364,10 +522,10 @@ class MacroEngine:
             return True                         # auto-repeat and release of a fired trigger
         if vk in self._passing:
             if up:                              # the real first press is over: play the rest
-                s = self._passing.pop(vk)
+                s, t_down = self._passing.pop(vk)
                 if not self._busy:
                     self._busy = True
-                    self._play_q.put((s, 1))
+                    self._play_q.put((s, 1, t_down, time.perf_counter()))
             return False                        # the real key (and its auto-repeat) goes through
         if up or repeat or vk in MODIFIER_VKS:
             return False
@@ -391,11 +549,11 @@ class MacroEngine:
             if s.steps[0] == (s.mods, vk) and not s.mods:
                 # first step = the trigger itself: let the real press through (real timing, real
                 # hold), the other steps follow its release
-                self._passing[vk] = s
+                self._passing[vk] = (s, time.perf_counter())
                 return False
             self._swallowed.add(vk)
             self._busy = True
-            self._play_q.put((s, 0))
+            self._play_q.put((s, 0, None, None))
             return True
         return False
 
@@ -442,7 +600,14 @@ class MacroEngine:
     def _in_program(self, s):
         return (vs.foreground_exe() or "").lower() in s.programs
 
-    def _play(self, s, first):
+    @staticmethod
+    def _wait_until(t):
+        d = t - time.perf_counter()
+        if d > 0:
+            time.sleep(d)
+
+    def _play(self, s, first, t_down, t_up):
+        """t_down / t_up: the real first press when it went through (first == 1)."""
         vs.winmm.timeBeginPeriod(1)             # 1 ms sleep resolution instead of ~15.6 ms
         try:
             if s.mods:
@@ -451,16 +616,22 @@ class MacroEngine:
                 held = [v for v in _SIDED_MODS if vs.key_down(v)]
                 _send([(v, True) for v in held])
             ok = True
-            for i, (mods, vk) in enumerate(s.steps[first:]):
-                if i or first:                  # after the real first press: a pause too
-                    time.sleep(human_ms(s.dmin, s.dmax))
+            last_down, last_up = t_down, t_up
+            for mods, vk in s.steps[first:]:
+                if last_down is not None:
+                    # next press: «interval» after the previous press, never before the previous
+                    # key is up (+ a few ms, a finger needs that too)
+                    gap = (MIN_GAP_MS + random.uniform(0, 6)) / 1000.0
+                    self._wait_until(max(last_down + human_ms(s.imin, s.imax), last_up + gap))
                 if not self._in_program(s):
                     self.log("macros: %s stopped, the program left the front" % s.name)
                     return
                 mv = _mod_vks(mods)
                 ok &= _send([(m, False) for m in mv] + [(vk, False)])
+                last_down = time.perf_counter()
                 time.sleep(human_ms(s.hmin, s.hmax))
                 ok &= _send([(vk, True)] + [(m, True) for m in reversed(mv)])
+                last_up = time.perf_counter()
             if not ok and not self._warned_uipi:
                 self._warned_uipi = True
                 self.log("macros: Windows dropped the keys (program runs as administrator?)")
@@ -487,6 +658,8 @@ class MacroController:
         self._tab = None
         self._capture_dlg = None
         self._capture_for = None              # ("trigger", id) / ("step", id)
+        self._more_open = set()               # script ids whose «More» is unfolded
+        self._hold_refresh = {}               # script id -> redraw of its hold rating
         self.engine = MacroEngine(log)
         self.apply()
         self.root.after(50, self._loop)
@@ -620,6 +793,7 @@ class MacroController:
     # ---- settings page ----
     def build_into(self, parent, win, pad):
         th = _theme()
+        self._hold_refresh = {}
         self._tab = (parent, win, pad)
         if self.draft is None:
             self.begin_edit()
@@ -704,9 +878,8 @@ class MacroController:
             chip(wrap, vs.hotkey_label(m, v), lambda j=j: (s["steps"].pop(j), self._rebuild()))
         link(wrap, M("add_key"), lambda: self._start_capture("step", s["id"]))
 
-        # timings
-        self._range_row(card, cp, line(M("delay")), s, "delay", th)
-        self._range_row(card, cp, line(M("hold")), s, "hold", th)
+        # timings: between presses (random window / constant), hold under «More»
+        self._timing_block(card, cp, line, s, th)
 
         # programs
         r = line(M("programs"))
@@ -720,6 +893,17 @@ class MacroController:
         chk2, _s2, _d2 = a._make_check(r, s["enter_block"], lambda v: s.__setitem__("enter_block", bool(v)), bg=bg)
         chk2.pack(side="left")
         tk.Label(r, text="  " + M("enter"), bg=bg, fg=th["tx"], font=th["font_sm"]).pack(side="left")
+
+        # «More»: the key hold (auto by default)
+        opened = s["id"] in self._more_open
+        r = tk.Frame(card, bg=bg)
+        r.pack(fill="x", padx=cp, pady=(6, 0))
+        more = tk.Label(r, text=M("more") + ("  ⌃" if opened else "  ⌄"), bg=bg, fg=th["dim"], font=th["font_sm"],
+                        cursor="hand2")
+        more.pack(side="left")
+        more.bind("<Button-1>", lambda _e: (self._more_open.symmetric_difference_update({s["id"]}), self._rebuild()))
+        if opened:
+            self._hold_block(card, cp, line, s, th)
 
         bad = problems(s)
         if bad:
@@ -750,48 +934,104 @@ class MacroController:
         e.bind("<Return>", finish)
         return e
 
-    def _range_row(self, card, cp, r, s, kind, th):
-        """[from] – [to] and under it a live rating: green human-like, yellow advice, red not human."""
-        kmin, kmax = kind + "_min", kind + "_max"
+    def _pills(self, parent, options, cur, on_pick, th, bg):
+        row = tk.Frame(parent, bg=bg)
+        row.pack(side="left")
+        for val, label in options:
+            on = val == cur
+            p = tk.Label(row, text=label, bg=th["ac"] if on else th["sf2"], fg="white" if on else th["tx"],
+                         font=th["font_sm"], padx=10, pady=3, cursor="hand2")
+            p.pack(side="left", padx=(0, 4))
+            p.bind("<Button-1>", lambda _e, v=val: on_pick(v))
+        return row
+
+    def _status(self, card, cp, th):
+        """A rating line under a slider: (dot, text label, frame); hidden while the rating is green."""
         bg = th["bg"]
         st = tk.Frame(card, bg=bg)
-        st.pack(fill="x", padx=(cp + LABEL_W, cp), pady=(0, 2))
         dot = tk.Label(st, text="●", bg=bg, font=("Segoe UI", 8))
         dot.pack(side="left", anchor="n", pady=(2, 0))
         txt = tk.Label(st, text="", bg=bg, font=th["font_sm"], anchor="w", justify="left", wraplength=340)
         txt.pack(side="left", padx=(5, 0))
+        anchor = tk.Frame(card, bg=bg, height=0)
+        anchor.pack(fill="x")
 
-        def show():
-            level, text = rate(kind, s[kmin], s[kmax])
+        def show(level, text):
             col = RATE_COLORS[level] or th["err"]
             dot.configure(fg=col)
             txt.configure(text=text, fg=col)
-        self._num(r, s, kmin, 0, MS_MAX, th, on_change=show).pack(side="left")
-        tk.Label(r, text="–", bg=bg, fg=th["dim"], font=th["font"]).pack(side="left", padx=6)
-        self._num(r, s, kmax, 0, MS_MAX, th, on_change=show).pack(side="left")
-        show()
+            if level == "ok":
+                st.pack_forget()
+            else:
+                st.pack(fill="x", padx=(cp + LABEL_W, cp), pady=(0, 2), after=anchor)
+        return show
+
+    def _timing_block(self, card, cp, line, s, th):
+        bg = th["bg"]
+        r = line(M("between"))
+        fixed = s["interval_mode"] == "fixed"
+        self._pills(r, (("random", M("m_random")), ("fixed", M("m_fixed"))), s["interval_mode"],
+                    lambda v: (s.__setitem__("interval_mode", v), self._rebuild()), th, bg)
+        r2 = tk.Frame(card, bg=bg)
+        r2.pack(fill="x", padx=(cp + LABEL_W, cp), pady=(2, 0))
+        avg = tk.Label(r2, text="", bg=bg, font=th["font_sm"], anchor="w")
+        status = self._status(card, cp, th)
+
+        def changed():
+            lo, hi = interval_range(s)
+            if fixed:
+                level, text = "warn", M("r_fixed")
+                avg.configure(text=M("every", lo), fg=th["tx"])
+            else:
+                level, text = rate("interval", lo, hi)
+                avg.configure(text=M("avg", round(mean_ms(lo, hi))), fg=RATE_COLORS[level] or th["err"])
+            if level != "bad" and s["hold_mode"] == "manual":
+                level, text = rate_overlap(s) or (level, text)
+            status(level, text)
+            hook = self._hold_refresh.get(s["id"])
+            if hook:
+                hook()
+        if fixed:
+            RangeSlider(r2, th, 60, 300, s, None, "interval_fixed", changed).pack(side="left")
+        else:
+            RangeSlider(r2, th, 60, 300, s, "interval_min", "interval_max", changed).pack(side="left")
+        avg.pack(side="left", padx=(10, 0))
+        changed()
+
+    def _hold_block(self, card, cp, line, s, th):
+        bg = th["bg"]
+        r = line(M("hold"))
+        self._pills(r, (("auto", M("m_auto")), ("manual", M("m_manual"))), s["hold_mode"],
+                    lambda v: (s.__setitem__("hold_mode", v), self._rebuild()), th, bg)
+        r2 = tk.Frame(card, bg=bg)
+        r2.pack(fill="x", padx=(cp + LABEL_W, cp), pady=(2, 0))
+        note = tk.Label(r2, text="", bg=bg, font=th["font_sm"], anchor="w")
+        status = self._status(card, cp, th)
+
+        def refresh():
+            lo, hi = hold_range(s)
+            if s["hold_mode"] == "auto":
+                note.configure(text=M("hold_auto_note", lo, hi), fg=th["dim"])
+                status("ok", "")
+                return
+            level, text = rate("hold", lo, hi)
+            if level != "bad":
+                level, text = rate_overlap(s) or (level, text)
+            note.configure(text=M("avg", round(mean_ms(lo, hi))), fg=RATE_COLORS[level] or th["err"])
+            status(level, text)
+        self._hold_refresh[s["id"]] = refresh
+        if s["hold_mode"] == "manual":
+            RangeSlider(r2, th, 10, 200, s, "hold_min", "hold_max", refresh).pack(side="left")
+            note.pack(side="left", padx=(10, 0))
+        else:
+            note.pack(side="left")
+        refresh()
 
     def _prog_menu(self, s, anchor, win):
-        cur = set(s["programs"])
-        m = tk.Menu(anchor, tearoff=0)
-        progs = [n for n in vs.running_programs() if n not in cur]
-        for n in progs:
-            m.add_command(label=n, command=lambda n=n: self._add_prog(s, n))
-        if not progs:
-            m.add_command(label=M("prog_none"), state="disabled")
-        m.add_separator()
-
-        def browse():
-            from tkinter import filedialog
-            import os
-            p = filedialog.askopenfilename(parent=win, filetypes=[(M("exe_files"), "*.exe")])
-            if p:
-                self._add_prog(s, os.path.basename(p))
-        m.add_command(label=M("prog_file"), command=browse)
-        try:
-            m.tk_popup(anchor.winfo_rootx(), anchor.winfo_rooty() + anchor.winfo_height())
-        finally:
-            m.grab_release()
+        """Program picker of the app: running programs first, then installed ones, or an .exe file."""
+        exe = self.app._pick_program(s["programs"])
+        if exe:
+            self._add_prog(s, exe)
 
     def _add_prog(self, s, name):
         name = name.strip().lower()
