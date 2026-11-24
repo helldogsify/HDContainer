@@ -121,7 +121,13 @@ except Exception:
     macros = None
     _MACROS_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.15.5"
+try:                                   # LAN link between the user's own devices (files of all drives)
+    import lan_ui
+except Exception:
+    lan_ui = None
+    _LAN_IMPORT_ERR = traceback.format_exc()
+
+VERSION = "1.16.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -326,7 +332,7 @@ SETTINGS_SIDE_W = 210
 SETTINGS_ICONS = {"general": chr(0xE713), "hotkeys": chr(0xE765), "voice": chr(0xE720), "recorder": chr(0xE7C8),
                   "screenrec": chr(0xE714), "macros": chr(0xE945),
                   "screenshot": chr(0xE722), "boxes": chr(0xE7B8), "convert": chr(0xE8AB),
-                  "torrents": chr(0xE896)}
+                  "torrents": chr(0xE896), "lan": chr(0xE703)}
 
 # ---------------------------------------------------------------------------
 # Настройки + язык (i18n)
@@ -715,6 +721,7 @@ NIF_TIP = 0x04
 NIF_INFO = 0x10
 NIN_BALLOONUSERCLICK = 0x0405
 COPYDATA_TORRENT = 2          # WM_COPYDATA dwData: the string is a .torrent path, not a container
+COPYDATA_LAN = 3              # WM_COPYDATA dwData: a LAN link command ("pair NAME", "accept CODE", "open NAME")
 WM_ENDSESSION = 0x0016
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -2032,6 +2039,16 @@ class TrayApp:
         else:
             log("macros import failed:\n" + globals().get("_MACROS_IMPORT_ERR", ""))
 
+        # LAN link: discovery + server threads run only while enabled in Settings -> Devices
+        self.lan = None
+        if lan_ui is not None:
+            try:
+                self.lan = lan_ui.LanController(self, lambda: LANG, log, _DIR, _local_dir(), VERSION)
+            except Exception:
+                log("lan init failed:\n" + traceback.format_exc())
+        else:
+            log("lan import failed:\n" + globals().get("_LAN_IMPORT_ERR", ""))
+
         # авто-восстановление контейнеров после краха: контейнеры, чьи окна выжили,
         # активируем заново — _activate пере-адаптирует выжившие окна (по сигнатуре)
         # и перезапустит только то, что не выжило. Никаких ручных действий.
@@ -2114,6 +2131,8 @@ class TrayApp:
                     if cds.lpData and n > 0 else ""
                 if name and cds.dwData == COPYDATA_TORRENT:
                     self._defer(lambda p=name: self._open_torrent(p))
+                elif name and cds.dwData == COPYDATA_LAN:
+                    self._defer(lambda t=name: self.lan is not None and self.lan.command(t))
                 elif name:
                     self._defer(lambda n=name: self._activate_by_name(n))
             except Exception as ex:
@@ -2339,7 +2358,11 @@ class TrayApp:
         if self.torrents is not None and self.torrents.has_items():
             self._popup_caption(frame, T("tray_downloads"))
             self.torrents.build_popup(frame, W, close)
-        if self.containers or items or (self.torrents is not None and self.torrents.has_items()):
+        lan_rows = self.lan is not None and self.lan.has_tray_rows()
+        if lan_rows:
+            self._popup_caption(frame, lan_ui.L("tab"))
+            self.lan.build_popup(frame, W, close)
+        if self.containers or items or lan_rows or (self.torrents is not None and self.torrents.has_items()):
             sep()
         # 2. capture tools: one row of tiles (a running recording shows its time in red)
         tools = []
@@ -3995,6 +4018,11 @@ class TrayApp:
                 self.macros.shutdown()
             except Exception:
                 log("macros shutdown failed:\n" + traceback.format_exc())
+        if getattr(self, "lan", None) is not None:
+            try:
+                self.lan.shutdown()
+            except Exception:
+                log("lan shutdown failed:\n" + traceback.format_exc())
         for c in self.containers:
             if c.active:
                 c.sync_app_rects()   # запомнить размеры окон ДО отвязки
@@ -4744,6 +4772,8 @@ class TrayApp:
             tabs.append(("convert", convert.C("tab")))
         if self.torrents is not None:
             tabs.append(("torrents", torrents.S("tab")))
+        if self.lan is not None:
+            tabs.append(("lan", lan_ui.L("tab")))
         return tabs
 
     def _open_settings(self, tab=None, rebuild=False):
@@ -4786,6 +4816,8 @@ class TrayApp:
             self.screenrec.begin_edit()
         if self.macros is not None and self.macros.draft is None:
             self.macros.begin_edit()
+        if self.lan is not None and self.lan.draft is None:
+            self.lan.begin_edit()
 
         # layout: sidebar of sections on the left (a tab row ran out of room at 7 sections),
         # the section's page on the right, Save / Cancel along the bottom
@@ -4864,6 +4896,8 @@ class TrayApp:
             self.macros.build_into(self._scroll_page(body, win), win, pad)
         elif tab == "hotkeys":
             self._build_hotkeys(self._scroll_page(body, win), win, pad)
+        elif tab == "lan":
+            self.lan.build_into(self._scroll_page(body, win), win, pad)
         else:
             self._build_general(self._scroll_page(body, win), pad)
 
@@ -5066,7 +5100,7 @@ class TrayApp:
             log("settings save failed:\n" + traceback.format_exc())
         # each module on its own: one failing commit must not leave the others' drafts stale
         for mod in (self.voice, self.torrents, self.boxes, self.screenshot, self.recorder, self.screenrec,
-                    self.macros):
+                    self.macros, self.lan):
             if mod is None:
                 continue
             try:
@@ -5094,6 +5128,8 @@ class TrayApp:
             self.screenrec.discard()
         if self.macros is not None:
             self.macros.discard()
+        if self.lan is not None:
+            self.lan.discard()
         self._settings_close_win()
 
     def _info(self, title, prompt):
@@ -5368,6 +5404,15 @@ def main():
         return
 
     if not args and _relaunch_unelevated():
+        return
+
+    # LAN link commands for the running instance: --lan pair NAME | accept CODE | open NAME | enable
+    if "--lan" in args:
+        i = args.index("--lan")
+        cmd = " ".join(args[i + 1:i + 3]) or "settings"
+        existing = user32.FindWindowW(None, IPC_TITLE)
+        if existing:
+            send_copydata(existing, cmd, COPYDATA_LAN)
         return
 
     launch_name = _parse_launch(args)

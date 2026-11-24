@@ -4,7 +4,7 @@
 
 # HDContainer
 
-### One small tray app for Windows that does seven everyday jobs: groups a task's windows into one app, keeps your desktop tidy in boxes, turns your voice into text, records your calls, takes and annotates screenshots, converts files from the right‑click menu, and downloads torrents.
+### One small tray app for Windows that does seven everyday jobs: groups a task's windows into one app, keeps your desktop tidy in boxes, turns your voice into text, records your calls, takes and annotates screenshots, converts files from the right‑click menu, downloads torrents, and opens the drives of your other PCs.
 
 [![Download](https://img.shields.io/badge/Download-Setup.exe-4c8bf5?style=for-the-badge)](https://github.com/helldogsify/HDContainer/releases/latest)
 [![Release](https://img.shields.io/github/v/release/helldogsify/HDContainer?style=for-the-badge)](https://github.com/helldogsify/HDContainer/releases/latest)
@@ -26,6 +26,7 @@
 | **[Key scripts](#key-scripts)** | One key becomes a sequence in the program you choose: press **E** in a game and it gets **E, 2, E** with human-like random timing. Switch each script on and off from the tray menu. |
 | **[Convert to](#convert-files-from-the-right-click-menu)** | Right‑click any image, audio, video, document or table in Explorer → **Convert to** → pick a format. |
 | **[Torrents](#torrents)** | Open a `.torrent` file and it starts downloading. Progress, pause and delete are in the tray menu. |
+| **[Devices](#devices)** | Your computers with HDContainer on one Wi‑Fi find each other. Link them once with a code, then open any drive of the other PC from the tray: browse, download, upload, drag files in. |
 
 Everything lives in the **system tray** — there is no main window. Click the tray icon for the menu; **Settings** has a section for each tool. Installs per‑user, **no admin rights**, updates itself.
 
@@ -156,6 +157,17 @@ Open a `.torrent` file with HDContainer and it starts downloading right away —
 
 The installer makes HDContainer the handler for `.torrent` files. If another torrent client keeps opening them, right‑click a `.torrent` → **Open with** → **HDContainer** → **Always**. The first download makes Windows ask whether HDContainer may use the network — allow it, or the speed drops.
 
+## Devices
+
+**Settings → Devices → Link my devices on the local network**. Every computer with HDContainer on the same network shows up under **Nearby**; press **Link**, check that the other computer shows the same 6‑digit code and press **Link** there. From then on the two are linked for good: they find each other by themselves whenever they share a network, and the tray menu lists your devices with a green dot when they are online.
+
+Click a device to open its files: drives and the Desktop, Downloads and Documents folders on the left, the folder on the right. Double‑click opens a file (it is copied over first), right‑click downloads a file or a whole folder, renames or deletes (into the Recycle Bin of that computer). Upload files or folders with the button in the corner or just drag them in from Explorer. Progress and speed show at the bottom.
+
+- **Direct and fast**: the computers talk to each other straight over your Wi‑Fi or cable, without a server in between.
+- **Private**: a linked device has full access to all drives of the other one, so linking needs the code on both screens; everything that travels between them is encrypted (AES‑256‑GCM with keys agreed at pairing, kept protected by Windows).
+- **Away from home**: if you use [Tailscale](https://tailscale.com/), a linked device is reached through it when the two are not on the same network.
+- The first time you switch it on Windows may ask to allow HDContainer through the firewall (one prompt); the rule allows only your local network and Tailscale.
+
 ## Install
 
 1. Download **[HDContainer-Setup.exe](https://github.com/helldogsify/HDContainer/releases/latest)**.
@@ -182,6 +194,7 @@ The app is Python — `tkinter` for the UI and `ctypes` for the Win32 work — p
 | Converter | `convert.py` | Pillow + pillow‑heif; FFmpeg, Pandoc and Poppler downloaded on demand; Edge/Chrome for PDF |
 | Torrents | `torrents.py` | [libtorrent](https://libtorrent.org/) |
 | Key scripts | `macros.py` | low-level keyboard hook (installed only while a script is on) and `SendInput` with scan codes |
+| Devices | `lan.py`, `lan_crypto.py`, `lan_ui.py`, `lan_cli.py` | UDP broadcast discovery, TCP with a Diffie‑Hellman pairing code, AES‑GCM from Windows CNG (`bcrypt.dll`); `lan_cli.py` is a command line for scripts |
 
 ## Build from source
 

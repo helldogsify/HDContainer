@@ -31,8 +31,8 @@ if ($LASTEXITCODE -ne 0) {
   python -m pip install "libtorrent==2.1.1"
   if ($LASTEXITCODE -ne 0) { throw "pip install libtorrent failed" }
 }
-python -c "import window_container as w; assert w.torrents is not None, w._TORRENTS_IMPORT_ERR; assert w.boxes is not None, w._BOXES_IMPORT_ERR; assert w.screenshot is not None, w._SCREENSHOT_IMPORT_ERR; assert w.recorder is not None, w._RECORDER_IMPORT_ERR; assert w.screenrec is not None, w._SCREENREC_IMPORT_ERR; assert w.macros is not None, w._MACROS_IMPORT_ERR; import rec_audio; assert rec_audio.audioop is not None, 'audioop missing'; print('torrents, boxes, screenshot, recorder, screenrec and macros import ok')"
-if ($LASTEXITCODE -ne 0) { throw "torrents, boxes, screenshot, recorder, screenrec or macros module failed to import" }
+python -c "import window_container as w; assert w.torrents is not None, w._TORRENTS_IMPORT_ERR; assert w.boxes is not None, w._BOXES_IMPORT_ERR; assert w.screenshot is not None, w._SCREENSHOT_IMPORT_ERR; assert w.recorder is not None, w._RECORDER_IMPORT_ERR; assert w.screenrec is not None, w._SCREENREC_IMPORT_ERR; assert w.macros is not None, w._MACROS_IMPORT_ERR; assert w.lan_ui is not None, w._LAN_IMPORT_ERR; import rec_audio; assert rec_audio.audioop is not None, 'audioop missing'; print('torrents, boxes, screenshot, recorder, screenrec, macros and lan import ok')"
+if ($LASTEXITCODE -ne 0) { throw "torrents, boxes, screenshot, recorder, screenrec, macros or lan module failed to import" }
 
 Write-Host "==> Building HDContainer.exe $ver with PyInstaller..."
 # pillow-heif: HEIC/HEIF в конвертере — библиотека с нативными DLL, собираем целиком
