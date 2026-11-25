@@ -114,6 +114,13 @@ try:                                   # shared hotkey exclusions live in voice_
 except Exception:
     voice_sys = None
 
+try:                                   # drawn icons of the tray menu tool tiles (Pillow)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
+    import tray_icons
+except Exception:
+    tray_icons = None
+
 try:                                   # installed programs for the program pickers
     if _LIGHT:
         raise ImportError("not loaded in the watchdog")
@@ -153,7 +160,7 @@ except Exception:
     lan_ui = None
     _LAN_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.17.0"
+VERSION = "1.17.1"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -373,6 +380,7 @@ ICON_HISTORY = "\uE81C"
 ICON_DOWNLOAD = chr(0xE896)
 ICON_REC, ICON_STOP = chr(0xE7C8), chr(0xE71A)       # recorder: record dot, stop square
 ICON_VIDEO = chr(0xE714)                             # screen recording: video camera
+ICON_DEVICES = chr(0xE703)                           # Devices link (same glyph as its Settings section)
 # Settings window: sidebar width and section glyphs (Segoe MDL2 Assets)
 SETTINGS_SIDE_W = 210
 SETTINGS_ICONS = {"general": chr(0xE713), "hotkeys": chr(0xE765), "voice": chr(0xE720), "recorder": chr(0xE7C8),
@@ -2450,7 +2458,7 @@ class TrayApp:
             close()
             self.root.after(1, fn)
 
-        W = 268
+        W = 220                       # 1.17.1: narrower (user: «Всё меню нужно сделать уже»; was 268)
 
         def sep():
             tk.Frame(frame, bg=COL_BORDER, height=1).pack(fill="x", padx=12, pady=4)
@@ -2461,18 +2469,13 @@ class TrayApp:
             for c in self.containers:
                 self._popup_container_row(frame, c, W, close)
         items = self.macros.tray_items() if self.macros is not None else []
-        if items:
-            self._popup_caption(frame, macros.M("tab"))
+        if items:                       # no caption since 1.17.1 (user: «подпись ... убрать»)
             for it in items:
                 self._popup_macro_row(frame, it, W)
         if self.torrents is not None and self.torrents.has_items():
             self._popup_caption(frame, T("tray_downloads"))
             self.torrents.build_popup(frame, W, close)
-        lan_rows = self.lan is not None and self.lan.has_tray_rows()
-        if lan_rows:
-            self._popup_caption(frame, lan_ui.L("tab"))
-            self.lan.build_popup(frame, W, close)
-        if self.containers or items or lan_rows or (self.torrents is not None and self.torrents.has_items()):
+        if self.containers or items or (self.torrents is not None and self.torrents.has_items()):
             sep()
         # 2. capture tools: one row of tiles (a running recording shows its time in red)
         tools = []
@@ -2481,20 +2484,36 @@ class TrayApp:
             return text.split("·")[-1].strip() if "·" in text else text
         if self.screenshot is not None:
             # a pause lets the menu vanish from the screen before it is captured
-            tools.append((ICON_SHOT, T("tray_shot"), False,
+            tools.append(((ICON_SHOT, "shot"), T("tray_shot"), False,
                           lambda: act(lambda: self.root.after(300, self.screenshot.shoot))))
         if self.screenrec is not None:
             on = self.screenrec.recording
-            tools.append((ICON_STOP if on else ICON_VIDEO,
+            tools.append(((ICON_STOP if on else ICON_VIDEO, "video"),
                           rec_time(self.screenrec.menu_text()) if on else T("tray_video"), on,
                           lambda: act(lambda: self.root.after(300, self.screenrec.toggle))))
         if self.recorder is not None:
             on = self.recorder.recording
-            tools.append((ICON_STOP if on else ICON_REC,
+            tools.append(((ICON_STOP if on else ICON_REC, "rec"),
                           rec_time(self.recorder.menu_text()) if on else T("tray_rec"), on,
                           lambda: act(self.recorder.toggle)))
+        dev_open = False
+        if self.lan is not None:
+            # linked devices unfold under the tiles (like History); with none linked or the
+            # link off the tile opens Settings -> Devices
+            has_dev = self.lan.has_tray_rows()
+            dev_open = has_dev and bool(getattr(self, "_popup_dev_open", False))
+
+            def devices(has_dev=has_dev, opened=dev_open):
+                if not has_dev:
+                    act(lambda: self._open_settings("lan"))
+                    return
+                self._popup_dev_open = not opened
+                self.root.after(1, self._repopup)
+            tools.append(((ICON_DEVICES, "devices"), lan_ui.L("tab"), False, devices, dev_open))
         if tools:
             self._popup_tools_row(frame, W, tools)
+            if dev_open:
+                self.lan.build_popup(frame, W, close)
             sep()
         # 3. create
         self._popup_action_row(frame, ICON_ADD, T("create_container"), W,
@@ -2618,28 +2637,42 @@ class TrayApp:
             w.bind("<Leave>", lambda _e: [x.configure(bg=COL_SURFACE) for x in widgets])
 
     def _popup_tools_row(self, parent, width, tools):
-        """Equal tiles side by side: glyph over a short caption."""
+        """Equal icon tiles side by side (no captions since 1.17.1: the name, or the time of
+        a running recording, is the tooltip). ((font glyph, drawn icon), name, recording, cmd
+        [, selected]); the drawn icons of tray_icons (1.17.1) are used when Pillow is there:
+        a recording shows its icon in red, an unfolded list in the accent colour."""
         row = tk.Frame(parent, bg=COL_SURFACE, width=width)
         row.pack(fill="x", padx=8, pady=(4, 2))
-        for i, (glyph, label, on, cmd) in enumerate(tools):
+        px = max(16, int(round(self.root.winfo_fpixels("15p"))))
+        for i, tool in enumerate(tools):
+            (glyph, drawn), label, on, cmd = tool[:4]
+            sel = len(tool) > 4 and tool[4]
+            color = COL_DANGER if on else (COL_ACCENT if sel else COL_TEXT_DIM)
             row.columnconfigure(i, weight=1, uniform="tools")
-            fg = COL_DANGER if on else COL_TEXT
             tile = tk.Frame(row, bg=COL_SURFACE, cursor="hand2")
             tile.grid(row=0, column=i, sticky="nsew", padx=2)
-            g = tk.Label(tile, text=glyph, bg=COL_SURFACE, fg=COL_DANGER if on else COL_TEXT_DIM,
-                         font=(ICON_FONT, 14), cursor="hand2")
-            g.pack(pady=(8, 2))
-            t = tk.Label(tile, text=label, bg=COL_SURFACE, fg=fg, font=FONT_SM, cursor="hand2")
-            t.pack(pady=(0, 8))
-            parts = (tile, g, t)
+            img = None
+            if tray_icons is not None:
+                try:
+                    img = tray_icons.photo(self.root, drawn, px, color)
+                except Exception as ex:
+                    log("tray icon %s failed: %r" % (drawn, ex))
+            if img is not None:
+                g = tk.Label(tile, image=img, bg=COL_SURFACE, cursor="hand2")
+            else:
+                g = tk.Label(tile, text=glyph, bg=COL_SURFACE, fg=color, font=(ICON_FONT, 15), cursor="hand2")
+            g.pack(pady=10)
+            if lan_ui is not None:
+                lan_ui.Tooltip(g, label, lan_ui.colors())
+            parts = (tile, g)
 
             def paint(c, parts=parts):
                 for w in parts:
                     w.configure(bg=c)
-            for w in parts:
-                w.bind("<Enter>", lambda _e, p=paint: p(COL_HOVER))
-                w.bind("<Leave>", lambda _e, p=paint: p(COL_SURFACE))
-                w.bind("<Button-1>", lambda _e, c=cmd: c())
+            for w in parts:                        # add="+": the tooltip binds these too
+                w.bind("<Enter>", lambda _e, p=paint: p(COL_HOVER), add="+")
+                w.bind("<Leave>", lambda _e, p=paint: p(COL_SURFACE), add="+")
+                w.bind("<Button-1>", lambda _e, c=cmd: c(), add="+")
 
     def _popup_footer(self, parent, width, on_settings, on_quit):
         row = tk.Frame(parent, bg=COL_SURFACE, height=34, width=width)

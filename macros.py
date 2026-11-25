@@ -3,7 +3,7 @@
 sequence of key presses with random pauses (e.g. E -> E, 2, E).
 
 Rules of a script (settings["macros"]["scripts"], a list of dicts):
-  * fires only while one of its programs (exe names) is in front;
+  * fires only while one of its programs (exe names) is in front; no programs = everywhere (1.17.1);
   * the trigger may carry Ctrl/Alt/Shift/Win, which must match exactly;
   * Enter pressed in a script's program pauses scripts until the next Enter (game chat: open /
     send), Esc ends the pause (chat closed); while paused the key goes through untouched;
@@ -40,6 +40,12 @@ MSTR = {
     "trigger": {"en": "Key", "ru": "Клавиша", "es": "Tecla", "pt": "Tecla", "de": "Taste", "fr": "Touche", "zh": "按键"},
     "change": {"en": "Change…", "ru": "Изменить…", "es": "Cambiar…", "pt": "Alterar…", "de": "Ändern…", "fr": "Modifier…", "zh": "更改…"},
     "not_set": {"en": "not set", "ru": "не задана", "es": "sin asignar", "pt": "não definida", "de": "nicht gesetzt", "fr": "non définie", "zh": "未设置"},
+    "toggle": {"en": "Hotkeys", "ru": "Горячие клавиши", "es": "Atajos", "pt": "Atalhos", "de": "Tastenkürzel", "fr": "Raccourcis", "zh": "快捷键"},
+    "notify": {"en": "Show a notice when a script is turned on or off", "ru": "Показывать уведомление при включении и выключении скрипта", "es": "Mostrar un aviso al activar o desactivar un script", "pt": "Mostrar um aviso ao ligar ou desligar um script", "de": "Hinweis beim Ein- und Ausschalten eines Skripts zeigen", "fr": "Afficher un avis quand un script est activé ou désactivé", "zh": "开关脚本时显示通知"},
+    "toggled_on": {"en": "Script on", "ru": "Скрипт включён", "es": "Script activado", "pt": "Script ligado", "de": "Skript an", "fr": "Script activé", "zh": "脚本已开启"},
+    "toggled_off": {"en": "Script off", "ru": "Скрипт выключен", "es": "Script desactivado", "pt": "Script desligado", "de": "Skript aus", "fr": "Script désactivé", "zh": "脚本已关闭"},
+    "not_set_pl": {"en": "not set", "ru": "не заданы", "es": "sin asignar", "pt": "não definidos", "de": "nicht gesetzt", "fr": "non définis", "zh": "未设置"},
+    "toggle_same": {"en": "The hotkeys must differ from the script key.", "ru": "Горячие клавиши должны отличаться от клавиши скрипта.", "es": "Los atajos deben ser distintos de la tecla del script.", "pt": "Os atalhos devem ser diferentes da tecla do script.", "de": "Die Tastenkürzel müssen sich von der Skripttaste unterscheiden.", "fr": "Les raccourcis doivent différer de la touche du script.", "zh": "快捷键必须与脚本按键不同。"},
     "steps": {"en": "Presses", "ru": "Нажимает", "es": "Pulsa", "pt": "Pressiona", "de": "Drückt", "fr": "Appuie sur", "zh": "依次按下"},
     "add_key": {"en": "+ Key", "ru": "+ Клавиша", "es": "+ Tecla", "pt": "+ Tecla", "de": "+ Taste", "fr": "+ Touche", "zh": "+ 按键"},
     "between": {"en": "Between presses", "ru": "Между нажатиями", "es": "Entre pulsaciones", "pt": "Entre toques", "de": "Zwischen Tastendrücken", "fr": "Entre les appuis", "zh": "按键间隔"},
@@ -75,7 +81,6 @@ MSTR = {
     "r_too_slow": {"en": "Far too long — keep it up to %d ms", "ru": "Слишком долго — не больше %d мс", "es": "Demasiado largo: como máximo %d ms", "pt": "Longo demais — no máximo %d ms", "de": "Viel zu lang — höchstens %d ms", "fr": "Beaucoup trop long — au plus %d ms", "zh": "太长了——不要超过 %d 毫秒"},
     "r_flat": {"en": "Same time every press — that is a robot. Widen the range", "ru": "Каждый раз одно и то же время — так жмёт робот. Раздвинь рамки", "es": "Mismo tiempo en cada pulsación: eso es un robot. Amplía el rango", "pt": "Mesmo tempo a cada toque — isso é um robô. Amplie o intervalo", "de": "Jedes Mal dieselbe Zeit — so drückt ein Roboter. Bereich erweitern", "fr": "Toujours le même temps — c'est un robot. Élargis la plage", "zh": "每次时间都一样——这是机器人。请拉开范围"},
     "r_narrow": {"en": "People are less even — make the range at least %d ms wide", "ru": "Люди не такие ровные — сделай разброс хотя бы %d мс", "es": "Las personas son menos regulares: deja un rango de al menos %d ms", "pt": "Pessoas são menos regulares — deixe um intervalo de pelo menos %d ms", "de": "Menschen sind ungleichmäßiger — Bereich mindestens %d ms breit", "fr": "Les humains sont moins réguliers — une plage d'au moins %d ms", "zh": "真人没那么均匀——范围至少拉开 %d 毫秒"},
-    "w_progs": {"en": "no program", "ru": "не выбрана программа", "es": "sin programa", "pt": "sem programa", "de": "kein Programm", "fr": "pas de programme", "zh": "未选择程序"},
 }
 
 LANG_GET = lambda: "en"
@@ -104,6 +109,7 @@ LABEL_W = 170                       # px: label column of a script card
 DEFAULT_SCRIPT = {
     "name": "", "enabled": True,
     "trigger_vk": 0, "trigger_mods": 0,
+    "toggle_vk": 0, "toggle_mods": 0,   # on / off hotkey of the script, in its programs (0 = none)
     "steps": [],                    # [[mods, vk], ...]
     "interval_mode": "random",      # random: [interval_min, interval_max]; fixed: interval_fixed
     "interval_min": 120, "interval_max": 160,   # key down -> next key down
@@ -175,6 +181,8 @@ def normalize(s):
     out["enabled"] = bool(out["enabled"])
     out["trigger_vk"] = _int(out["trigger_vk"], 0, 255, 0)
     out["trigger_mods"] = _int(out["trigger_mods"], 0, 15, 0)
+    out["toggle_vk"] = _int(out["toggle_vk"], 0, 255, 0)
+    out["toggle_mods"] = _int(out["toggle_mods"], 0, 15, 0)
     steps = []
     for st in out["steps"] if isinstance(out["steps"], list) else []:
         try:
@@ -243,8 +251,6 @@ def problems(s):
         p.append(M("w_trigger"))
     if not s.get("steps"):
         p.append(M("w_steps"))
-    if not s.get("programs"):
-        p.append(M("w_progs"))
     return p
 
 
@@ -420,6 +426,7 @@ class MacroEngine:
         self.log = log
         self.events = vs.WakeQueue()          # ("captured", mods, vk) / ("capture_cancel",)
         self.scripts = ()                     # tuple of _Compiled, replaced as a whole
+        self.toggles = ()                     # ((vk, mods, programs, id), ...) of every script with an on/off key
         self.capture = False
         self.chat = False                     # Enter pressed in a script's program: paused until the next Enter
         self._down = set()
@@ -439,12 +446,13 @@ class MacroEngine:
     def running(self):
         return self._on
 
-    def set_scripts(self, compiled):
+    def set_scripts(self, compiled, toggles=()):
         self.scripts = tuple(compiled)
+        self.toggles = tuple(toggles)
         self.sync()
 
     def sync(self):
-        want = bool(self.scripts) or self.capture
+        want = bool(self.scripts) or bool(self.toggles) or self.capture
         if want and not self.running:
             self._start()
         elif not want and self.running:
@@ -485,7 +493,7 @@ class MacroEngine:
             scripts = self.scripts
             if scripts:
                 exe = (vs.foreground_exe() or "").lower()
-                if any(exe in sc.programs for sc in scripts):
+                if any(not sc.programs or exe in sc.programs for sc in scripts):
                     self.chat = (not self.chat) if vk == VK_RETURN else False
             return False
         if vk in self._swallowed:
@@ -501,6 +509,22 @@ class MacroEngine:
             return False                        # the real key (and its auto-repeat) goes through
         if up or repeat or vk in MODIFIER_VKS:
             return False
+        toggles = self.toggles
+        if toggles and any(t[0] == vk for t in toggles):
+            mods = vs.current_mods()
+            exe = None
+            for tvk, tmods, progs, sid in toggles:
+                if tvk != vk or tmods != mods:
+                    continue
+                if exe is None:
+                    exe = (vs.foreground_exe() or "").lower()
+                if progs and exe not in progs:
+                    continue
+                if self.chat and not tmods:
+                    return False                # typing in the game chat: a plain key stays a letter
+                self._swallowed.add(vk)
+                self.events.put(("toggle", sid))
+                return True
         scripts = self.scripts
         if not scripts or not any(s.vk == vk for s in scripts):
             return False
@@ -511,7 +535,7 @@ class MacroEngine:
                 continue
             if exe is None:
                 exe = (vs.foreground_exe() or "").lower()
-            if exe not in s.programs:
+            if s.programs and exe not in s.programs:      # no programs = everywhere
                 continue
             if s.enter_block and self.chat:
                 return False                    # chat typing: the key goes through as it is
@@ -570,7 +594,7 @@ class MacroEngine:
                 self._busy = False
 
     def _in_program(self, s):
-        return (vs.foreground_exe() or "").lower() in s.programs
+        return not s.programs or (vs.foreground_exe() or "").lower() in s.programs
 
     @staticmethod
     def _wait_until(t):
@@ -651,15 +675,25 @@ class MacroController:
         return None
 
     def apply(self):
-        active = [_Compiled(s) for s in self.saved_scripts() if s["enabled"] and not problems(s)]
-        self.engine.set_scripts(active)
+        saved = self.saved_scripts()
+        active = [_Compiled(s) for s in saved if s["enabled"] and not problems(s)]
+        toggles = [(s["toggle_vk"], s["toggle_mods"], frozenset(s["programs"]), s["id"])
+                   for s in saved if s["toggle_vk"]]
+        self.engine.set_scripts(active, toggles)
 
-    def _save(self, lst, user=False):
-        self.app._set_setting("macros", {"scripts": [normalize(s) for s in lst]}, user=user)
+    def notify_on(self):
+        raw = self.app.settings.get("macros", {})
+        return bool(raw.get("notify", True)) if isinstance(raw, dict) else True
+
+    def _save(self, lst, user=False, notify=None):
+        d = {"scripts": [normalize(s) for s in lst],
+             "notify": self.notify_on() if notify is None else bool(notify)}
+        self.app._set_setting("macros", d, user=user)
 
     # ---- settings draft (see recorder.py) ----
     def begin_edit(self):
         self.draft = self.saved_scripts()
+        self.draft_notify = self.notify_on()
 
     def discard(self):
         self.draft = None
@@ -672,7 +706,7 @@ class MacroController:
         self._end_capture()
         if new is None:
             return
-        self._save(new)
+        self._save(new, notify=getattr(self, "draft_notify", None))
         self.apply()
         self.log("macros settings saved: %d script(s)" % len(new))
 
@@ -698,6 +732,22 @@ class MacroController:
         self.apply()
         self.log("macros: %s %s" % (s["name"] or sid, "on" if on else "off"))
 
+    def _toggle(self, sid):
+        """The on / off key of a script was pressed in one of its programs (or anywhere)."""
+        lst = self.saved_scripts()
+        s = self._find(lst, sid)
+        if s is None:
+            return
+        on = not s["enabled"]
+        self.set_enabled(sid, on)
+        if not self.notify_on():
+            return
+        name = s["name"] or M("default_name", lst.index(s) + 1)
+        try:
+            self.app._notify(name, M("toggled_on" if on else "toggled_off"), kind="done" if on else "error")
+        except Exception:
+            pass
+
     # ---- events ----
     def _loop(self):
         try:
@@ -708,6 +758,8 @@ class MacroController:
                     break
                 if ev[0] in ("captured", "capture_cancel"):
                     self._capture_done(ev)
+                elif ev[0] == "toggle":
+                    self._toggle(ev[1])
         except Exception:
             self.log("macros loop:\n" + traceback.format_exc())
 
@@ -751,11 +803,15 @@ class MacroController:
         if s is None or ev[0] != "captured":
             return
         mods, vk = ev[1], ev[2]
-        if target[0] == "trigger":
+        if target[0] in ("trigger", "toggle"):
             if vk in MODIFIER_VKS:
                 self.app._info(M("tab"), M("trig_bad"))
                 return
-            s["trigger_vk"], s["trigger_mods"] = vk, mods
+            other = ("trigger_vk", "trigger_mods") if target[0] == "toggle" else ("toggle_vk", "toggle_mods")
+            if s[other[0]] == vk and s[other[1]] == mods:
+                self.app._info(M("tab"), M("toggle_same"))
+                return
+            s[target[0] + "_vk"], s[target[0] + "_mods"] = vk, mods
         else:
             s["steps"].append([mods, vk])
         self._rebuild()
@@ -771,6 +827,8 @@ class MacroController:
         top = tk.Frame(parent, bg=th["sf"])
         top.pack(fill="x", padx=pad, pady=(0, 8))
         self.app._accent_btn(top, M("new"), self._new_script).pack(side="left")
+        self.app._setting_check(parent, M("notify"), getattr(self, "draft_notify", self.notify_on()),
+                                lambda v: setattr(self, "draft_notify", bool(v)), pad)
         if not self.draft:
             tk.Label(parent, text=M("empty"), bg=th["sf"], fg=th["dim"], font=th["font"]).pack(
                 anchor="w", padx=pad, pady=(12, 0))
@@ -856,6 +914,15 @@ class MacroController:
         for p in s["programs"]:
             chip(r, p, lambda p=p: (s["programs"].remove(p), self._rebuild()), mono=False)
         add = link(r, M("add_prog"), lambda: self._prog_menu(s, add, win))
+
+        # hotkeys: turn the script on / off, in its programs (or anywhere without any)
+        r = line(M("toggle"))
+        if s["toggle_vk"]:
+            chip(r, vs.hotkey_label(s["toggle_mods"], s["toggle_vk"]),
+                 lambda: (s.__setitem__("toggle_vk", 0), s.__setitem__("toggle_mods", 0), self._rebuild()))
+        else:
+            chip(r, M("not_set_pl"), mono=False)
+        link(r, M("change"), lambda: self._start_capture("toggle", s["id"]))
 
         # Enter rule
         r = tk.Frame(card, bg=bg)
