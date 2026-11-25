@@ -744,7 +744,7 @@ class MacroController:
             return
         name = s["name"] or M("default_name", lst.index(s) + 1)
         try:
-            self.app._notify(name, M("toggled_on" if on else "toggled_off"), kind="done" if on else "error")
+            self.app._notify(name, M("toggled_on" if on else "toggled_off"), kind="on" if on else "off")
         except Exception:
             pass
 

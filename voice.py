@@ -240,12 +240,17 @@ STATE_COLORS = {
     "setup": ((255, 176, 48), (255, 84, 72)),
     "done": ((64, 232, 160), (255, 204, 92)),     # a torrent download finished
     "started": ((0, 224, 255), (120, 150, 255)),  # a .torrent was opened
+    "on": ((46, 224, 150), (0, 224, 255)),        # a key script was switched on
+    "off": ((150, 156, 168), (90, 96, 110)),      # ... or off
 }
-LABEL_STATES = {"error", "setup", "done", "started"}
+LABEL_STATES = {"error", "setup", "done", "started", "on", "off"}
+# instant notices: shown at once (no fade-in), replace whatever notice is on screen,
+# never queue behind it (user 2026-11-25: the script on/off notice must react at once)
+INSTANT_STATES = {"on", "off"}
 # programs whose text fields get the text typed in instead of pasted (voice -> game chat)
 TYPE_INTO_EXES = {"ts4_x64.exe", "ts4_dx9_x64.exe", "ts4.exe"}
 HIDE_AFTER = {"pasted": 2.2, "copied": 3.0, "answer": 4.0, "nothing": 1.6, "cancel": 1.0,
-              "error": 7.0, "setup": 8.0, "done": 6.0, "started": 4.0}
+              "error": 7.0, "setup": 8.0, "done": 6.0, "started": 4.0, "on": 1.4, "off": 1.4}
 
 # ---------------------------------------------------------------------------
 #  Win32 для оверлея
@@ -432,6 +437,8 @@ class Overlay:
                 self.rec = rec
             self.t_state = time.time()
             self.target_alpha = 1.0
+            if state in INSTANT_STATES:
+                self.alpha = 1.0               # no fade-in: the press must show at once
             self.hide_at = time.time() + HIDE_AFTER[state] if state in HIDE_AFTER else 0
             self._set_click(clickable)
             x, y = self._pos()
@@ -440,6 +447,8 @@ class Overlay:
             if not self._ticking:
                 self._ticking = True
                 self._tick()
+            elif state in INSTANT_STATES:
+                self._blit(self._render(time.time()))   # draw now, not at the next tick
         except Exception as ex:
             self.log("overlay show failed: %r" % ex)
 
@@ -627,6 +636,22 @@ class Overlay:
                 rw = oc - 7.5 * u + 5 * u * wave
                 d.ellipse((oc - rw, oc - rw, oc + rw, oc + rw), outline=c2 + (int(200 * (1 - wave)),),
                           width=max(1, int(1.6 * u)))
+        elif st in ("on", "off"):
+            # key script switched: a toggle switch whose knob snaps to its side in 0.12 s
+            u = s * k
+            q = min(1.0, (time.time() - self.t_state) / 0.12)
+            q = 1 - (1 - q) ** 3                                   # ease-out
+            on = st == "on"
+            tw, th = 11 * u, 6.5 * u
+            box = (oc - tw, oc - th, oc + tw, oc + th)
+            if on:
+                d.rounded_rectangle(box, radius=th, fill=c1 + (255,))
+            else:
+                d.rounded_rectangle(box, radius=th, outline=c1 + (255,), width=max(2, int(2 * u)))
+            span = tw - th
+            x = oc + (span * (2 * q - 1) if on else span * (1 - 2 * q))
+            r = th - 2.2 * u
+            d.ellipse((x - r, oc - r, x + r, oc + r), fill=((255, 255, 255) if on else c1) + (255,))
         elif st == "started":
             # a download began: arrows keep dropping into the tray, no ring (that means done)
             u = s * k
@@ -1675,9 +1700,22 @@ class VoiceController:
         """Show a message from another feature on the dictation indicator. It never
         interrupts a dictation: while one is running (or its result is still on
         screen) the message waits."""
+        if state in INSTANT_STATES:
+            # never queue: replace the notice on screen at once; only a running dictation
+            # holds it back, and then only the newest one waits (older ones are dropped)
+            self._instant_gen = getattr(self, "_instant_gen", 0) + 1
+            return self._notify_instant(self._instant_gen, state, title, sub, on_click, 0)
         busy = self.state != "idle" or self.overlay._ticking
         if busy and _tries < 600:
             self.root.after(1000, lambda: self.notify(state, title, sub, on_click, _tries + 1))
+            return
+        self.overlay.show(state, title, sub, clickable=on_click is not None, on_click=on_click)
+
+    def _notify_instant(self, gen, state, title, sub, on_click, tries):
+        if gen != getattr(self, "_instant_gen", 0):
+            return                                   # a newer press superseded this one
+        if self.state != "idle" and tries < 600:
+            self.root.after(200, lambda: self._notify_instant(gen, state, title, sub, on_click, tries + 1))
             return
         self.overlay.show(state, title, sub, clickable=on_click is not None, on_click=on_click)
 
