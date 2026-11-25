@@ -17,6 +17,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 
 import lan
+import voice_sys as vs
 
 LSTR = {
     "tab": {"en": "Devices", "ru": "Устройства", "es": "Dispositivos", "pt": "Dispositivos", "de": "Geräte", "fr": "Appareils", "zh": "设备"},
@@ -329,11 +330,12 @@ class LanController:
         self._fw = None                    # None unknown / True rule present / False missing
         self._browsers = {}
         self._asks = []                    # (PairRequest, Toplevel)
-        self._ui_q = queue.Queue()
+        self._ui_q = vs.WakeQueue()
         self._tray_sig = None
+        self._ticking = self._draining = False
+        app.on_wake(self._drain)           # queued work and node events wake it
         if self.saved("enabled"):
             self._start()
-        self.root.after(500, self._tick)
 
     # ---- settings
     def saved(self, k):
@@ -379,11 +381,13 @@ class LanController:
             except Exception:
                 self.log("lan init failed:\n" + traceback.format_exc())
                 return
+            self.node.events = vs.WakeQueue()
         try:
             self.node.start()
         except OSError as ex:
             self.log("lan start failed: %r" % ex)
         self._check_firewall(ask=False)
+        self._tick_on()
 
     def _stop(self):
         if self.node is not None:
@@ -414,8 +418,25 @@ class LanController:
     def _ui(self, fn):
         self._ui_q.put(fn)
 
-    # ---- timer
+    # ---- timer: only while the link runs (devices go offline by time, without an event)
+    def _tick_on(self):
+        if not self._ticking:
+            self._ticking = True
+            self.root.after(500, self._tick)
+
     def _tick(self):
+        self._drain()
+        if self._asks:
+            self.root.after(500, self._tick)
+        elif self.node is not None and self.node.running:
+            self.root.after(3000, self._tick)       # a device unheard for 10 s turns offline
+        else:
+            self._ticking = False
+
+    def _drain(self):
+        if self._draining:                 # a dialog opened from here pumps events
+            return
+        self._draining = True
         try:
             while True:
                 try:
@@ -452,7 +473,8 @@ class LanController:
                         self.app._repopup()
         except Exception:
             self.log("lan tick failed:\n" + traceback.format_exc())
-        self.root.after(500, self._tick)
+        finally:
+            self._draining = False
 
     def snapshot(self):
         if self.node is None or not self.node.running:
@@ -598,6 +620,7 @@ class LanController:
 
     # ---- pairing: the other side asks us
     def _show_ask(self, req):
+        self._tick_on()
         c = colors()
         app = self.app
         win = app._dialog(L("ask_t"), 440, 262)

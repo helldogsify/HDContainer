@@ -418,7 +418,7 @@ def _mod_vks(mods):
 class MacroEngine:
     def __init__(self, log):
         self.log = log
-        self.events = queue.Queue()           # ("captured", mods, vk) / ("capture_cancel",) / ("fired", id)
+        self.events = vs.WakeQueue()          # ("captured", mods, vk) / ("capture_cancel",)
         self.scripts = ()                     # tuple of _Compiled, replaced as a whole
         self.capture = False
         self.chat = False                     # Enter pressed in a script's program: paused until the next Enter
@@ -430,16 +430,14 @@ class MacroEngine:
         self._busy = False
         self._play_q = queue.Queue()
         self._hook = None
-        self._tid = 0
-        self._thread = None
-        self._proc = vs._HOOKPROC(self._cb)
+        self._on = False
         self._warned_uipi = False
         threading.Thread(target=self._player, daemon=True, name="hdc-macro-play").start()
 
     # ---- hook lifecycle (tk thread) ----
     @property
     def running(self):
-        return self._thread is not None and self._thread.is_alive()
+        return self._on
 
     def set_scripts(self, compiled):
         self.scripts = tuple(compiled)
@@ -452,52 +450,26 @@ class MacroEngine:
         elif not want and self.running:
             self.stop()
 
+    # 1.17.0: no hook of its own any more: the engine is the newest handler of the shared
+    # keyboard hook (voice_sys.HUB), so it is asked first, as its own later-installed hook
+    # was, and the hub ignores injected keys as this hook did.
     def _start(self):
-        ready = threading.Event()
-
-        def run():
-            self._tid = vs.kernel32.GetCurrentThreadId()
-            self._hook = vs.user32.SetWindowsHookExW(vs.WH_KEYBOARD_LL, self._proc,
-                                                     vs.kernel32.GetModuleHandleW(None), 0)
-            if not self._hook:
-                self.log("macros: keyboard hook failed: %d" % ctypes.get_last_error())
-            ready.set()
-            msg = vs._MSG()
-            while vs.user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                pass
-            if self._hook:
-                vs.user32.UnhookWindowsHookEx(self._hook)
-                self._hook = None
         self._down.clear()
         self._swallowed.clear()
         self._passing.clear()
         self.chat = False
-        self._thread = threading.Thread(target=run, daemon=True, name="hdc-macro-hook")
-        self._thread.start()
-        ready.wait(2.0)
+        self._hook = vs.HUB.add(self)
+        self._on = True
         self.log("macros: hook %s, %d active script(s)" % ("on" if self._hook else "FAILED", len(self.scripts)))
 
     def stop(self):
-        t = self._thread
-        if t is None:
+        if not self._on:
             return
-        if self._tid:
-            vs.user32.PostThreadMessageW(self._tid, vs.WM_QUIT, 0, 0)
-        t.join(1.0)
-        self._thread, self._tid = None, 0
+        vs.HUB.remove(self)
+        self._on, self._hook = False, None
         self.log("macros: hook off")
 
-    # ---- hook callback (hook thread: no tk, answer fast) ----
-    def _cb(self, code, wp, lp):
-        try:
-            if code == 0:
-                kb = vs.KBDLLHOOKSTRUCT.from_address(lp)
-                if not (kb.flags & vs.LLKHF_INJECTED) and self._handle(
-                        kb.vkCode, wp in (vs.WM_KEYUP, vs.WM_SYSKEYUP)):
-                    return 1
-        except Exception:
-            pass
-        return vs.user32.CallNextHookEx(None, code, wp, lp)
+    # ---- key handler (hook thread: no tk, answer fast) ----
 
     def _handle(self, vk, up):
         repeat = (not up) and vk in self._down
@@ -635,7 +607,6 @@ class MacroEngine:
             if not ok and not self._warned_uipi:
                 self._warned_uipi = True
                 self.log("macros: Windows dropped the keys (program runs as administrator?)")
-            self.events.put(("fired", s.id))
         finally:
             vs.winmm.timeEndPeriod(1)
 
@@ -662,7 +633,7 @@ class MacroController:
         self._hold_refresh = {}               # script id -> redraw of its hold rating
         self.engine = MacroEngine(log)
         self.apply()
-        self.root.after(50, self._loop)
+        app.on_wake(self._loop)               # engine events wake it (no polling)
 
     # ---- data ----
     def saved_scripts(self):
@@ -739,7 +710,6 @@ class MacroController:
                     self._capture_done(ev)
         except Exception:
             self.log("macros loop:\n" + traceback.format_exc())
-        self.root.after(50, self._loop)
 
     def shutdown(self):
         try:

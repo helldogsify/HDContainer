@@ -415,12 +415,12 @@ class ScreenshotController:
         self._reserved = set()          # history names given out (see _new_path)
         self._refresh_due = False       # a debounced history-window refresh is scheduled
         self._io_q = queue.Queue()
-        self._ui_q = queue.Queue()      # callables for the tk thread, posted by the worker
+        self._ui_q = vs.WakeQueue()     # callables for the tk thread, posted by the worker
         threading.Thread(target=self._io_worker, daemon=True, name="hdc-shot-io").start()
         self.hook = vs.KeyHook(log)       # program exclusions: vs.HOTKEY_EXCLUDE, shared by all hotkeys
         self.hook.start()
         self.register_hotkey()
-        self.root.after(25, self._loop)
+        app.on_wake(self._loop)         # hook events and worker results wake it (no polling)
         self.root.after(30000, self._cleanup_tick)
 
     # ---- settings (draft while the Settings window is open, see voice.py) ----
@@ -493,7 +493,6 @@ class ScreenshotController:
                 fn()
         except Exception:
             self.log("screenshot loop:\n" + traceback.format_exc())
-        self.root.after(25, self._loop)
 
     # ---- taking a screenshot ----
     def shoot(self):

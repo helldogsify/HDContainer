@@ -128,7 +128,8 @@ ICON_RETRY_S = (5, 30)         # seconds before asking again for a picture the s
 HEADER_EXTRA = 48          # an open box's header is this much denser (0..255), setting it apart
 DATA_VERSION = 3
 TICK_MS = 50
-SCAN_EVERY = 2.0
+SCAN_EVERY = 2.0        # folders without a change notification are listed this often
+FULL_SCAN_EVERY = 60.0  # every folder, in case a notification was missed
 
 # ---------------------------------------------------------------------------
 # win32
@@ -300,6 +301,12 @@ _d(kernel32.VirtualAllocEx, VP, [VP, VP, ctypes.c_size_t, DWORD, DWORD])
 _d(kernel32.VirtualFreeEx, BOOL, [VP, VP, ctypes.c_size_t, DWORD])
 _d(kernel32.WriteProcessMemory, BOOL, [VP, VP, VP, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
 _d(kernel32.ReadProcessMemory, BOOL, [VP, VP, VP, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+_d(kernel32.FindFirstChangeNotificationW, VP, [wintypes.LPCWSTR, BOOL, DWORD])
+_d(kernel32.FindNextChangeNotification, BOOL, [VP])
+_d(kernel32.FindCloseChangeNotification, BOOL, [VP])
+_d(kernel32.CreateEventW, VP, [VP, BOOL, BOOL, wintypes.LPCWSTR])
+_d(kernel32.SetEvent, BOOL, [VP])
+_d(kernel32.WaitForMultipleObjects, DWORD, [DWORD, ctypes.POINTER(VP), BOOL, DWORD])
 _d(kernel32.SetFileAttributesW, BOOL, [wintypes.LPCWSTR, DWORD])
 _d(kernel32.GlobalLock, VP, [VP])
 _d(kernel32.GlobalUnlock, BOOL, [VP])
@@ -448,10 +455,21 @@ def box_parent(host, dv):
 _MONS = {"t": 0.0, "v": None}
 
 
+def _screens_key():
+    # virtual screen, monitor count and the primary work area (taskbar moved / auto-hidden):
+    # plain calls instead of a Python callback per monitor
+    wa = wintypes.RECT()
+    user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)            # SPI_GETWORKAREA
+    return tuple(user32.GetSystemMetrics(i) for i in (76, 77, 78, 79, 80)) + (wa.left, wa.top, wa.right, wa.bottom)
+
+
 def monitors():
-    """[(monitor rect, work rect)] in screen pixels (cached for a second)."""
-    if _MONS["v"] is not None and time.time() - _MONS["t"] < 1.0:
+    """[(monitor rect, work rect)] in screen pixels. Cached while the virtual screen and the
+    monitor count and the primary work area stay the same, for 5 s at most."""
+    key = _screens_key()
+    if _MONS["v"] is not None and _MONS.get("k") == key and time.time() - _MONS["t"] < 5.0:
         return _MONS["v"]
+    _MONS["k"] = key
     res = []
 
     def cb(hmon, _hdc, _rc, _l):
@@ -1474,10 +1492,24 @@ class Box:
 
         def work():
             try:
-                self.scan_done = (folder, Box.scan_folder(folder), t0)
+                self.scan_result(folder, Box.scan_folder(folder), t0)
             finally:
                 self._scanning = False
         threading.Thread(target=work, daemon=True).start()
+
+    def scan_result(self, folder, out, t0):
+        """Any thread: hand a listing to the tk thread, unless it is what the box shows."""
+        cur = self.scan_done
+        if cur is not None and cur[2] > t0:                 # a newer listing is waiting already
+            return
+        if t0 < getattr(self, "_applied_t0", 0.0):          # older than the one shown
+            return
+        sig = self.sig
+        if out is not None and sig is not None and len(out) == len(sig) \
+                and {(n, m) for n, _p, _d, m in out} == set(sig):
+            return
+        self.scan_done = (folder, out, t0)
+        _wake()
 
     def refresh_items(self, scanned=False):
         if scanned is False:
@@ -2174,15 +2206,111 @@ class Box:
 
 
 # ---------------------------------------------------------------------------
+# change notifications for the box folders (one thread, no polling)
+# ---------------------------------------------------------------------------
+_FN_FILTER = 0x1 | 0x2 | 0x4 | 0x8 | 0x10     # file name, dir name, attributes, size, last write
+_INVALID = VP(-1).value
+
+
+class FolderWatch:
+    """Box folders used to be listed every 2 s each (a thread and a directory listing per
+    box). Now one thread waits on a change notification per folder and lists a folder only
+    when it changed; the boxes tick lists every folder once a minute anyway."""
+
+    def __init__(self, on_change, log):
+        self.on_change = on_change          # called on the watch thread with the folder
+        self.log = log
+        self._want = set()
+        self._live = set()                  # folders with a working notification
+        self._lock = threading.Lock()
+        self._stop = False
+        self._ev = kernel32.CreateEventW(None, False, False, None)
+        threading.Thread(target=self._run, daemon=True, name="hdc-box-watch").start()
+
+    def set_folders(self, folders):
+        with self._lock:
+            self._want = set(folders)
+        kernel32.SetEvent(self._ev)
+
+    def watched(self):
+        with self._lock:
+            return set(self._live)
+
+    def stop(self):
+        self._stop = True
+        kernel32.SetEvent(self._ev)
+
+    def _run(self):
+        handles = {}
+        try:
+            while not self._stop:
+                with self._lock:
+                    want = set(self._want)
+                for f in list(handles):
+                    if f not in want:
+                        kernel32.FindCloseChangeNotification(handles.pop(f))
+                for f in want:
+                    if f not in handles and len(handles) < 63:
+                        h = kernel32.FindFirstChangeNotificationW(f, False, _FN_FILTER)
+                        if h and h != _INVALID:
+                            handles[f] = h
+                with self._lock:
+                    self._live = set(handles)
+                keys = list(handles)
+                arr = (VP * (1 + len(keys)))(self._ev, *[handles[k] for k in keys])
+                r = kernel32.WaitForMultipleObjects(len(arr), arr, False, 0xFFFFFFFF)
+                if r == 0 or self._stop:
+                    continue                                   # the folder list changed
+                i = r - 1
+                if 0 <= i < len(keys):
+                    f = keys[i]
+                    time.sleep(0.3)                            # a copy of many files: one listing
+                    if not kernel32.FindNextChangeNotification(handles[f]):
+                        kernel32.FindCloseChangeNotification(handles.pop(f))   # folder gone: try again later
+                    try:
+                        self.on_change(f)
+                    except Exception as ex:
+                        self.log("boxes: folder change handler failed: %r" % ex)
+                else:                                          # WAIT_FAILED: start over
+                    for h in handles.values():
+                        kernel32.FindCloseChangeNotification(h)
+                    handles.clear()
+                    time.sleep(1.0)
+        finally:
+            for h in handles.values():
+                kernel32.FindCloseChangeNotification(h)
+            with self._lock:
+                self._live = set()
+
+
+# ---------------------------------------------------------------------------
 # double-click on the empty desktop (low-level mouse hook on its own thread)
 # ---------------------------------------------------------------------------
+WINEVENTPROC = ctypes.WINFUNCTYPE(None, VP, DWORD, HWND, ctypes.c_long, ctypes.c_long, DWORD, DWORD)
+_d(user32.SetWinEventHook, VP, [DWORD, DWORD, VP, WINEVENTPROC, DWORD, DWORD, DWORD])
+_d(user32.UnhookWinEvent, BOOL, [VP])
+_d(user32.GetAsyncKeyState, ctypes.c_short, [ctypes.c_int])
+_d(user32.DispatchMessageW, VP, [VP])
+_d(user32.GetForegroundWindow, HWND, [])
+EVENT_SYSTEM_FOREGROUND = 0x0003
+DESKTOP_CLASSES = ("Progman", "WorkerW")
+
+
 class DesktopDoubleClick:
+    """A low-level mouse hook calls into Python on every mouse event of the whole system
+    (and holds the pointer while the GIL is busy), so it is installed only while the desktop
+    is the foreground window. An out-of-context foreground WinEvent (asynchronous, only on
+    foreground switches) installs and removes it; the click that brought the desktop to the
+    front is taken as the first click of a double-click."""
+
     def __init__(self, log):
         self.log = log
         self.events = queue.Queue()
         self._tid = 0
         self._last = (0, 0, 0)
         self._proc = HOOKPROC(self._cb)
+        self._ev_proc = WINEVENTPROC(self._on_foreground)
+        self._hook = None
 
     def _cb(self, code, wp, lp):
         if code == 0 and wp == WM_LBUTTONDOWN:
@@ -2192,24 +2320,53 @@ class DesktopDoubleClick:
             if t - lt <= user32.GetDoubleClickTime() and abs(x - lx) <= 4 and abs(y - ly) <= 4:
                 self.events.put((x, y))
                 self._last = (0, 0, 0)
+                _wake()
             else:
                 self._last = (t, x, y)
         return user32.CallNextHookEx(None, code, wp, lp)
+
+    def _set_hook(self, on):
+        """Hook thread only."""
+        if on and not self._hook:
+            self._hook = user32.SetWindowsHookExW(14, self._proc, _HINST, 0)      # WH_MOUSE_LL
+            if not self._hook:
+                self.log("boxes: mouse hook failed: %d" % ctypes.get_last_error())
+        elif not on and self._hook:
+            user32.UnhookWindowsHookEx(self._hook)
+            self._hook = None
+            self._last = (0, 0, 0)
+
+    def _on_foreground(self, _hook, _ev, hwnd, _obj, _child, _tid, ms):
+        try:
+            desk = bool(hwnd) and _class_of(hwnd) in DESKTOP_CLASSES
+            if desk and not self._hook:
+                self._set_hook(True)
+                if user32.GetAsyncKeyState(0x01) & 0x8000:            # a click brought the desktop up
+                    pt = POINT()
+                    user32.GetCursorPos(ctypes.byref(pt))
+                    self._last = (ms, pt.x, pt.y)
+            elif not desk and self._hook:
+                self._set_hook(False)
+        except Exception:
+            pass
 
     def start(self):
         ready = threading.Event()
 
         def run():
             self._tid = kernel32.GetCurrentThreadId()
-            hook = user32.SetWindowsHookExW(14, self._proc, _HINST, 0)      # WH_MOUSE_LL
-            if not hook:
-                self.log("boxes: mouse hook failed: %d" % ctypes.get_last_error())
+            ev = user32.SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, None,
+                                        self._ev_proc, 0, 0, 0)               # WINEVENT_OUTOFCONTEXT
+            fg = user32.GetForegroundWindow()
+            # no foreground event support, or the desktop / nothing is in front now: hook on
+            self._set_hook(not ev or not fg or _class_of(fg) in DESKTOP_CLASSES)
             ready.set()
             msg = (ctypes.c_byte * 64)()
             while user32.GetMessageW(msg, None, 0, 0) > 0:
-                pass
-            if hook:
-                user32.UnhookWindowsHookEx(hook)
+                user32.DispatchMessageW(msg)
+            if ev:
+                user32.UnhookWinEvent(ev)
+            self._set_hook(False)
         threading.Thread(target=run, daemon=True, name="hdc-box-dblclick").start()
         ready.wait(2.0)
 
@@ -2274,6 +2431,17 @@ def _nearest(v, cands, reach):
 # the manager
 # ---------------------------------------------------------------------------
 _ACTIVE = {"mgr": None}
+
+
+def _wake():
+    """Any thread: let the tk thread handle new results now instead of at the next tick."""
+    mgr = _ACTIVE["mgr"]
+    kick = getattr(getattr(mgr, "app", None), "kick", None)
+    if kick is not None:
+        try:
+            kick()
+        except Exception:
+            pass
 
 
 def _class_wndproc(hwnd, msg, wp, lp):
@@ -2342,6 +2510,16 @@ class BoxManager:
         for d in self.data["boxes"]:
             self.boxes.append(Box(self, d))
         self._apply_quickhide()
+        self._dh = None                     # (host, defview) found last time, see _desktop_host
+        self.screens_dirty, self._screens_t = True, 0.0
+        self._full_scan_at = 0.0
+        self._watch_set = None
+        self.fw = None
+        try:
+            self.fw = FolderWatch(self._folder_changed, log)
+        except Exception as ex:
+            log("boxes: folder watch unavailable: %r" % ex)
+        app.on_wake(self._results)
         self.root.after(600, self._tick)
 
     # ---- persistence ----
@@ -2463,14 +2641,54 @@ class BoxManager:
         try:
             self._ensure_windows()
             now = time.time()
+            self._results()
+            if now >= self._scan_at:
+                self._scan_at = now + SCAN_EVERY
+                full = now >= self._full_scan_at
+                if full:
+                    self._full_scan_at = now + FULL_SCAN_EVERY
+                watched = set()
+                if self.fw is not None:
+                    want = {b.folder for b in self.boxes if b.folder}
+                    if want != self._watch_set:
+                        self._watch_set = want
+                        self.fw.set_folders(want)
+                    watched = self.fw.watched()
+                for b in self.boxes:
+                    if b.hwnd and not b.reorder and (full or b.folder not in watched):
+                        b.scan_async()
+            if self.icons.dirty:
+                self.icons.dirty = False
+                for b in self.boxes:
+                    if b.hwnd and not b.rolled():
+                        b.render()
+                self._refresh_preview()
+            if self._save_at and now >= self._save_at:
+                self.save()
+        except Exception as ex:
+            self.log("boxes tick failed: %r" % ex)
+        # idle: 4 checks a second while icons are being made, 2 otherwise (Explorer
+        # restarts, other windows over the boxes); scan results and double-clicks wake it
+        if any(b.anim for b in self.boxes):
+            delay = TICK_MS
+        else:
+            delay = 250 if self.icons.pending else 500
+        self.root.after(delay, self._tick)
+
+    def _results(self):
+        """Background scan results and desktop double-clicks (also run at once on a wake)."""
+        if not self.boxes:
+            return
+        try:
             changed = False
             for b in self.boxes:                                   # results of background scans
                 res = getattr(b, "scan_done", None)
                 if res is None:
                     continue
                 b.scan_done = None
-                if res[2] < getattr(b, "_sync_scan_t", 0):
+                if res[2] < getattr(b, "_sync_scan_t", 0) or res[2] < getattr(b, "_applied_t0", 0.0):
                     continue
+                b._applied_t0 = res[2]
                 if b.hwnd and not b.reorder and res[0] == b.folder and b.refresh_items(scanned=res[1]):
                     changed = True
                     if b.rolled():
@@ -2480,29 +2698,41 @@ class BoxManager:
                         b.animate_to(b.target_h())                 # items came or went: the height follows
             if changed:
                 self._check_moved_icons()
-            if now >= self._scan_at:
-                self._scan_at = now + SCAN_EVERY
-                for b in self.boxes:
-                    if b.hwnd and not b.reorder:
-                        b.scan_async()
-            if self.icons.dirty:
-                self.icons.dirty = False
-                for b in self.boxes:
-                    if b.hwnd and not b.rolled():
-                        b.render()
-                self._refresh_preview()
             if self.dbl is not None:
                 while not self.dbl.events.empty():
                     self._desktop_dblclick(*self.dbl.events.get())
-            if self._save_at and now >= self._save_at:
-                self.save()
         except Exception as ex:
-            self.log("boxes tick failed: %r" % ex)
-        self.root.after(TICK_MS if any(b.anim for b in self.boxes) else 250, self._tick)
+            self.log("boxes results failed: %r" % ex)
+
+    def _folder_changed(self, folder):
+        """Watch thread: list the boxes of a changed folder (no tk here)."""
+        for b in list(self.boxes):
+            if b.folder == folder and b.hwnd and not b.reorder:
+                t0 = time.time()
+                b.scan_result(folder, Box.scan_folder(folder), t0)
+
+    def _desktop_host(self):
+        """desktop_host(), but the full search (a Python callback for each of the ~200-300
+        top-level windows, 0.3 ms) only when the icon view found last time is gone or moved
+        to another parent (Explorer restarted, the desktop was split into a WorkerW)."""
+        dh = self._dh
+        if dh is not None and user32.IsWindow(dh[1]) and user32.GetParent(dh[1]) == dh[0]:
+            return dh
+        dh = desktop_host()
+        self._dh = dh if dh[0] else None
+        return dh
 
     def _ensure_windows(self):
-        sig = screen_signature()
-        host, dv = desktop_host()
+        # screens are re-read after WM_DISPLAYCHANGE / WM_SETTINGCHANGE (the app sets
+        # screens_dirty) and every 10 s in case a broadcast was missed, not twice a second
+        now = time.monotonic()
+        if self.screens_dirty or now - self._screens_t >= 10.0:
+            self.screens_dirty, self._screens_t = False, now
+            _MONS["v"] = None
+            sig = screen_signature()
+        else:
+            sig = self.sig
+        host, dv = self._desktop_host()
         if not host:
             return
         host = box_parent(host, dv)
@@ -3620,6 +3850,8 @@ class BoxManager:
 
     # ---- shutdown ----
     def shutdown(self):
+        if self.fw is not None:
+            self.fw.stop()
         if self.dbl is not None:
             self.dbl.stop()
         if self.hidden:

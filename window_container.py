@@ -39,7 +39,6 @@ import os
 import sys
 import json
 import re
-import hashlib
 import time
 import tempfile
 import shutil
@@ -48,86 +47,113 @@ import threading
 import traceback
 import faulthandler
 import winreg
-import ssl
-import webbrowser
-import urllib.request
 import ctypes
 from ctypes import wintypes
-import tkinter as tk
-import tkinter.font as tkfont
 import jsonstore
 
+# The --watchdog process only waits for the main one and puts windows back (ctypes and
+# json): it skips tkinter and every feature module (Pillow, libtorrent, ...), which made
+# it a full 32 MB copy of the app. The static imports stay, so PyInstaller still sees them.
+_LIGHT = "--watchdog" in sys.argv[1:]
+if not _LIGHT:
+    import tkinter as tk
+    import tkinter.font as tkfont
+
 try:                                   # Pillow: аватар из любой картинки + чёткие иконки
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     from PIL import Image, ImageDraw, ImageTk
     HAVE_PIL = True
 except Exception:
     HAVE_PIL = False
 
 try:                                   # голосовой ввод (горячая клавиша -> Whisper -> LLM)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import voice
 except Exception:
     voice = None
     _VOICE_IMPORT_ERR = traceback.format_exc()
 
 try:                                   # «Конвертировать в» в меню Проводника
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import convert
 except Exception:
     convert = None
     _CONVERT_IMPORT_ERR = traceback.format_exc()
 
 try:                                   # torrent downloader (libtorrent)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import torrents
 except Exception:
     torrents = None
     _TORRENTS_IMPORT_ERR = traceback.format_exc()
 
 try:                                   # desktop boxes (panels on the desktop that hold files)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import boxes
 except Exception:
     boxes = None
     _BOXES_IMPORT_ERR = traceback.format_exc()
 
 try:                                   # screenshots (hotkey -> frozen screen -> region -> editor -> clipboard)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import screenshot
 except Exception:
     screenshot = None
     _SCREENSHOT_IMPORT_ERR = traceback.format_exc()
 
 try:                                   # shared hotkey exclusions live in voice_sys (read by every KeyHook)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import voice_sys
 except Exception:
     voice_sys = None
 
 try:                                   # installed programs for the program pickers
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import programs
 except Exception:
     programs = None
 
 try:                                   # recorder: computer sound + microphone -> one file (work calls)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import recorder
 except Exception:
     recorder = None
     _RECORDER_IMPORT_ERR = traceback.format_exc()
 
 try:                                   # screen recording: region -> MP4 with sound (panel and frame hidden from capture)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import screenrec
 except Exception:
     screenrec = None
     _SCREENREC_IMPORT_ERR = traceback.format_exc()
 
 try:                                   # key scripts: a key in a chosen program -> a sequence of keys
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import macros
 except Exception:
     macros = None
     _MACROS_IMPORT_ERR = traceback.format_exc()
 
 try:                                   # LAN link between the user's own devices (files of all drives)
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
     import lan_ui
 except Exception:
     lan_ui = None
     _LAN_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.16.1"
+VERSION = "1.17.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -276,6 +302,26 @@ def log(msg):
     except Exception:
         pass
 
+
+# The crash log was never cut (the debug log has _trim_log): at a plain start of the main
+# process a crash log over LOG_MAX moves to .old (one generation). The watchdog, which keeps
+# the same file open, never rotates; a rename that fails (file busy) is skipped.
+LOG_MAX = 1024 * 1024
+
+
+def _rotate_logs():
+    if _LIGHT or len(sys.argv) > 1:
+        return
+    for name in ("HDContainer_crash.log",):
+        path = os.path.join(_DIR, name)
+        try:
+            if os.path.getsize(path) > LOG_MAX:
+                os.replace(path, path + ".old")
+        except OSError:
+            pass
+
+
+_rotate_logs()
 
 # нативные крэши (ctypes/Access Violation) -> стек в файл (ДОЗАПИСЬ, чтобы стек
 # не стирался при следующем запуске)
@@ -593,6 +639,7 @@ def fetch_latest_release():
     """(tag, setup_url, sha256) последнего релиза GitHub или (None, None, None).
     Берём ТОЛЬКО установщик с точным именем: раньше при неполном релизе
     подхватывался любой .exe (напр. портативный) и «ставился» как установщик."""
+    import urllib.request
     try:
         req = urllib.request.Request(
             "https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO,
@@ -1926,7 +1973,6 @@ class TrayApp:
         self._menu_actions = {}
         self._native_q = []           # действия из нативных колбэков (см. _defer)
         _DEFER[0] = self._defer
-        self._pending_update = None   # (tag, url), выставляется фоновым потоком
         self.settings = load_settings()
         # hotkey exclusions used to belong to screenshots only (<= 1.13.0): carry them over once
         if "hotkey_exclude" not in self.settings and self.settings.get("screenshot", {}).get("exclude"):
@@ -1949,6 +1995,7 @@ class TrayApp:
         install_edit_keys(self.root)
         self.root.update_idletasks()
         self.msg_hwnd = user32.GetAncestor(self.root.winfo_id(), GA_ROOT)
+        self._init_wake()
 
         # держим ссылки на колбэки, иначе GC их убьёт -> краш
         self._tray_wndproc = WNDPROC(self._on_message)
@@ -2071,9 +2118,9 @@ class TrayApp:
         # внешний WM_CLOSE (напр. при обновлении) -> штатное завершение,
         # которое снимает владение со всех окон (а не убивает их)
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
-        self.root.after(700, self._poll)
-        self.root.after(300, self._watch)
-        self.root.after(30, self._drain_native)
+        self._watching = self._polling = False
+        self._containers_wake()
+        self.on_wake(self._drain_native, reentrant=True)
 
         # запуск по ярлыку: --launch "<имя>" -> поднять этот контейнер
         if launch_name:
@@ -2086,6 +2133,9 @@ class TrayApp:
     #  Оконные процедуры
     # ===================================================================
     def _on_message(self, hwnd, msg, wparam, lparam):
+        # screens / work area changed: the boxes re-read them (a flag only, no tk here)
+        if msg in (0x007E, 0x001A, 0x02E0) and getattr(self, "boxes", None) is not None:
+            self.boxes.screens_dirty = True     # WM_DISPLAYCHANGE, WM_SETTINGCHANGE, WM_DPICHANGED
         if msg == WM_TRAY:
             low = lparam & 0xFFFF
             if low in (WM_LBUTTONUP, WM_RBUTTONUP, WM_CONTEXTMENU):
@@ -2148,11 +2198,71 @@ class TrayApp:
     # в обычном таймере tk.
     def _defer(self, fn):
         self._native_q.append(fn)
+        self.kick()
+
+    def post(self, fn):
+        """Run fn on the tk thread soon; callable from any thread."""
+        self._native_q.append(fn)
+        self.kick()
+
+    # ---- waking the tk thread without polling ----
+    # Worker threads, hook callbacks and window procedures must never call tkinter, so
+    # they used to leave work in queues that tk timers polled every 20-50 ms: about 235
+    # wakeups a second at idle, most of the program's idle CPU. Now they post WM_CLOSE to
+    # a hidden Toplevel: Tk turns it into its WM_DELETE_WINDOW protocol call on the tk
+    # thread (the same path an external close of the root takes), and that call runs the
+    # registered drains. PostMessage is safe from any thread and never blocks.
+    def _init_wake(self):
+        self._wake_fns = []               # [(fn, reentrant)]
+        self._wake_busy = set()
+        self._wake_flag = False
+        self._wake_missed = False
+        w = tk.Toplevel(self.root)
+        w.withdraw()
+        w.title("HDContainer wake")
+        w.update_idletasks()
+        self._wake_win = w
+        self._wake_hwnd = int(w.wm_frame(), 16)
+        w.protocol("WM_DELETE_WINDOW", self._on_wake)
+        if voice_sys is not None:
+            voice_sys.WAKE[0] = self.kick
+
+    def kick(self, force=False):
+        hwnd = getattr(self, "_wake_hwnd", 0)
+        if hwnd and (force or not self._wake_flag):
+            self._wake_flag = True
+            if not user32.PostMessageW(hwnd, WM_CLOSE, 0, 0):
+                self._wake_flag = False
+
+    def on_wake(self, fn, reentrant=False):
+        """fn runs on the tk thread after every kick() (it drains its own queue, so it
+        must be cheap when there is nothing to do). A non-reentrant fn is not called
+        again while it is still running (a modal dialog opened from it pumps events)."""
+        self._wake_fns.append((fn, reentrant))
+        self.kick()
+
+    def _on_wake(self):
+        self._wake_flag = False
+        for fn, reentrant in list(self._wake_fns):
+            if not reentrant:
+                if fn in self._wake_busy:
+                    self._wake_missed = True
+                    continue
+                self._wake_busy.add(fn)
+            try:
+                fn()
+            except Exception:
+                log("wake handler failed:\n" + traceback.format_exc())
+            finally:
+                if not reentrant:
+                    self._wake_busy.discard(fn)
+        if self._wake_missed and not self._wake_busy:
+            self._wake_missed = False
+            self.kick()
 
     def _drain_native(self):
-        # re-arm first: an item that opens a modal dialog runs a nested event loop,
-        # and the queue keeps draining inside it (tray clicks, WM_COPYDATA, recovery)
-        self.root.after(30, self._drain_native)
+        # reentrant: an item that opens a modal dialog runs a nested event loop, and the
+        # queue keeps draining inside it (tray clicks, WM_COPYDATA, recovery)
         while self._native_q:
             fn = self._native_q.pop(0)
             try:
@@ -2887,16 +2997,21 @@ class TrayApp:
             tag, url, sha = fetch_latest_release()
             newer = (tag and url and is_release_version(tag)
                      and version_tuple(tag) > version_tuple(VERSION))
+            # a modal dialog: its own tk call, not inside the drain of other work
             if newer and (verbose or self.settings.get("skip_update") != tag):
-                self._pending_update = (tag, url, sha, verbose)
+                upd = (tag, url, sha, verbose)
             elif verbose:
-                self._pending_update = ("__uptodate__", None, None, True)
+                upd = ("__uptodate__", None, None, True)
+            else:
+                return
+            self.post(lambda: self.root.after(0, lambda: self._handle_pending_update(upd)))
         threading.Thread(target=worker, daemon=True).start()
 
     def _update_busy(self):
         return getattr(self, "_update_dialog_open", False) or getattr(self, "_updating", False)
 
     def _handle_pending_update(self, upd):
+        import webbrowser
         tag, url, sha, verbose = upd
         if self._update_busy():
             return                  # a dialog or a download for an update is already there
@@ -2974,6 +3089,7 @@ class TrayApp:
             win.after(40, lambda: marquee(pos + 0.035))
 
         def fail():
+            import webbrowser
             st["done"] = True
             self._updating = False
             try:
@@ -3004,7 +3120,10 @@ class TrayApp:
                 self._update_fallback()
 
         def worker():
-            # UI трогаем ТОЛЬКО через _defer (очередь, которую разбирает таймер tk):
+            import hashlib
+            import ssl
+            import urllib.request
+            # UI трогаем ТОЛЬКО через _defer (очередь, которую будит kick):
             # root.after из чужого потока — та же ошибка, что и в нативных колбэках
             if not sha:
                 log("do_update: release has no sha256 digest -> manual")
@@ -3057,6 +3176,7 @@ class TrayApp:
         threading.Thread(target=worker, daemon=True).start()
 
     def _update_fallback(self):
+        import webbrowser
         try:
             webbrowser.open(GITHUB_URL + "/releases/latest")
         except Exception:
@@ -3130,6 +3250,7 @@ class TrayApp:
             return
         c.host_hwnd = host
         c.active = True
+        self._containers_wake()
         self._set_current(c)
         used = set()
         for sig in list(c.apps):
@@ -4102,10 +4223,17 @@ class TrayApp:
         # снимок окон для превью свёрнутого контейнера. Свёрнутые/спрятанные окна
         # снять нельзя, поэтому снимаем, пока с контейнером работают (окно в фокусе),
         # не чаще раза в 4с — к моменту сворачивания картинка уже свежая
+        # 1.17.0: PrintWindow(PW_RENDERFULLCONTENT) makes every member window render itself
+        # into a full-size bitmap (~33 ms for one 2560x1408 Chromium window), so the picture is
+        # taken when the user leaves the container (its windows are still visible then) and
+        # at most every 15 s while working in it, not every 4 s.
         now = time.time()
-        if now - c.snap_t < 4.0 or not dwmapi or getattr(c, "_snap_busy", False):
+        fg_in = user32.GetForegroundWindow() in c.members
+        left = getattr(c, "_fg_in", False) and not fg_in
+        c._fg_in = fg_in
+        if not dwmapi or getattr(c, "_snap_busy", False):
             return
-        if user32.GetForegroundWindow() not in c.members:
+        if not (left or (fg_in and now - c.snap_t >= 15.0)):
             return
         c.snap_t = now
         order = [h for h, _t in self._enum_windows() if h in c.members]
@@ -4156,6 +4284,7 @@ class TrayApp:
         if hwnd and rect and len(rect) == 4:
             self._reassert.append({"hwnd": hwnd, "rect": clamp_to_screen(list(rect)),
                                    "max": bool(sig.get("max")), "n": 4})
+            self._containers_wake()
 
     def _watch(self):
         try:
@@ -4231,7 +4360,23 @@ class TrayApp:
                 self._reassert = keep
         except Exception as ex:
             log("watch err: %r" % ex)
-        self.root.after(250, self._watch)
+        if self._containers_busy():
+            self.root.after(250, self._watch)
+        else:
+            self._watching = False
+
+    # The container timers run only while a container is open (or windows are still
+    # awaited): with none open they woke the program 5.5 times a second for nothing.
+    def _containers_busy(self):
+        return bool(self.pending or self._reassert or any(c.active for c in self.containers))
+
+    def _containers_wake(self):
+        if not self._watching:
+            self._watching = True
+            self.root.after(250, self._watch)
+        if not self._polling:
+            self._polling = True
+            self.root.after(700, self._poll)
 
     # ===================================================================
     #  Поллинг: чистка закрытых окон + отложенный подхват
@@ -4242,16 +4387,12 @@ class TrayApp:
         except Exception:
             log("poll failed:\n" + traceback.format_exc())
         finally:
-            self.root.after(700, self._poll)
+            if self._containers_busy():
+                self.root.after(700, self._poll)
+            else:
+                self._polling = False
 
     def _poll_once(self):
-        if self._pending_update:
-            upd = self._pending_update
-            self._pending_update = None
-            # модальный диалог — отдельным таймером, чтобы не останавливать
-            # сам опрос (чистку закрытых окон, подхват запущенных приложений)
-            self.root.after(0, lambda: self._handle_pending_update(upd))
-
         changed = False
         for c in self.containers:
             if c.active and c.prune():       # окно закрыли -> убрали из контейнера
@@ -5148,23 +5289,57 @@ class TrayApp:
         self._hang_watch()
         self.root.mainloop()
 
+    # ---- giving memory back (hang-watch thread, no tk) ----
+    # Windows leaves pages of the start, of a closed Settings window or screenshot editor in
+    # the working set until memory gets tight. When it grew by TRIM_STEP since the last trim,
+    # nobody works in an HDContainer window and nothing records, the pages go back to the
+    # system (they come back on use as cheap soft faults).
+    TRIM_STEP = 16 * 1024 * 1024
+
+    def _trim_memory(self):
+        try:
+            ws = _working_set()
+            if ws <= getattr(self, "_trim_base", 0) + self.TRIM_STEP:
+                return
+            pid = DWORD()
+            user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), ctypes.byref(pid))
+            if pid.value == self.my_pid and user32.IsWindowVisible(user32.GetForegroundWindow()):
+                return                       # the user works in one of our windows
+            for obj, attr in ((getattr(self, "voice", None), "sess"), (getattr(self, "recorder", None), "session"),
+                              (getattr(self, "screenrec", None), "session")):
+                if obj is not None and getattr(obj, attr, None) is not None:
+                    return
+            _psapi.EmptyWorkingSet(kernel32.GetCurrentProcess())
+            self._trim_base = _working_set()
+            log("memory: working set %d -> %d MB" % (ws >> 20, self._trim_base >> 20))
+        except Exception:
+            pass
+
     def _hang_watch(self):
         """A frozen UI thread leaves no trace (Windows just kills the 'not responding'
-        program): a tk timer beats every second, a thread writes the stacks of all
-        threads into the crash log when the beat stops for HANG_S."""
-        HANG_S = 20
+        program): a thread asks the tk thread for a beat every PROBE_S (a kick, no tk
+        timer) and writes the stacks of all threads into the crash log when no beat
+        came for HANG_S."""
+        HANG_S, PROBE_S = 20, 5
         self._beat = time.monotonic()
+        self._beat_ask = False
 
         def beat():
-            self._beat = time.monotonic()
-            self.root.after(1000, beat)
-        beat()
+            if self._beat_ask:
+                self._beat_ask = False
+                self._beat = time.monotonic()
+        self.on_wake(beat)
 
         def watch():
             reported, last = False, time.monotonic()
+            t_start = last
             while True:
-                time.sleep(2)
+                self._beat_ask = True
+                self.kick(force=True)       # also heals a lost wake message (flag stuck)
+                time.sleep(PROBE_S)
                 now = time.monotonic()
+                if now - t_start > 60:
+                    self._trim_memory()
                 if now - last > 10:            # the PC slept: not a hang
                     self._beat = now
                 last = now
@@ -5181,10 +5356,29 @@ class TrayApp:
                             f.flush()
                         except Exception:
                             pass
-                elif reported and stale < 3:
+                elif reported and stale < PROBE_S + 3:
                     reported = False
                     log("UI thread responding again")
         threading.Thread(target=watch, daemon=True, name="hdc-hang-watch").start()
+
+
+class _PMC(ctypes.Structure):
+    _fields_ = [("cb", DWORD), ("PageFaultCount", DWORD)] + [(n, ctypes.c_size_t) for n in (
+        "PeakWorkingSetSize", "WorkingSetSize", "QuotaPeakPagedPoolUsage", "QuotaPagedPoolUsage",
+        "QuotaPeakNonPagedPoolUsage", "QuotaNonPagedPoolUsage", "PagefileUsage", "PeakPagefileUsage")]
+
+
+_psapi = ctypes.WinDLL("psapi")
+_psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(_PMC), DWORD]
+_psapi.EmptyWorkingSet.argtypes = [wintypes.HANDLE]
+kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+
+
+def _working_set():
+    m = _PMC()
+    m.cb = ctypes.sizeof(m)
+    _psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(m), m.cb)
+    return m.WorkingSetSize
 
 
 def _read_recovery_snapshot():
@@ -5289,6 +5483,7 @@ def _run_watchdog(args):
     try:
         hp = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
         log("watchdog waiting on pid=%s hp=%s" % (pid, hp))
+        _psapi.EmptyWorkingSet(kernel32.GetCurrentProcess())     # it only waits from here on
         if hp:
             rc = kernel32.WaitForSingleObject(hp, 0xFFFFFFFF)   # ждём выхода процесса
             kernel32.CloseHandle(hp)

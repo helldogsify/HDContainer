@@ -7,6 +7,7 @@ libtorrent runs its own network threads; we only call it from tk timers, never
 from native callbacks.
 """
 import os
+import sys
 import json
 import time
 import ctypes
@@ -16,7 +17,33 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog
 
-import libtorrent as lt
+import importlib.util
+
+# libtorrent (a native DLL, +3.4 MB and 15 ms at start) is loaded at the first use, i.e. when
+# a torrent is opened or restored, not at every start of the app. A missing libtorrent still
+# fails this import, so the feature stays hidden as before.
+def _have_libtorrent():
+    if "libtorrent" in sys.modules:
+        return True
+    try:
+        return importlib.util.find_spec("libtorrent") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+if not _have_libtorrent():
+    raise ImportError("No module named 'libtorrent'")
+
+
+class _LazyLibtorrent:
+    def __getattr__(self, name):
+        global lt
+        import libtorrent
+        lt = libtorrent
+        return getattr(libtorrent, name)
+
+
+lt = _LazyLibtorrent()
 
 TSTR = {
     "tab": {"en": "Torrents", "ru": "Торренты", "es": "Torrents", "pt": "Torrents", "de": "Torrents", "fr": "Torrents", "zh": "种子下载"},
@@ -185,6 +212,7 @@ class TorrentController:
         self.dir = os.path.join(local_dir, "torrents")
         os.makedirs(self.dir, exist_ok=True)
         self.ses = None
+        self._ticking = False  # the 1 s tick runs only while a session exists
         self._deleting = {}    # tid -> time: remove_torrent(delete_files) not confirmed yet
         self.items = {}      # tid -> {"name","path","h","done","paused","err","t_force","t_resume"}
         self.order = []
@@ -204,7 +232,7 @@ class TorrentController:
         except OSError:
             pass
         self._set_lock(True)
-        self.root.after(TICK_MS, self._tick)
+        self._tick_on()
 
     # ---- settings ----
     def get(self, k):
@@ -245,7 +273,13 @@ class TorrentController:
             p.update(self._tuning())
             self.ses = lt.session(p)
             self.log("torrent session started")
+            self._tick_on()
         return self.ses
+
+    def _tick_on(self):
+        if not self._ticking:
+            self._ticking = True
+            self.root.after(TICK_MS, self._tick)
 
     def _maybe_close_session(self):
         """Close the session once nothing is in it: no open ports or DHT traffic at idle."""
@@ -268,7 +302,8 @@ class TorrentController:
 
     def _save_list(self):
         rows = [{"id": tid, "name": it["name"], "path": it["path"], "done": it["done"],
-                 "paused": it["paused"], "active": it["h"] is not None}
+                 "paused": it["paused"], "active": it["h"] is not None or it["detached"],
+                 "prog": it.get("prog")}
                 for tid, it in ((t, self.items[t]) for t in self.order)]
         tmp = os.path.join(self.dir, "list.json.tmp")
         try:
@@ -300,6 +335,34 @@ class TorrentController:
                 os.replace(tmp, self._p(tid, ".resume"))
         except Exception as ex:
             self.log("resume write failed: %r" % ex)
+        self._detach_if_due(a)
+
+    def _detach_if_due(self, a):
+        """After the snapshot of a paused torrent: take it out of the session."""
+        try:
+            tid = _tid_of(a.handle.info_hashes())
+        except Exception:
+            return
+        it = self.items.get(tid)
+        if it is None or not it.get("detach_due") or it["h"] is None:
+            return
+        it["detach_due"] = False
+        if not it["paused"]:                     # resumed again before the snapshot came
+            return
+        h = it["h"]
+        try:
+            it["prog"] = h.status().progress
+        except Exception:
+            pass
+        try:
+            self.ses.remove_torrent(h)           # files and .torrent / .resume stay
+        except Exception as ex:
+            self.log("torrent detach failed %s: %r" % (it["name"], ex))
+            return
+        it["h"], it["detached"] = None, True
+        self.log("torrent paused, out of the session: %s" % it["name"])
+        self._save_list()
+        self._maybe_close_session()
 
     def _drop_state(self, tid):
         for ext in (".torrent", ".resume"):
@@ -323,6 +386,12 @@ class TorrentController:
                     self.items[tid] = self._new_item(r.get("name", tid), r.get("path", ""), None)
                     self.items[tid]["done"] = True
                     self.order.append(tid)
+                continue
+            if r.get("paused") and not r.get("done") and os.path.exists(self._p(tid, ".torrent")):
+                it = self._new_item(r.get("name", tid), r.get("path") or self.folder(), None)
+                it["paused"], it["detached"], it["prog"] = True, True, r.get("prog")
+                self.items[tid] = it
+                self.order.append(tid)
                 continue
             try:
                 ti = lt.torrent_info(self._p(tid, ".torrent"))
@@ -349,7 +418,22 @@ class TorrentController:
     @staticmethod
     def _new_item(name, path, h):
         return {"name": name, "path": path, "h": h, "done": False, "paused": False, "err": "",
-                "t_force": 0.0, "t_resume": time.time()}
+                "t_force": 0.0, "t_resume": time.time(), "detached": False, "detach_due": False,
+                "prog": None}
+
+    def _attach(self, tid, it, paused=False):
+        """Put a detached (paused) torrent back into the session from its .torrent / .resume."""
+        ti = lt.torrent_info(self._p(tid, ".torrent"))
+        resume = None
+        try:
+            with open(self._p(tid, ".resume"), "rb") as f:
+                resume = f.read()
+        except OSError:
+            pass
+        h = self._session().add_torrent(self._params(ti, it["path"] or self.folder(), resume, paused))
+        it["h"], it["detached"], it["paused"], it["err"] = h, False, paused, ""
+        it["t_resume"] = time.time()
+        return h
 
     def add_file(self, path):
         """Entry point: a .torrent opened with HDContainer."""
@@ -361,6 +445,9 @@ class TorrentController:
             return
         tid = _tid_of(ti.info_hashes())
         it = self.items.get(tid)
+        if it is not None and it["detached"]:
+            self._notice_opened(S("already"), it)
+            return
         if it is not None and it["h"] is not None:
             self._merge(it, ti)
             self._notice_opened(S("finished") if it["done"] else S("already"), it)
@@ -413,14 +500,13 @@ class TorrentController:
         if added:
             self._force(it)
 
-    def _add(self, ti, save_path, resume=None, paused=False, done=False):
-        tid = _tid_of(ti.info_hashes())
+    def _params(self, ti, save_path, resume=None, paused=False):
         atp = None
         if resume:
             try:
                 atp = lt.read_resume_data(resume)
             except Exception as ex:
-                self.log("resume data unreadable %s: %r" % (tid, ex))
+                self.log("resume data unreadable %s: %r" % (ti.name(), ex))
         if atp is None:
             atp = lt.add_torrent_params()
         atp.ti = ti
@@ -429,7 +515,11 @@ class TorrentController:
         flags = atp.flags & ~lt.torrent_flags.auto_managed
         flags = (flags | lt.torrent_flags.paused) if paused else (flags & ~lt.torrent_flags.paused)
         atp.flags = flags
-        h = self._session().add_torrent(atp)
+        return atp
+
+    def _add(self, ti, save_path, resume=None, paused=False, done=False):
+        tid = _tid_of(ti.info_hashes())
+        h = self._session().add_torrent(self._params(ti, save_path, resume, paused))
         it = self._new_item(ti.name(), save_path, h)
         it["paused"], it["done"] = paused, done
         self.items[tid] = it
@@ -441,17 +531,30 @@ class TorrentController:
     # ---- actions ----
     def toggle_pause(self, tid):
         it = self.items.get(tid)
-        if not it or it["h"] is None:
+        if not it:
+            return
+        if it["detached"]:                       # resume: back into the session
+            try:
+                self._attach(tid, it)
+            except Exception as ex:
+                self.log("torrent resume failed %s: %r" % (it["name"], ex))
+                it["err"] = str(ex)[:200]
+                return
+            self._force(it)
+            self._save_list()
+            return
+        if it["h"] is None:
             return
         h = it["h"]
         if it["paused"] or it["err"]:
             h.clear_error()
             h.resume()
-            it["paused"], it["err"] = False, ""
+            it["paused"], it["err"], it["detach_due"] = False, "", False
             self._force(it)
         else:
             h.pause()
             it["paused"] = True
+            it["detach_due"] = True              # out of the session once the snapshot is written
             h.save_resume_data(lt.torrent_handle.flush_disk_cache)
         self._save_list()
 
@@ -461,6 +564,11 @@ class TorrentController:
             return
         self.order.remove(tid)
         h = it["h"]
+        if h is None and it["detached"] and delete_files:
+            try:
+                h = self._attach(tid, it, paused=True)
+            except Exception as ex:
+                self.log("torrent delete: cannot load %s: %r" % (it["name"], ex))
         if h is not None and self.ses is not None and h.is_valid():
             self.ses.remove_torrent(h, lt.options_t.delete_files if delete_files else 0)
             if delete_files:               # the session stays until the files are gone
@@ -506,7 +614,10 @@ class TorrentController:
                         it["t_resume"] = now
         except Exception as ex:
             self.log("torrent tick failed: %r" % ex)
-        self.root.after(TICK_MS, self._tick)
+        if self.ses is not None:
+            self.root.after(TICK_MS, self._tick)
+        else:
+            self._ticking = False
 
     def _alerts(self, quit_wait=None):
         pending = 0
@@ -516,6 +627,7 @@ class TorrentController:
                 pending += 1
             elif isinstance(a, lt.save_resume_data_failed_alert):
                 pending += 1
+                self._detach_if_due(a)           # the last snapshot on disk is used then
             elif isinstance(a, (lt.torrent_deleted_alert, lt.torrent_delete_failed_alert)):
                 if self._delete_done(a):
                     self._maybe_close_session()
@@ -619,6 +731,12 @@ class TorrentController:
     def _status(self, it):
         """(progress 0..1, text, is_error) for one row."""
         if it["h"] is None:
+            if it["detached"]:
+                if it["err"]:
+                    return it["prog"] or 0.0, "%s · %s" % (S("error"), it["err"]), True
+                if it["prog"] is None:
+                    return 0.0, S("paused"), False
+                return it["prog"], "%d%% · %s" % (int(it["prog"] * 100), S("paused")), False
             return 1.0, S("done"), False
         st = it["h"].status()
         pct = "%d%%" % int(st.progress * 100)

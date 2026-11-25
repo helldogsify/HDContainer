@@ -213,7 +213,7 @@ DEFAULTS = {
     "oa_preset": "openai", "oa_url": "https://api.openai.com/v1", "oa_key": "",
     "oa_model": "gpt-4.1-mini",
     "cleanup": True, "autopaste": True, "restore_clip": True,
-    "w_fast": True, "w_keep": True, "w_threads": 0,
+    "w_fast": True, "w_keep": False, "w_threads": 0, "m117_keep_off": False,
     "p_dict": "", "p_edit": "",
     "share_enabled": False, "share_port": 8765, "share_token": "",
     "rm_url": "", "rm_key": "",
@@ -794,7 +794,7 @@ class VoiceController:
         self._p = self._pbg = None
         self._migrate()
         self.apply_share()
-        self.root.after(20, self._hook_loop)
+        app.on_wake(self._hook_loop)    # hook events wake it (no 20 ms polling)
         self.root.after(60000, self._idle_tick)
         self.root.after(4000, self._apply_whisper)
 
@@ -885,12 +885,22 @@ class VoiceController:
                 except queue.Empty:
                     break
                 self._on_key_event(ev)
-            if self.state == "arming" and time.time() - self._arm_t >= self.ARM_DELAY:
-                self.state = "idle"
-                self._start()
         except Exception:
             self.log("voice key loop:\n" + traceback.format_exc())
-        self.root.after(20, self._hook_loop)
+
+    def _arm_check(self, t):
+        """A single modifier held for ARM_DELAY starts the recording (one-shot timer per press)."""
+        try:
+            if self.state != "arming" or self._arm_t != t:
+                return
+            left = self.ARM_DELAY - (time.time() - t)
+            if left > 0:
+                self.root.after(max(1, int(left * 1000) + 1), lambda: self._arm_check(t))
+                return
+            self.state = "idle"
+            self._start()
+        except Exception:
+            self.log("voice arm check:\n" + traceback.format_exc())
 
     def _on_key_event(self, ev):
         kind = ev[0]
@@ -908,6 +918,8 @@ class VoiceController:
             elif not toggle and self.state == "idle":
                 if single:
                     self.state, self._arm_t = "arming", time.time()
+                    t = self._arm_t
+                    self.root.after(int(self.ARM_DELAY * 1000) + 1, lambda: self._arm_check(t))
                 else:
                     self._start()
         elif kind == "release":
@@ -1402,6 +1414,14 @@ class VoiceController:
             self.set("oa_preset", "openai", save=False)
             self.set("oa_url", DEFAULTS["oa_url"], save=False)
             self.set("oa_model", DEFAULTS["oa_model"], save=False)
+        # 1.17.0 (user ruling: nothing stays in memory unless it is used): the local model is
+        # no longer kept loaded; it starts while you speak and leaves after a few idle minutes.
+        # Switched off once here; Settings can still turn it on.
+        if v and not v.get("m117_keep_off"):
+            if v.get("w_keep"):
+                self.log("voice: 1.17.0 -> the Whisper model is loaded only when used")
+            self.set("w_keep", False, save=False)
+            self.set("m117_keep_off", True, save=False)
         # раздавать Claude Code может только тот ПК, где он есть
         if v.get("share_enabled") and not ve.find_claude(self.get_live("cc_path")):
             self.set("share_enabled", False, save=False)

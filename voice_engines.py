@@ -220,7 +220,7 @@ def audio_ctx_for(duration):
 
 
 class WhisperLocal:
-    IDLE_STOP = 20 * 60          # выгрузить модель из памяти после 20 мин простоя
+    IDLE_STOP = 3 * 60           # unload the model after 3 idle minutes (was 20; 1.17.0: memory only while used)
 
     def __init__(self, root_dir, log):
         self.dir = root_dir
@@ -827,6 +827,7 @@ class WarmPool:
     Сразу после выдачи процесса поднимаем следующий — повторные запросы
     не ждут холодного старта CLI."""
     MAX_AGE = 10 * 60
+    SPARE_S = 3 * 60             # a spare nobody took is stopped after this
 
     def __init__(self, get_exe, get_model, log):
         self.get_exe, self.get_model, self.log = get_exe, get_model, log
@@ -863,6 +864,18 @@ class WarmPool:
                 self._runner.cancel()
             self._key, self._runner = self._spawn(system)
             self._born = time.time()
+            # 1.17.0: an unused spare does not stay in memory (it was only replaced on the
+            # next request, so after the last one a claude process lived on for good)
+            t = threading.Timer(self.SPARE_S, self._expire, args=(self._runner,))
+            t.daemon = True
+            t.start()
+
+    def _expire(self, r):
+        with self._lock:
+            if self._runner is r:
+                r.cancel()
+                self._runner = None
+                self.log("share: unused warm claude stopped")
 
     def take(self, system):
         with self._lock:

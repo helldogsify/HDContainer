@@ -470,14 +470,14 @@ class RecorderController:
         self.meta = None                # sidecar of the running session
         self._jobs_left = 0             # recordings waiting for / in encoding
         self._job_q = queue.Queue()
-        self._ui_q = queue.Queue()
+        self._ui_q = vs.WakeQueue()
         self.ind = Indicator(self.root, self.toggle, log)
         self.panel = None               # start panel (tk Toplevel) while it is open
         threading.Thread(target=self._worker, daemon=True, name="hdc-rec-save").start()
         self.hook = vs.KeyHook(log)
         self.hook.start()
         self.register_hotkey()
-        self.root.after(25, self._loop)
+        app.on_wake(self._loop)         # hook events and worker results wake it (no polling)
         self._job_q.put(("recover",))
 
     # ---- settings (draft while the Settings window is open, see voice.py) ----
@@ -543,7 +543,6 @@ class RecorderController:
                 fn()
         except Exception:
             self.log("recorder loop:\n" + traceback.format_exc())
-        self.root.after(25, self._loop)
 
     # ---- recording ----
     @property

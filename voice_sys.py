@@ -15,6 +15,7 @@ import ctypes
 import io
 import math
 import os
+import queue
 import sys
 import threading
 import time
@@ -366,6 +367,111 @@ _decl(kernel32.GetCurrentThreadId, DWORD, [])
 _decl(kernel32.GetModuleHandleW, HANDLE, [LPCWSTR])
 
 
+# ---------------------------------------------------------------------------
+#  Waking the tk thread without polling
+# ---------------------------------------------------------------------------
+# WAKE[0] is set by the app to a function that wakes the tk thread from ANY thread
+# (hook callbacks and window procedures included: it only posts a Windows message).
+# Queues read by the tk thread are WakeQueues: a put() wakes the reader at once, so
+# no tk timer has to poll them every 20-50 ms (that polling was most of the idle CPU).
+WAKE = [None]
+
+
+def wake():
+    w = WAKE[0]
+    if w is not None:
+        try:
+            w()
+        except Exception:
+            pass
+
+
+class WakeQueue(queue.Queue):
+    def put(self, item, block=True, timeout=None):
+        super().put(item, block, timeout)
+        wake()
+
+
+# ---------------------------------------------------------------------------
+#  One low-level keyboard hook for every KeyHook
+# ---------------------------------------------------------------------------
+class _HookHub:
+    """Every WH_KEYBOARD_LL hook costs a thread switch and a GIL round on every key
+    press in the whole system, so the hotkey handlers (dictation, screenshots,
+    recorder, screen recording) share one hook on one thread. Handlers are asked
+    newest first, as Windows asks separate hooks, and a key one of them swallows is
+    not shown to the older ones (as with separate hooks)."""
+
+    def __init__(self):
+        self._order = ()                 # newest first; replaced whole, read by the hook thread
+        self._lock = threading.Lock()
+        self._hook = None
+        self._tid = 0
+        self._thread = None
+        self._proc = _HOOKPROC(self._cb)
+        self.log = lambda m: None
+
+    def add(self, kh):
+        with self._lock:
+            if kh not in self._order:
+                self._order = (kh,) + self._order
+            if not self._hook:
+                self._start()
+            return self._hook
+
+    def remove(self, kh):
+        with self._lock:
+            self._order = tuple(h for h in self._order if h is not kh)
+            if not self._order and self._tid:
+                user32.PostThreadMessageW(self._tid, WM_QUIT, 0, 0)
+                self._tid, self._hook = 0, None      # a later add() starts a new thread
+
+    def _start(self):
+        old = self._thread
+        if old is not None and old.is_alive():
+            old.join(1.0)                     # the previous hook thread is still unhooking
+        ready = threading.Event()
+
+        def run():
+            self._tid = kernel32.GetCurrentThreadId()
+            hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._proc,
+                                            kernel32.GetModuleHandleW(None), 0)
+            self._hook = hook
+            if not hook:
+                self.log("keyboard hook failed: %d" % ctypes.get_last_error())
+                self._tid = 0
+                ready.set()
+                return                        # no thread left waiting forever
+            ready.set()
+            msg = _MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                pass
+            if hook:
+                user32.UnhookWindowsHookEx(hook)
+        self._thread = threading.Thread(target=run, daemon=True, name="hdc-keyhook")
+        self._thread.start()
+        ready.wait(2.0)
+
+    def _cb(self, code, wp, lp):
+        try:
+            if code == 0:
+                kb = KBDLLHOOKSTRUCT.from_address(lp)
+                if not (kb.flags & LLKHF_INJECTED):
+                    vk, up = kb.vkCode, wp in (WM_KEYUP, WM_SYSKEYUP)
+                    for h in self._order:
+                        try:
+                            if h._handle(vk, up):
+                                return 1         # the key is swallowed
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        return user32.CallNextHookEx(None, code, wp, lp)
+
+
+HUB = _HookHub()
+
+
 class KeyHook:
     """События в self.events (queue.Queue):
          ("press",) / ("release",)  — горячая клавиша нажата / отпущена
@@ -376,8 +482,7 @@ class KeyHook:
     """
 
     def __init__(self, log=None):
-        import queue as _q
-        self.events = _q.Queue()
+        self.events = WakeQueue()
         self.log = log or (lambda m: None)
         self.mods, self.vk, self.enabled = 0, VK_RCONTROL, True
         self.recording = False           # пока идёт запись — Esc перехватываем
@@ -393,7 +498,6 @@ class KeyHook:
         self._cap_single = None
         self._tid = 0
         self._hook = None
-        self._proc = _HOOKPROC(self._cb)
 
     def configure(self, mods, vk, enabled=True):
         self.mods, self.vk, self.enabled = int(mods), int(vk), bool(enabled)
@@ -414,28 +518,14 @@ class KeyHook:
         return key_down(self.vk) if self.modifier_only else True
 
     def start(self):
-        ready = threading.Event()
-
-        def run():
-            self._tid = kernel32.GetCurrentThreadId()
-            self._hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._proc,
-                                                  kernel32.GetModuleHandleW(None), 0)
-            if not self._hook:
-                self.log("keyboard hook failed: %d" % ctypes.get_last_error())
-            ready.set()
-            msg = _MSG()
-            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                pass
-            if self._hook:
-                user32.UnhookWindowsHookEx(self._hook)
-                self._hook = None
-        threading.Thread(target=run, daemon=True, name="hdc-keyhook").start()
-        ready.wait(2.0)
+        if HUB.log is not self.log and self.log:
+            HUB.log = self.log
+        self._hook = HUB.add(self)
         return bool(self._hook)
 
     def stop(self):
-        if self._tid:
-            user32.PostThreadMessageW(self._tid, WM_QUIT, 0, 0)
+        HUB.remove(self)
+        self._hook = None
 
     def _mods_now(self, exclude):
         m = 0
@@ -447,17 +537,6 @@ class KeyHook:
                 continue
             m |= _MOD_BIT.get(v, 0)
         return m
-
-    def _cb(self, code, wp, lp):
-        try:
-            if code == 0:
-                kb = KBDLLHOOKSTRUCT.from_address(lp)
-                if not (kb.flags & LLKHF_INJECTED) and self._handle(
-                        kb.vkCode, wp in (WM_KEYUP, WM_SYSKEYUP)):
-                    return 1                     # клавишу «съели»
-        except Exception:
-            pass
-        return user32.CallNextHookEx(None, code, wp, lp)
 
     def _handle(self, vk, up):
         repeat = (not up) and vk in self._down

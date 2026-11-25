@@ -1,6 +1,6 @@
 ; HDContainer — Inno Setup script
 #define MyAppName "HDContainer"
-#define MyAppVersion "1.16.1"
+#define MyAppVersion "1.17.0"
 #define MyAppExe "HDContainer.exe"
 #define MyAppUrl "https://github.com/helldogsify/HDContainer"
 
@@ -55,8 +55,12 @@ ru.StartupTask=Запускать HDContainer при старте Windows
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "startup"; Description: "{cm:StartupTask}"; Flags: unchecked
 
+[InstallDelete]
+; the onedir build (1.17.0+) brings its own _internal folder: start each version clean
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
-Source: "dist\HDContainer.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "build\onedir\HDContainer\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "HDContainer.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

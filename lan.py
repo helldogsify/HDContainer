@@ -194,14 +194,23 @@ def is_tailscale(ip):
     return v is not None and v >> 22 == (100 << 2 | 1)        # 100.64.0.0/10
 
 
+_IPS = [0.0, []]
+
+
 def local_ipv4():
+    """This PC's IPv4 addresses; cached for 15 s (the beacon asks twice every 3 s)."""
+    now = time.monotonic()
+    if now - _IPS[0] < 15.0:
+        return list(_IPS[1])
     ips = set()
     try:
         for fam, _t, _p, _c, sa in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             ips.add(sa[0])
     except OSError:
         pass
-    return sorted(ip for ip in ips if not ip.startswith(("127.", "169.254.")))
+    out = sorted(ip for ip in ips if not ip.startswith(("127.", "169.254.")))
+    _IPS[0], _IPS[1] = now, out
+    return list(out)
 
 
 # ---------------------------------------------------------------- server-side file system
@@ -451,7 +460,8 @@ class Node:
         udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         udp.bind(("0.0.0.0", DISC_PORT))
-        udp.settimeout(1.0)
+        udp.settimeout(5.0)                # stop() closes it, which ends a waiting recvfrom at once
+        self._halt = threading.Event()     # set by stop(): the sleeping threads wake and exit
         self._srv, self._udp, self.running = srv, udp, True
         self._gen = getattr(self, "_gen", 0) + 1          # threads of an earlier start() see a new generation and exit
         for fn in (self._accept_loop, self._disc_rx, self._disc_tx, self._probe_loop):
@@ -462,6 +472,7 @@ class Node:
         if not self.running:
             return
         self.running = False
+        self._halt.set()
         for s in (self._srv, self._udp):
             try:
                 s.close()
@@ -511,36 +522,57 @@ class Node:
                            "v": self.version, "ips": local_ipv4(), "q": 1 if ask else 0},
                           ensure_ascii=False).encode("utf-8")
 
-    def _send_to(self, data, ip, src=None):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    @staticmethod
+    def _broadcast(data, src_ips, socks):
+        """One broadcast socket per local address, kept between beacons in `socks` (was a new
+        socket, bind and close per address every 3 s)."""
+        for ip in list(socks):
+            if ip not in src_ips:
+                socks.pop(ip).close()
+        for ip in src_ips:
+            s = socks.get(ip)
+            try:
+                if s is None:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    s.bind((ip, 0))
+                    socks[ip] = s
+                s.sendto(data, ("255.255.255.255", DISC_PORT))
+            except OSError:
+                if s is not None:
+                    s.close()
+                socks.pop(ip, None)
+
+    def _unicast(self, data, ip):
+        """Through the bound discovery socket: no new socket per packet."""
         try:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            if src:
-                s.bind((src, 0))
-            s.sendto(data, (ip, DISC_PORT))
+            self._udp.sendto(data, (ip, DISC_PORT))
         except OSError:
             pass
-        finally:
-            s.close()
 
     def _live(self, gen):
         return self.running and gen == self._gen
 
     def _disc_tx(self, gen):
-        first = True
+        first, halt, socks = True, self._halt, {}
         while self._live(gen):
             data = self._beacon(first)
-            for ip in local_ipv4():
-                if is_private(ip):
-                    self._send_to(data, "255.255.255.255", ip)
+            self._broadcast(data, [ip for ip in local_ipv4() if is_private(ip)], socks)
+            # unicast too: some routers drop broadcasts. A device heard lately gets it only at
+            # the address its own beacon came from; the others at every known LAN address.
+            now = time.time()
+            with self.lock:
+                seen = {pid: s["ip"] for pid, s in self.seen.items() if now - s["t"] < ONLINE_S}
             with self.store.lock:
-                known = [a for p in self.store.peers.values() for a in p.get("addrs", []) if is_private(a)]
-            for a in _uniq(known):                     # unicast too: some routers drop broadcasts
-                self._send_to(data, a)
+                known = []
+                for pid, p in self.store.peers.items():
+                    known += [seen[pid]] if pid in seen else [a for a in p.get("addrs", []) if is_private(a)]
+            for a in _uniq(known):
+                self._unicast(data, a)
             first = False
-            t = time.time() + BEACON_S
-            while self._live(gen) and time.time() < t:
-                time.sleep(0.25)
+            halt.wait(BEACON_S)
+        for s in socks.values():
+            s.close()
 
     def _disc_rx(self, gen):
         udp = self._udp
@@ -570,15 +602,18 @@ class Node:
                     addrs = _uniq([ip] + self.seen[pid]["ips"] + p.get("addrs", []))[:6]
                     self.store.update(pid, addrs=addrs, port=self.seen[pid]["port"], name=self.seen[pid]["name"] or p.get("name"))
                 if d.get("q") or new:
-                    self._send_to(self._beacon(False), ip)
+                    self._unicast(self._beacon(False), ip)
                 if new:
                     self.events.put(("changed", None))
             except Exception:
                 continue
 
     def _probe_loop(self, gen):
+        halt = self._halt
         while self._live(gen):
-            time.sleep(5)
+            halt.wait(5)
+            if not self._live(gen):
+                return
             now = time.time()
             with self.store.lock:
                 pids = [pid for pid, p in self.store.peers.items() if p.get("_key") and not p.get("revoked")]

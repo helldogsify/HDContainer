@@ -769,12 +769,13 @@ class ScreenRecController:
         self.live = {}                  # switches of the running recording
         self._jobs_left = 0
         self._job_q = queue.Queue()
-        self._ui_q = queue.Queue()
+        self._ui_q = vs.WakeQueue()
+        self._sess_polling = False
         threading.Thread(target=self._worker, daemon=True, name="hdc-screenrec-save").start()
         self.hook = vs.KeyHook(log)
         self.hook.start()
         self.register_hotkey()
-        self.root.after(25, self._loop)
+        app.on_wake(self._loop)         # hook events and worker results wake it (no polling)
         self._job_q.put(("recover",))
 
     # ---- settings (draft while the Settings window is open, see voice.py) ----
@@ -847,6 +848,12 @@ class ScreenRecController:
                 except queue.Empty:
                     break
                 fn()
+        except Exception:
+            self.log("screenrec loop:\n" + traceback.format_exc())
+
+    def _session_poll(self):
+        """Only while a recording runs: show the panel at the first frame, stop if the capture died."""
+        try:
             s = self.session
             if s is not None and not self._shown and s.t0 is not None:
                 self._show_live(s)
@@ -854,8 +861,11 @@ class ScreenRecController:
                 self.log("screenrec: capture thread ended by itself")
                 self.stop()
         except Exception:
-            self.log("screenrec loop:\n" + traceback.format_exc())
-        self.root.after(25, self._loop)
+            self.log("screenrec session poll:\n" + traceback.format_exc())
+        if self.session is not None:
+            self.root.after(25, self._session_poll)
+        else:
+            self._sess_polling = False
 
     # ---- recording ----
     @property
@@ -966,6 +976,9 @@ class ScreenRecController:
         self.meta = meta
         self._shown = False
         self.log("screenrec: started -> %s" % meta["video"])
+        if not self._sess_polling:
+            self._sess_polling = True
+            self.root.after(25, self._session_poll)
         self.root.after(int(START_CHECK_S * 1000), lambda s=self.session: self._start_check(s))
 
     def _show_live(self, sess):
