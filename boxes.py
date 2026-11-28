@@ -12,6 +12,7 @@ drag-and-drop are started from the app's deferred queue (a tk timer).
 """
 import os
 import re
+import sys
 import json
 import math
 import time
@@ -85,6 +86,7 @@ BSTR = {
     "quickhide": {"en": "Double-click the empty desktop to hide boxes and icons", "ru": "Двойной клик по рабочему столу прячет ящики и значки", "es": "Doble clic en el escritorio vacío oculta cajas e iconos", "pt": "Clique duplo na área de trabalho vazia oculta caixas e ícones", "de": "Doppelklick auf den leeren Desktop blendet Boxen und Symbole aus", "fr": "Double-clic sur le bureau vide : masquer boîtes et icônes", "zh": "双击桌面空白处隐藏收纳盒和图标"},
     "arrange": {"en": "Arrange", "ru": "Расстановка", "es": "Colocación", "pt": "Disposição", "de": "Anordnung", "fr": "Disposition", "zh": "排列"},
     "box_w": {"en": "Box width", "ru": "Ширина ящика", "es": "Ancho de caja", "pt": "Largura da caixa", "de": "Boxbreite", "fr": "Largeur des boîtes", "zh": "收纳盒宽度"},
+    "icons_row": {"en": "Icons per row", "ru": "Значков в строке", "es": "Iconos por fila", "pt": "Ícones por linha", "de": "Symbole pro Zeile", "fr": "Icônes par ligne", "zh": "每行图标数"},
     "gap": {"en": "Gap", "ru": "Отступ", "es": "Espacio", "pt": "Espaço", "de": "Abstand", "fr": "Écart", "zh": "间距"},
     "arr_top": {"en": "Along the top", "ru": "Вверху", "es": "Arriba", "pt": "No topo", "de": "Oben", "fr": "En haut", "zh": "顶部"},
     "arr_bottom": {"en": "Along the bottom", "ru": "Внизу", "es": "Abajo", "pt": "Embaixo", "de": "Unten", "fr": "En bas", "zh": "底部"},
@@ -95,7 +97,7 @@ BSTR = {
     "right": {"en": "Right", "ru": "Справа", "es": "Derecha", "pt": "Direita", "de": "Rechts", "fr": "À droite", "zh": "右"},
     "arrange_note": {"en": "The width changes on all boxes at once. A click on a place puts all boxes there with the same gap between them and from the screen edge; while they stay there, the gap follows at once too.", "ru": "Ширина сразу меняется у всех ящиков. Клик по месту ставит туда все ящики с одинаковым отступом друг от друга и от края экрана; пока они там стоят, отступ тоже меняется сразу.", "es": "El ancho cambia en todas las cajas al momento. Un clic en un lugar coloca ahí todas las cajas con el mismo espacio entre ellas y hasta el borde; mientras sigan ahí, el espacio también cambia al momento.", "pt": "A largura muda em todas as caixas na hora. Um clique num lugar coloca todas as caixas ali com o mesmo espaço entre elas e até a borda; enquanto ficarem ali, o espaço também muda na hora.", "de": "Die Breite ändert sich sofort bei allen Boxen. Ein Klick auf einen Platz stellt alle Boxen dorthin, mit gleichem Abstand zueinander und zum Bildschirmrand; solange sie dort stehen, folgt auch der Abstand sofort.", "fr": "La largeur change tout de suite sur toutes les boîtes. Un clic sur une place y met toutes les boîtes avec le même écart entre elles et avec le bord ; tant qu’elles y restent, l’écart suit aussi tout de suite.", "zh": "宽度会立即应用到所有收纳盒。单击某个位置即可把所有收纳盒放到该处，彼此及与屏幕边缘的间距相同；只要它们还在那里，间距也会立即跟随调整。"},
     "import": {"en": "Import boxes from iTop Easy Desktop", "ru": "Перенести ящики из iTop Easy Desktop", "es": "Importar cajas de iTop Easy Desktop", "pt": "Importar caixas do iTop Easy Desktop", "de": "Boxen aus iTop Easy Desktop übernehmen", "fr": "Importer les boîtes d’iTop Easy Desktop", "zh": "从 iTop Easy Desktop 导入收纳盒"},
-    "imported_n": {"en": "Imported boxes: %d. Drag your files into them.", "ru": "Перенесено ящиков: %d. Перетащите в них свои файлы.", "es": "Cajas importadas: %d. Arrastra tus archivos a ellas.", "pt": "Caixas importadas: %d. Arraste seus arquivos para elas.", "de": "Übernommene Boxen: %d. Zieh deine Dateien hinein.", "fr": "Boîtes importées : %d. Glissez-y vos fichiers.", "zh": "已导入收纳盒：%d。把文件拖进去即可。"},
+    "imported_n": {"en": "Imported boxes: %d, items moved into them: %d.", "ru": "Перенесено ящиков: %d, значков в них: %d.", "es": "Cajas importadas: %d, elementos movidos: %d.", "pt": "Caixas importadas: %d, itens movidos: %d.", "de": "Übernommene Boxen: %d, verschobene Elemente: %d.", "fr": "Boîtes importées : %d, éléments déplacés : %d.", "zh": "已导入收纳盒：%d，移入项目：%d。"},
     "itop_running": {"en": "Quit iTop Easy Desktop first, otherwise both programs will draw boxes.", "ru": "Сначала закройте iTop Easy Desktop, иначе ящики будут рисовать обе программы.", "es": "Cierra primero iTop Easy Desktop; si no, ambos programas dibujarán cajas.", "pt": "Feche o iTop Easy Desktop primeiro, senão os dois programas vão desenhar caixas.", "de": "Beende zuerst iTop Easy Desktop, sonst zeichnen beide Programme Boxen.", "fr": "Quittez d’abord iTop Easy Desktop, sinon les deux programmes dessineront des boîtes.", "zh": "请先退出 iTop Easy Desktop，否则两个程序都会绘制收纳盒。"},
     "where": {"en": "Box files are kept in", "ru": "Файлы ящиков лежат в", "es": "Los archivos de las cajas están en", "pt": "Os arquivos das caixas ficam em", "de": "Die Dateien der Boxen liegen in", "fr": "Les fichiers des boîtes sont dans", "zh": "收纳盒文件保存在"},
     "open": {"en": "Open", "ru": "Открыть", "es": "Abrir", "pt": "Abrir", "de": "Öffnen", "fr": "Ouvrir", "zh": "打开"},
@@ -950,9 +952,69 @@ def _special_folders():
     for k in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial", "APPDATA", "LOCALAPPDATA"):
         if os.environ.get(k):
             out.append(os.environ[k])
+    out += [p for p in desktop_namespace().values() if not p.startswith("::")]     # cloud roots: Yandex.Disk…
     res = {os.path.normcase(os.path.abspath(x)).rstrip("\\/") for x in out}
     _special_cache.append(res)
     return res
+
+
+_NS_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace"
+_ns_cache = []
+
+
+def desktop_namespace():
+    """Icons that programs add to the desktop (Yandex.Disk, Dropbox, Libraries…): {CLSID upper:
+    parsing name}. A cloud folder (ShellFolder WantsForParsing) parses as its real path, e.g.
+    Yandex.Disk = C:\\Users\\<user>\\<account>: dragging it must link, never move the whole folder.
+    Looked up again after 60 s (a program may add one meanwhile)."""
+    if _ns_cache and time.time() - _ns_cache[0] < 60:
+        return _ns_cache[1]
+    import winreg
+    out = {}
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            k = winreg.OpenKey(hive, _NS_KEY)
+        except OSError:
+            continue
+        with k:
+            i = 0
+            while True:
+                try:
+                    c = winreg.EnumKey(k, i)
+                except OSError:
+                    break
+                i += 1
+                if len(c) == 38 and c.startswith("{"):
+                    out.setdefault(c.upper(), "::" + c.upper())
+    for c in list(out):
+        try:                                   # only folders that parse as a path need the slow lookup
+            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "CLSID\\%s\\ShellFolder" % c) as sf:
+                winreg.QueryValueEx(sf, "WantsForParsing")
+        except OSError:
+            continue
+        pidl = VP()
+        if shell32.SHParseDisplayName("::" + c, None, ctypes.byref(pidl), 0, None) == 0 and pidl:
+            try:
+                p = pidl_name(pidl, SIGDN_DESKTOPABSOLUTEPARSING)
+                if p and not p.startswith("::") and len(p) > 3:
+                    out[c] = p
+            finally:
+                shell32.ILFree(pidl)
+    _ns_cache[:] = [time.time(), out]
+    return out
+
+
+def parse_item(parse):
+    """(parsing name, display name, ID list bytes, True, file system path) of a shell item, as
+    dataobject_items gives a desktop drag, or None."""
+    pidl = VP()
+    if shell32.SHParseDisplayName(parse, None, ctypes.byref(pidl), 0, None) != 0 or not pidl:
+        return None
+    try:
+        return (pidl_name(pidl, SIGDN_DESKTOPABSOLUTEPARSING), pidl_name(pidl, SIGDN_NORMALDISPLAY),
+                ctypes.string_at(pidl, shell32.ILGetSize(pidl)), True, pidl_name(pidl, SIGDN_FILESYSPATH))
+    finally:
+        shell32.ILFree(pidl)
 
 
 def protected_folder(path):
@@ -976,20 +1038,32 @@ def desktop_icon_clsid(parse, from_desktop=False, fs=""):
     c = parse[2:].upper() if parse.startswith("::{") and len(parse) == 40 else None
     if c in DESKTOP_ICONS:
         return c
-    if from_desktop and fs and os.path.normcase(fs).rstrip("\\/") == _profile():
+    if not from_desktop:
+        return None
+    if fs and os.path.normcase(fs).rstrip("\\/") == _profile():
         return USER_FILES
+    ns = desktop_namespace()
+    if c and c in ns:
+        return c
+    n = os.path.normcase(fs or parse).rstrip("\\/")
+    for k, p in ns.items():                          # an icon of a cloud folder parses as its path
+        if not p.startswith("::") and os.path.normcase(p).rstrip("\\/") == n:
+            return k
     return None
 
 
 def link_is_icon(path, clsid):
     t = link_target(path)
-    return t.upper() == "::" + clsid or (clsid == USER_FILES and os.path.normcase(t).rstrip("\\/") == _profile())
+    if t.upper() == "::" + clsid or (clsid == USER_FILES and os.path.normcase(t).rstrip("\\/") == _profile()):
+        return True
+    p = desktop_namespace().get(clsid, "")
+    return bool(t) and not p.startswith("::") and os.path.normcase(t).rstrip("\\/") == os.path.normcase(p).rstrip("\\/")
 
 
 def show_desktop_icon(clsid, show):
     import winreg
     with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, HIDE_ICONS_KEY, 0, winreg.KEY_SET_VALUE) as k:
-        winreg.SetValueEx(k, DESKTOP_ICONS[clsid], 0, winreg.REG_DWORD, 0 if show else 1)
+        winreg.SetValueEx(k, DESKTOP_ICONS.get(clsid, clsid), 0, winreg.REG_DWORD, 0 if show else 1)
     shell32.SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None)     # the desktop re-reads its icons
 
 
@@ -2521,6 +2595,37 @@ class BoxManager:
             log("boxes: folder watch unavailable: %r" % ex)
         app.on_wake(self._results)
         self.root.after(600, self._tick)
+        self.root.after(4000, self._drop_app_link_dupe)
+
+    def _drop_app_link_dupe(self):
+        """Updates before 1.18.0 put a new HDContainer shortcut on the desktop each time (user:
+        the shortcut must live only in a box). When a box already holds a shortcut to this exe,
+        the desktop copies go to the Recycle Bin. Once, a few seconds after start."""
+        if not getattr(sys, "frozen", False):
+            return
+        exe = os.path.normcase(os.path.abspath(sys.executable))
+
+        def ours(path):
+            try:
+                return path.lower().endswith(".lnk") and os.path.normcase(link_target(path)) == exe
+            except Exception:
+                return False
+        try:
+            if not any(ours(os.path.join(b.folder, n)) for b in self.boxes
+                       if b.folder and os.path.isdir(b.folder) for n in os.listdir(b.folder)):
+                return
+            dupes = [p for p in (os.path.join(self.desktop, n) for n in os.listdir(self.desktop))
+                     if os.path.isfile(p) and ours(p)]
+        except OSError as ex:
+            self.log("app link check failed: %r" % ex)
+            return
+        if dupes:
+            op = SHFILEOPSTRUCTW()
+            op.wFunc = 3                                        # FO_DELETE, to the Recycle Bin
+            op.pFrom = "\0".join(dupes) + "\0\0"
+            op.fFlags = FOF_ALLOWUNDO | 0x10 | 0x4 | 0x400      # NOCONFIRMATION, SILENT, NOERRORUI
+            rc = shell32.SHFileOperationW(ctypes.byref(op))
+            self.log("desktop HDContainer shortcut removed (one is in a box): %s rc=%d" % (dupes, rc))
 
     # ---- persistence ----
     def _load(self):
@@ -3356,9 +3461,61 @@ class BoxManager:
         cp.read_string(raw.decode(enc, "replace"))
         return cp
 
+    # iTop's own ids of the standard desktop icons in SoftInfo_*.dat (its desktop layout,
+    # SoftInfo_Desk.dat, lists them in Windows' order: This PC, then the Recycle Bin)
+    ITOP_ICONS = {"30000034": "{20D04FE0-3AEA-1069-A2D8-08002B30309D}",
+                  "20000014": "{645FF040-5081-101B-9F08-00AA002F954E}"}
+
+    def _itop_members(self, src_dir, sec):
+        """What iTop shows in a box, in its order (rows, then columns): full paths of files on
+        the desktop (the user's or the Public one) and its codes of the standard icons."""
+        path = os.path.join(src_dir, "Data", "SoftInfo_%s.dat" % sec)
+        if not os.path.isfile(path):
+            return []
+        ini = self._read_ini(path)
+        out = []
+        for s in ini.sections():
+            try:
+                pos = (int(ini[s].get("Top", "0")), int(ini[s].get("Left", "0")))
+            except ValueError:
+                pos = (1 << 30, 0)
+            out.append((pos, s))
+        out.sort(key=lambda t: t[0])
+        return [s for _p, s in out]
+
+    def _itop_fill(self, box, members):
+        """Move a box's files in from the desktop (Explorer's move: undo, rename on collision;
+        the Public desktop asks for admin rights once) and add its standard icons. Returns the
+        number of items placed."""
+        if not box.folder or not os.path.isdir(box.folder):
+            return 0
+        own, public, links, order = [], [], [], []
+        pub = os.path.normcase(os.path.join(os.environ.get("PUBLIC", r"C:\Users\Public"), "Desktop"))
+        for m in members:
+            if m in self.ITOP_ICONS:
+                it = parse_item("::" + self.ITOP_ICONS[m])
+                if it:
+                    links.append(it)
+                    order.append(safe_name(it[1] or "Shortcut") + ".lnk")
+                continue
+            if not os.path.isabs(m) or not os.path.exists(m) or protected_folder(m):
+                continue
+            (public if os.path.normcase(os.path.dirname(m)) == pub else own).append(m)
+            order.append(os.path.basename(m))
+        for group in (own, public):
+            if group:
+                file_op(FO_MOVE, group, box.folder, self.log, wait=True)
+        if links:
+            self.add_links(box, links)
+        box.d["order"] = order + [n for n in (box.d.get("order") or []) if n not in order]
+        box.d["sort"] = "manual"
+        box.sig = None
+        return len(own) + len(public) + len(links)
+
     def import_itop(self, src_dir):
+        """iTop's boxes with their places and contents. Returns (boxes, items)."""
         boxes = self._read_ini(os.path.join(src_dir, "BoxConfig.ini"))
-        n = 0
+        n = items = 0
         for sec in boxes.sections():
             if not sec.startswith("Box_"):
                 continue
@@ -3366,15 +3523,18 @@ class BoxManager:
             if s.get("IsHide", "0") == "1":
                 continue
             name = (s.get("BoxName") or "").strip() or B("box_n", len(self.boxes) + 1)
-            if any(b.name == name for b in self.boxes):
-                n += 1
-                continue
-            try:
-                rect = [int(s.get(k, d)) for k, d in (("Left", 200), ("Top", 120), ("Width", 320), ("Height", 420))]
-            except ValueError:
-                rect = None
-            self.add_box(name, rect=rect, rollup=s.get("RollUpBox", "1") == "1")
+            box = next((b for b in self.boxes if b.name == name), None)     # imported before: only fill it
+            if box is None:
+                try:
+                    rect = [int(s.get(k, d)) for k, d in (("Left", 200), ("Top", 120), ("Width", 320), ("Height", 420))]
+                except ValueError:
+                    rect = None
+                box = self.add_box(name, rect=rect, rollup=s.get("RollUpBox", "1") == "1")
             n += 1
+            try:
+                items += self._itop_fill(box, self._itop_members(src_dir, sec))
+            except Exception as ex:
+                self.log("itop import of %r failed: %r" % (name, ex))
         cfg_path = os.path.join(src_dir, "Config.ini")
         if os.path.isfile(cfg_path):
             act = self._read_ini(cfg_path)
@@ -3382,7 +3542,8 @@ class BoxManager:
                 self.data["opts"]["quickhide"] = act["Actions"].get("Dclicking") == "1"
         self.save()
         self._apply_quickhide()
-        return n
+        self._scan_at = 0
+        return n, items
 
     # ---- settings tab ----
     def begin_edit(self):
@@ -3536,8 +3697,9 @@ class BoxManager:
         grid.pack(fill="x", padx=pad)
         nums = tk.Frame(grid, bg=sf)
         nums.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
-        self._px_row(nums, 0, "box_w", 120, 1600, 900)
-        self._px_row(nums, 1, "gap", 0, 300, 80)
+        wvar = self._px_row(nums, 0, "box_w", 120, 1600, 900)
+        self._cols_row(nums, 1, wvar)
+        self._px_row(nums, 2, "gap", 0, 300, 80)
         for r, (label, places) in enumerate((("arr_top", (("left", "top-left", 1), ("center", "top-center", 2),
                                                           ("right", "top-right", 3))),
                                              ("arr_bottom", (("left", "bottom-left", 1), ("center", "bottom-center", 2),
@@ -3623,6 +3785,89 @@ class BoxManager:
             wdg.bind("<MouseWheel>", wheel)
         e.bind("<FocusOut>", lambda ev: var.set(str(int(self.opt(key)))))
         draw(int(self.opt(key)))
+        return var
+
+    def _cols_geometry(self):
+        """(pad, cell) in screen pixels of a box's icon grid (Box.layout) at the current icon size."""
+        b = self.boxes[0] if self.boxes else self._preview_box()
+        return b.px(PAD), b.icon_px() + b.px(40)
+
+    def _cols_row(self, parent, row, wvar, cmax=12):
+        """Icons per row: the box width set by whole columns. Kept in step with the pixel width
+        (wvar): a number here writes the exact width of that many columns there, a width typed
+        there shows how many columns it holds."""
+        col, fonts = self._ui["col"], self._ui["fonts"]
+        sf, width = col["sf"], 230
+        pad, cell = self._cols_geometry()
+        cols_of = lambda w: max(1, (w - 2 * pad) // cell)
+        tk.Label(parent, text=B("icons_row") + ":", bg=sf, fg=col["tx"], font=fonts["f"]).grid(
+            row=row, column=0, sticky="w", padx=(0, 10), pady=3)
+        cv = tk.Canvas(parent, width=width, height=22, bg=sf, highlightthickness=0, bd=0, cursor="hand2")
+        cv.grid(row=row, column=1, sticky="w")
+        var = tk.StringVar(value=str(cols_of(int(self.opt("box_w")))))
+        e = tk.Entry(parent, textvariable=var, width=5, justify="center", bg=col["sf2"], fg=col["tx"],
+                     insertbackground=col["tx"], relief="flat", font=fonts["f"], highlightthickness=1,
+                     highlightbackground=col["bd"], highlightcolor=col["ac"])
+        e.grid(row=row, column=2, padx=(10, 0))
+
+        def draw(n):
+            cv.delete("all")
+            x = 8 + (width - 16) * (min(max(n, 1), cmax) - 1) / float(cmax - 1)
+            cv.create_line(8, 11, width - 8, 11, fill=col["sf2"], width=4, capstyle="round")
+            cv.create_line(8, 11, x, 11, fill=col["ac"], width=4, capstyle="round")
+            for k in range(cmax):                              # a tick per column count
+                tx = 8 + (width - 16) * k / float(cmax - 1)
+                cv.create_line(tx, 16, tx, 19, fill=col["dim"])
+            cv.create_oval(x - 7, 4, x + 7, 18, fill="white", outline="")
+
+        busy = [False]
+
+        def apply(*_):
+            if busy[0]:
+                return
+            try:
+                n = int(var.get())
+            except ValueError:
+                return
+            if 1 <= n <= cmax:
+                draw(n)
+                w = max(120, min(1600, 2 * pad + n * cell))      # the pixel field's own limits
+                if cols_of(int(self.opt("box_w"))) != n:
+                    busy[0] = True
+                    wvar.set(str(w))
+                    busy[0] = False
+
+        def follow(*_):                                        # the pixel width changed
+            if busy[0]:
+                return
+            try:
+                n = cols_of(int(wvar.get()))
+            except ValueError:
+                return
+            busy[0] = True
+            var.set(str(n))
+            busy[0] = False
+            draw(n)
+
+        def at(ev):
+            var.set(str(int(round(1 + max(0.0, min(1.0, (ev.x - 8) / float(width - 16))) * (cmax - 1)))))
+
+        def wheel(ev):
+            try:
+                n = int(var.get())
+            except ValueError:
+                n = cols_of(int(self.opt("box_w")))
+            var.set(str(max(1, min(cmax, n + (1 if ev.delta > 0 else -1)))))
+            return "break"
+
+        var.trace_add("write", apply)
+        wvar.trace_add("write", follow)
+        cv.bind("<Button-1>", at)
+        cv.bind("<B1-Motion>", at)
+        for wdg in (cv, e):
+            wdg.bind("<MouseWheel>", wheel)
+        e.bind("<FocusOut>", lambda ev: var.set(str(cols_of(int(self.opt("box_w"))))))
+        draw(int(var.get()))
 
     def _set_target(self, box_id):
         self.settings_target = box_id
@@ -3840,11 +4085,11 @@ class BoxManager:
         except Exception:
             pass
         try:
-            n = self.import_itop(src)
+            n, items = self.import_itop(src)
         except Exception as ex:
             self.log("itop import failed: %r" % ex)
-            n = 0
-        self.app._info(B("tab"), B("imported_n", n))
+            n = items = 0
+        self.app._info(B("tab"), B("imported_n", n, items))
         if self._ui:
             self._build_body()
 
