@@ -883,7 +883,7 @@ class VoiceController:
         self.log("voice settings saved")
 
     # ---- горячая клавиша (низкоуровневый хук, см. voice_sys.KeyHook) ----
-    ARM_DELAY = 0.2         # одиночный модификатор: запись стартует, если держат дольше
+    ARM_DELAY = 1.0         # a single modifier held this long starts the recording (user 2026-11-28: «с задержкой 1-2 секунды», was 0.2)
 
     def register_hotkey(self):
         self.hook.configure(self.get_live("hk_mods"), self.get_live("hk_vk"), self.get_live("enabled"))

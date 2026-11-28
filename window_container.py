@@ -136,6 +136,14 @@ except Exception:
     recorder = None
     _RECORDER_IMPORT_ERR = traceback.format_exc()
 
+try:                                   # internet radio: a few free background stations in the tray menu
+    if _LIGHT:
+        raise ImportError("not loaded in the watchdog")
+    import radio
+except Exception:
+    radio = None
+    _RADIO_IMPORT_ERR = traceback.format_exc()
+
 try:                                   # screen recording: region -> MP4 with sound (panel and frame hidden from capture)
     if _LIGHT:
         raise ImportError("not loaded in the watchdog")
@@ -160,7 +168,7 @@ except Exception:
     lan_ui = None
     _LAN_IMPORT_ERR = traceback.format_exc()
 
-VERSION = "1.18.0"
+VERSION = "1.19.0"
 GITHUB_REPO = "helldogsify/HDContainer"
 GITHUB_URL = "https://github.com/" + GITHUB_REPO
 DONATE_ADDR = "TWG8Y5EyaqQf8GsJKJVhcaAMFZxxHoPWzC"
@@ -2074,6 +2082,16 @@ class TrayApp:
         else:
             log("recorder import failed:\n" + globals().get("_RECORDER_IMPORT_ERR", ""))
 
+        # internet radio: no thread, no timer until a station plays
+        self.radio = None
+        if radio is not None:
+            try:
+                self.radio = radio.RadioController(self, lambda: LANG, log)
+            except Exception:
+                log("radio init failed:\n" + traceback.format_exc())
+        else:
+            log("radio import failed:\n" + globals().get("_RADIO_IMPORT_ERR", ""))
+
         # screen recording: own keyboard hook (Ctrl+Shift+B); temp files in %LOCALAPPDATA%\HDContainer\screenrec
         self.screenrec = None
         if screenrec is not None:
@@ -2514,6 +2532,12 @@ class TrayApp:
             self._popup_tools_row(frame, W, tools)
             if dev_open:
                 self.lan.build_popup(frame, W, close)
+            sep()
+        # 2b. radio: one row, the station list unfolds under it
+        if self.radio is not None:
+            self.radio.build_popup(frame, W, {"sf": COL_SURFACE, "hv": COL_HOVER, "ac": COL_ACCENT,
+                                              "tx": COL_TEXT, "dim": COL_TEXT_DIM, "err": COL_DANGER},
+                                   FONT, FONT_SM, ICON_FONT)
             sep()
         # 3. create
         self._popup_action_row(frame, ICON_ADD, T("create_container"), W,
@@ -4162,6 +4186,11 @@ class TrayApp:
                 self.recorder.shutdown()
             except Exception:
                 log("recorder shutdown failed:\n" + traceback.format_exc())
+        if getattr(self, "radio", None) is not None:
+            try:
+                self.radio.shutdown()
+            except Exception:
+                log("radio shutdown failed:\n" + traceback.format_exc())
         if getattr(self, "screenrec", None) is not None:
             try:
                 self.screenrec.shutdown()
@@ -5136,6 +5165,21 @@ class TrayApp:
         if any(len(v) > 1 for v in used.values()):
             tk.Label(parent, text=T("hk_dup"), bg=COL_SURFACE, fg=COL_DANGER, font=FONT_SM, anchor="w").pack(
                 anchor="w", padx=pad, pady=(4, 0))
+        if getattr(self, "radio", None) is not None:
+            # radio: fixed Alt+Numpad keys, only an on/off switch (applies at once)
+            rd = self.radio
+            row = tk.Frame(parent, bg=COL_SURFACE)
+            row.pack(fill="x", padx=pad, pady=5)
+
+            def set_radio(v):
+                rd.set_keys(v)
+                self.root.after(1, lambda: self._settings_show("hotkeys"))
+            chk, _st, _draw = self._make_check(row, rd.keys_on, set_radio)
+            chk.pack(side="left")
+            tk.Label(row, text=radio.R("hk_row"), bg=COL_SURFACE, fg=COL_TEXT if rd.keys_on else COL_TEXT_DIM,
+                     font=FONT).pack(side="left", padx=(12, 0))
+            tk.Label(parent, text=radio.R("hk_keys"), bg=COL_SURFACE, fg=COL_TEXT_DIM, font=FONT_SM,
+                     anchor="w").pack(anchor="w", padx=(pad + 34, pad), pady=(0, 4))
 
         tk.Label(parent, text=T("hk_exclude"), bg=COL_SURFACE, fg=COL_TEXT, font=("Segoe UI Semibold", 11)).pack(
             anchor="w", padx=pad, pady=(24, 6))

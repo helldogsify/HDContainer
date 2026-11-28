@@ -1,9 +1,11 @@
-## HDContainer 1.18.0
+## HDContainer 1.19.0
 
-**Boxes**
-- Settings -> Boxes -> Arrange: new **Icons per row** control. Set the box width by the number of icons in a row; it stays in step with the width in pixels.
-- Desktop icons added by programs (Yandex.Disk, Dropbox, Libraries...) can be dragged into a box like This PC and the Recycle Bin: the icon leaves the desktop and comes back when its shortcut leaves the boxes. A cloud folder icon is never moved as a folder any more (dragging Yandex.Disk used to offer moving the whole synced folder).
-- **Import boxes from iTop Easy Desktop** now brings the contents too: files, folders, shortcuts from the shared desktop, This PC and the Recycle Bin, in iTop's order.
+**Radio**
+- New **Radio** row in the tray menu: 87 free internet radio stations in 18 genres (Liquid / Atmospheric DnB, Jungle, Old School Hip-Hop, Lo-Fi, Chillout, Ambient, Jazz, Classical, Techno, Lounge and more) plus a **Personal** group for your own stations.
+- Click the row to unfold the genres, click a genre to unfold its stations. Play / stop on the right, mouse wheel over the row changes the volume.
+- Hotkeys: **Ctrl + Num0** on / off, **Ctrl + Num1 / Num3** previous / next station, **Ctrl + Num2** pause, **Ctrl + Num .** next genre (press twice quickly: previous genre). They can be switched off in Settings -> Hotkeys.
+- When you switch, a small white caption at the top of the screen shows the genre, the station and the current track.
+- Light on the PC and the network: Windows decodes the sound itself (no extra downloads), nothing runs while the radio is off, and the lightest stream of each station is used (mostly 48-128 kbit/s).
 
-**Setup**
-- Updates no longer put a new HDContainer shortcut on the desktop. If a box already holds the HDContainer shortcut, the extra copy on the desktop goes to the Recycle Bin.
+**Dictation**
+- Holding Left Alt now starts dictation after 1 second instead of 0.2, so quick Alt shortcuts never start a recording.
