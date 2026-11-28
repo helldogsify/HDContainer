@@ -66,7 +66,7 @@ Source: "HDContainer.ico"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; IconFilename: "{app}\HDContainer.ico"
 ; desktop shortcut only on a first install: an update must not bring it back (the user keeps it in a box)
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; IconFilename: "{app}\HDContainer.ico"; Tasks: desktopicon; Check: not IsUpgrade
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; IconFilename: "{app}\HDContainer.ico"; Tasks: desktopicon; Check: IsFreshInstall
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; \
@@ -161,6 +161,12 @@ begin
       TorrentFree := TorrentHandlerFree(HKLM64);
   end;
   Result := TorrentFree;
+end;
+
+// [Icons] Check: the desktop shortcut only on a first install, never on an update
+function IsFreshInstall(): Boolean;
+begin
+  Result := not IsUpgrade;
 end;
 
 function InitializeSetup(): Boolean;
